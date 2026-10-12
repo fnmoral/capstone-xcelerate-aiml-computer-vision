@@ -94,7 +94,7 @@ func (s *service) AddCamera(dto CreateCameraDTO, tenantID string) (*Camera, erro
 
 	fullRTSPURL := buildRTSPURL(cam.RTSPURL, cam.Username, cam.Password)
 
-	err = s.streamManager.StartRelay(cam.ID, fullRTSPURL)
+	err = s.streamManager.StartRelay(cam.ID, cam.TenantID, fullRTSPURL)
 	if err != nil {
 		log.Printf("WARNING: Camera was saved but stream initialization failed: %v", err)
 	}
@@ -127,7 +127,7 @@ func (s *service) InitStreams() error {
 
 	for _, cam := range cameras {
 		fullURL := buildRTSPURL(cam.RTSPURL, cam.Username, cam.Password)
-		if err := s.streamManager.StartRelay(cam.ID, fullURL); err != nil {
+		if err := s.streamManager.StartRelay(cam.ID, cam.TenantID, fullURL); err != nil {
 			log.Printf("ERROR restoring stream for camera %s: %v", cam.Name, err)
 		}
 	}
@@ -182,7 +182,7 @@ func (s *service) RestoreSavedStreams(ctx context.Context) error {
 		// Launch each stream in its own goroutine.
 		go func(c Camera) {
 			log.Printf("Restoring relay for camera [%s] (%s) -> URL: %s", c.ID, c.Name, c.RTSPURL)
-			if err := s.streamManager.StartRelay(c.ID, c.RTSPURL); err != nil {
+			if err := s.streamManager.StartRelay(c.ID, c.TenantID, c.RTSPURL); err != nil {
 				log.Printf("ERROR restoring relay for camera [%s]: %v", c.ID, err)
 			}
 		}(cam)

@@ -67,7 +67,6 @@ func (e *KeyframeExtractor) ProcessPacket(pkt *rtp.Packet) ([][]byte, bool) {
 		// In H.264, the first 5 bits of the header byte indicate the NALU type.
 		// NALU Type 5 = Coded slice of an IDR picture (Keyframe/I-Frame).
 		naluType := nalu[0] & 0x1F
-
 		if naluType == 5 {
 			isKeyframe = true
 			break

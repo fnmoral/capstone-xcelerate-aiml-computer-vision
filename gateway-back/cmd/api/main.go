@@ -59,7 +59,7 @@ func main() {
 	}
 
 	// Configure the handler and HTTP server with Gin.
-	handler := camera.NewHandler(svc)
+	handler := camera.NewHandler(svc, cfg.TenantID)
 	configHandler := config.NewConfigHandler(configPath, cfg, streamMgr)
 
 	r := gin.Default()

@@ -8,6 +8,7 @@ import (
 type Config struct {
 	CloudAddress string `json:"cloud_address"`
 	ServerPort   string `json:"server_port"`
+	TenantID     string `json:"tenant_id"`
 }
 
 func LoadConfig(filename string) (*Config, error) {

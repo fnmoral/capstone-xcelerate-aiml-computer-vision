@@ -14,12 +14,16 @@ import (
 // Handler holds the dependencies required to handle camera-related HTTP requests.
 type Handler struct {
 	// service is the camera service that provides the business logic.
-	service Service
+	service  Service
+	tenantID string
 }
 
 // NewHandler creates a new Handler with the given camera service.
-func NewHandler(service Service) *Handler {
-	return &Handler{service: service}
+func NewHandler(service Service, tenantID string) *Handler {
+	return &Handler{
+		service:  service,
+		tenantID: tenantID,
+	}
 }
 
 // RegisterRoutes registers the camera-related routes on the provided router group.
@@ -55,9 +59,7 @@ func (h *Handler) AddCamera(c *gin.Context) {
 	}
 
 	// ID of the local tenant assigned at the gateway.
-	tenantID := "tenant-demo-123"
-
-	cam, err := h.service.AddCamera(dto, tenantID)
+	cam, err := h.service.AddCamera(dto, h.tenantID)
 	if err != nil {
 		if errors.Is(err, ErrMaxCamerasReached) {
 			c.JSON(http.StatusConflict, gin.H{"Error": err.Error()})

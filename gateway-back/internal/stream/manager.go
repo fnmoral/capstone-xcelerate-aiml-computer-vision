@@ -58,7 +58,7 @@ func (sm *StreamManager) UpdateCloudAddress(newAddress string) {
 // then creates and starts an RTSPClient for the camera.
 //
 // Returns an error if the RTSP client fails to start.
-func (sm *StreamManager) StartRelay(cameraID, localRTSPURL string) error {
+func (sm *StreamManager) StartRelay(cameraID, tenantID, localRTSPURL string) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
@@ -67,7 +67,7 @@ func (sm *StreamManager) StartRelay(cameraID, localRTSPURL string) error {
 		delete(sm.clients, cameraID)
 	}
 
-	sender, err := network.NewFrameSender(sm.cloudAddress, cameraID)
+	sender, err := network.NewFrameSender(sm.cloudAddress, cameraID, tenantID)
 	if err != nil {
 		log.Printf("Could not connect to server [%s] for camera %s: %v", sm.cloudAddress, cameraID, err)
 	}
