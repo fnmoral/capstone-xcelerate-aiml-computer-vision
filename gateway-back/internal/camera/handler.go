@@ -39,6 +39,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		cams.GET("", h.GetCameras)
 		cams.DELETE("/:id", h.RemoveCamera)
 	}
+	router.GET("/health", h.HealthCheck)
 }
 
 // AddCamera handles the creation of a new camera.
@@ -100,4 +101,9 @@ func (h *Handler) RemoveCamera(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Camera successfully removed."})
+}
+
+// HealthCheck verifies service status.
+func (h *Handler) HealthCheck(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }

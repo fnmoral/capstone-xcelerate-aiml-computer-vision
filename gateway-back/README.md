@@ -30,10 +30,18 @@ communication.
 ---
 
 ## Architecture
+
 ```json
 gateway-back/
 ├── cmd/
 │ └── api/
+│   ├── dist/ # Compiled frontend assets (served by the Go backend)
+│   │ ├── assets/
+│   │ │ ├── index-BSdzWjXO.js # Bundled React app
+│   │ │ └── index-C1EEWJgp.css # Bundled Tailwind CSS
+│   │ ├── favicon.svg
+│   │ ├── icons.svg
+│   │ └── index.html # SPA entry point
 │ └── main.go # Application entry point
 ├── internal/
 │ ├── camera/
@@ -53,7 +61,8 @@ gateway-back/
 │ ├── rtsp/
 │ │ └── client.go # RTSP client with auto-reconnect and streaming
 │ └── stream/
-│ └── manager.go # Coordinates multiple RTSP clients per camera
+│   └── manager.go # Coordinates multiple RTSP clients per camera
+├── .gitignore
 ├── README.md
 ├── config.json # Runtime configuration file
 ├── gateway.db # SQLite database file
@@ -116,3 +125,64 @@ The gateway reads its configuration from `config.json` in the working directory.
   "cloud_address": "127.0.0.1:9000",
   "server_port": "8080"
 }
+```
+
+## Getting Started
+
+### Prerequisites
+
+- **Go** `>= 1.22` — [Download](https://go.dev/dl/)
+- **Gin** framework (installed automatically via Go Modules)
+
+### 1. Install dependencies
+
+```bash
+go mod download
+```
+
+This command downloads all dependencies declared in `go.mod` and places them in your local module cache (`$GOPATH/pkg/mod`)[citation:1][citation:14].
+
+### 2. Run the server
+
+```bash
+go run cmd/api/main.go
+```
+
+The API server will start and be available at [http://localhost:8080](http://localhost:8080) (or the port configured in `config.json`).
+
+## Available Commands
+
+```bash
+# Download all dependencies from go.mod
+go mod download
+
+# Run the API server directly
+go run cmd/api/main.go
+
+# Build a production binary
+go build -o bin/api cmd/api/main.go
+
+# Clean up unused dependencies and add missing ones
+go mod tidy
+
+# Verify dependency integrity
+go mod verify
+
+# List all module dependencies
+go list -m all
+```
+
+## About Go Modules
+
+This project uses **Go Modules** for dependency management — the official standard since Go 1.11 and the default since Go 1.16[citation:13][citation:16].
+
+- **`go.mod`**: Declares the module path, Go version, and required dependencies.
+- **`go.sum`**: Contains cryptographic hashes to ensure dependency integrity and reproducibility[citation:12][citation:16].
+
+### Adding a new dependency
+
+```bash
+go get github.com/gin-gonic/gin
+```
+
+This updates `go.mod` and downloads the package into the module cache[citation:6][citation:13].

@@ -1,16 +1,44 @@
-# React + Vite
+# Gateway UI
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Web interface for managing and monitoring IP cameras over RTSP. Built with **React + Vite** and styled with **Tailwind CSS**.
 
-Currently, two official plugins are available:
+## Prerequisites
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Before you begin, make sure you have installed:
 
-## React Compiler
+- **Node.js** `>= 20.x` — [Download](https://nodejs.org/)
+- **pnpm** `>= 10.x` — Install with:
+  ```bash
+  npm install -g pnpm
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Getting Started
 
-## Expanding the ESLint configuration
+### 1. Install dependencies
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+pnpm install
+```
+
+### 2. Start the development server
+
+```bash
+pnpm dev
+```
+
+The server will start by default at [http://localhost:5173](http://localhost:5173) with **Hot Module Replacement (HMR)** enabled.
+
+## Available Scripts
+
+```bash
+# Start the development server with HMR
+pnpm dev
+
+# Generate the production build in the dist/ folder
+pnpm build
+
+# Serve the production build locally for verification
+pnpm preview
+
+# Run ESLint over the source code
+pnpm lint
+```
