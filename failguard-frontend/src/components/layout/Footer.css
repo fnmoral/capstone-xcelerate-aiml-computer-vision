@@ -1,0 +1,7 @@
+.footer {
+  display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px;
+  padding: 14px 16px; border-top: 1px solid var(--border);
+  font-size: 13px; color: var(--text-muted); background: var(--surface);
+}
+@media (min-width: 640px) { .footer { padding: 14px 24px; } }
+@media (min-width: 1024px) { .footer { padding: 14px 32px; } }

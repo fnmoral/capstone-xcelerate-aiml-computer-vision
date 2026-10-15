@@ -1,0 +1,9 @@
+.layout { min-height: 100%; display: flex; flex-direction: column; }
+.layout__body { flex: 1; display: flex; }
+.layout__loading { color: var(--text-muted); }
+.skip-link { position: absolute; left: 8px; top: -48px; z-index: 50; padding: 8px 12px; background: var(--accent); color: #fff; border-radius: 6px; }
+.skip-link:focus { top: 8px; }
+@media (min-width: 1024px) {
+  .layout > .footer { margin-left: var(--nav-w); transition: margin-left .2s ease; }
+  .layout--collapsed > .footer { margin-left: var(--nav-w-collapsed); }
+}

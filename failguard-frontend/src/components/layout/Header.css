@@ -1,0 +1,15 @@
+.header {
+  position: sticky; top: 0; z-index: 30; height: var(--header-h);
+  display: flex; align-items: center; gap: 12px; padding: 0 16px;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.header__menu { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 8px; }
+.header__menu:hover, .header__icon-btn:hover { background: var(--surface-2); }
+.header__brand { display: flex; align-items: center; gap: 10px; font-size: 16px; letter-spacing: -0.01em; }
+.header__logo { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--accent); color: #fff; }
+.header__name strong { color: var(--accent); font-weight: 700; }
+.header__spacer { flex: 1; }
+.header__actions { display: flex; gap: 4px; }
+.header__icon-btn { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 8px; color: var(--text-muted); }
+@media (min-width: 1024px) { .header__menu { display: none; } }
+@media (max-width: 380px) { .header__name { display: none; } }
