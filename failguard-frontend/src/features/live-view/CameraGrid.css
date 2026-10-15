@@ -1,0 +1,8 @@
+.cam-grid { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); }
+.cam-tile { overflow: hidden; }
+.cam-tile__video { position: relative; aspect-ratio: 16 / 9; background: #0b0d10; }
+.cam-tile__status { position: absolute; top: 10px; left: 10px; padding: 2px 8px; border-radius: 99px; font-size: 12px; text-transform: capitalize; background: rgba(0,0,0,.6); color: #fff; }
+.cam-tile__status--online { background: var(--ok); }
+.cam-tile__status--offline { background: var(--danger); }
+.cam-tile__meta { display: flex; justify-content: space-between; gap: 8px; padding: 10px 14px; font-size: 14px; }
+.cam-tile__meta span { color: var(--text-muted); }
