@@ -10,7 +10,7 @@ type Camera struct {
 	Name      string    `json:"name" db:"name"`
 	RTSPURL   string    `json:"rtsp_url" db:"rtsp_url"`
 	Username  string    `json:"username" db:"username"`
-	Password  string    `json:"password" db:"password"`
+	Password  string    `json:"-" db:"password"` // never sent back by the API; stays in gateway.db
 	Status    string    `json:"status" db:"status"` // online, offline, error, paused
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`

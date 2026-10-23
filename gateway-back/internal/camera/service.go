@@ -8,10 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/url"
 	"time"
 
 	"github.com/google/uuid"
 
+	"gateway-back/internal/rtsp"
 	"gateway-back/internal/stream"
 )
 
@@ -198,23 +200,17 @@ func (s *service) InitStreams() error {
 // Currently, it only logs the received URL and returns it unchanged. The
 // commented-out implementation above shows the previous behavior, which
 // injected the username and password into the URL.
+// buildRTSPURL adds the camera's username and password to its RTSP URL, escaped so
+// passwords with @ : / # ? still work. A URL that already carries credentials, or a
+// camera without a username, is used as is.
 func buildRTSPURL(rawURL, username, password string) string {
-	log.Printf("RTSP received: %q", rawURL)
-	return rawURL
+	u, err := url.Parse(rawURL)
+	if err != nil || username == "" || u.User != nil {
+		return rawURL
+	}
+	u.User = url.UserPassword(username, password)
+	return u.String()
 }
-
-// func buildRTSPURL(rawURL, username, password string) string {
-// 	if username == "" || password == "" {
-// 		return rawURL
-// 	}
-
-// 	// If the URL starts with rtsp://, we inject username:password@ right after
-// 	if len(rawURL) > 7 && rawURL[:7] == "rtsp://" {
-// 		return fmt.Sprintf("rtsp://%s:%s@%s", username, password, rawURL[7:])
-// 	}
-
-// 	return rawURL
-// }
 
 // RestoreSavedStreams restores the stream relay for all cameras previously
 // saved in the repository.
@@ -244,7 +240,7 @@ func (s *service) RestoreSavedStreams(ctx context.Context) error {
 		}
 		// Launch each stream in its own goroutine.
 		go func(c Camera) {
-			log.Printf("Restoring relay for camera [%s] (%s) -> URL: %s", c.ID, c.Name, c.RTSPURL)
+			log.Printf("Restoring relay for camera [%s] (%s) -> URL: %s", c.ID, c.Name, rtsp.Redact(c.RTSPURL))
 			if err := s.streamManager.StartRelay(c.ID, c.TenantID, c.RTSPURL); err != nil {
 				log.Printf("ERROR restoring relay for camera [%s]: %v", c.ID, err)
 			}

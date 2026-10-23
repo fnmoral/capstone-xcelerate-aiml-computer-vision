@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +18,15 @@ import (
 	"gateway-back/internal/extractor"
 	"gateway-back/internal/network"
 )
+
+// Redact hides the password in an RTSP URL so it can be logged.
+func Redact(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.User == nil {
+		return rawURL
+	}
+	return u.Redacted()
+}
 
 type RTSPClient struct {
 	ID        string
@@ -82,7 +92,7 @@ func (c *RTSPClient) connectionLoop() {
 		}
 		c.mu.Unlock()
 
-		log.Printf("[%s] Attempting to connect to: %s", c.ID, c.RTSPURL)
+		log.Printf("[%s] Attempting to connect to: %s", c.ID, Redact(c.RTSPURL))
 
 		err := c.connectAndStream()
 
