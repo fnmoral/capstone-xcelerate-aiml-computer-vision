@@ -26,7 +26,8 @@ from ml-service.
 | `GET /api/notifications` | Open fall alerts + cameras that stopped working with `alert_offline` on (the header bell) |
 | `GET /api/logs?kind=&camera_id=&incident_id=&from=&to=&limit=` | Activity log, newest first: user actions (`audit_logs`) and camera changes the monitor noticed (`system_logs`). `kind`: alert, incident, camera |
 | `GET /api/export/incidents.csv?…` · `/api/export/logs.csv?…` | CSV downloads with the same filters, plus `tz` (IANA zone, e.g. `America/Toronto`) for the times |
-| `GET /api/stats` | Dashboard / Analytics numbers |
+| `GET /api/stats?tz=` | Dashboard / Analytics numbers. "Today" and `per_day` (local dates) are counted in `tz`, else the facility time zone, else UTC |
+| `GET` · `PUT /api/settings` | Facility settings: `{timezone}` (IANA zone, or `null` = each browser's own). Used by the app for every time shown, stats and exports; logged as `settings.timezone` |
 | `GET /api/snapshots/:name` | Incident photo (from ml-service) |
 | `GET /api/clips/:name` | Incident video clip, MP4 (from ml-service; Range requests pass through for seeking). Incidents return `clip_key` and each camera's `clip_key` |
 | `GET /api/detection` | ml-service's detection settings (what it runs with now) + `saved`: values set in the app |

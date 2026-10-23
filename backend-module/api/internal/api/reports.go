@@ -113,11 +113,10 @@ func (s *Server) notifications(c *gin.Context) {
 
 // ---------- CSV exports ----------
 
-// csvWriter starts a CSV download. Times are written in ?tz= (an IANA zone such as
-// America/Toronto, sent by the browser), UTC otherwise.
-func csvWriter(c *gin.Context, name string) (*csv.Writer, *time.Location) {
-	loc, err := time.LoadLocation(c.Query("tz"))
-	if err != nil || c.Query("tz") == "" {
+// csvWriter starts a CSV download. Times are written in tz (see Server.zone), UTC if invalid.
+func csvWriter(c *gin.Context, name, tz string) (*csv.Writer, *time.Location) {
+	loc, err := time.LoadLocation(tz)
+	if err != nil || tz == "" {
 		loc = time.UTC
 	}
 	c.Header("Content-Type", "text/csv; charset=utf-8")
@@ -159,7 +158,7 @@ func (s *Server) exportIncidents(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	w, loc := csvWriter(c, "incidents")
+	w, loc := csvWriter(c, "incidents", s.zone(c))
 	tz := " (" + loc.String() + ")"
 	w.Write([]string{ //nolint:errcheck // errors surface on Flush
 		"Incident ID", "Started" + tz, "Recovered" + tz, "Down for (s)", "Status", "Severity",
@@ -216,7 +215,7 @@ func (s *Server) exportLogs(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	w, loc := csvWriter(c, "activity-log")
+	w, loc := csvWriter(c, "activity-log", s.zone(c))
 	w.Write([]string{"Time (" + loc.String() + ")", "Type", "Action", "What happened", "By", //nolint:errcheck
 		"Camera", "Camera ID", "Incident ID", "Item ID"})
 	for _, e := range list {

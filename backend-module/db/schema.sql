@@ -33,6 +33,7 @@ CREATE TABLE tenants (
     plan          TEXT NOT NULL DEFAULT 'free',
     max_cameras   INT  NOT NULL DEFAULT 5,
     status        TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','suspended','deleted')),
+    timezone      TEXT,                        -- IANA zone for the app (Settings); NULL = each browser's own
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

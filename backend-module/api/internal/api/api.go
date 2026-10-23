@@ -90,6 +90,8 @@ func (s *Server) Register(r *gin.Engine) {
 	a.GET("/clips/:name", s.clip)
 	a.GET("/detection", s.detection)
 	a.PUT("/detection", s.saveDetection)
+	a.GET("/settings", s.settings)
+	a.PUT("/settings", s.saveSettings)
 	a.GET("/gateway/config", s.gatewayConfig)
 	a.PUT("/gateway/config", s.gatewayConfig)
 }
@@ -621,7 +623,7 @@ func (s *Server) alertStatus(status string) gin.HandlerFunc {
 }
 
 func (s *Server) stats(c *gin.Context) {
-	st, err := s.db.Stats(c.Request.Context(), c.Query("tz"))
+	st, err := s.db.Stats(c.Request.Context(), s.zone(c))
 	if err != nil {
 		fail(c, err)
 		return
@@ -702,6 +704,47 @@ func (s *Server) saveDetection(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"saved": in})
+}
+
+func (s *Server) settings(c *gin.Context) {
+	st, err := s.db.Settings(c.Request.Context())
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, st)
+}
+
+// saveSettings: {timezone: "America/Toronto"} or {timezone: null} for each browser's own.
+func (s *Server) saveSettings(c *gin.Context) {
+	var in store.Settings
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
+		return
+	}
+	if in.Timezone != nil {
+		if _, err := time.LoadLocation(*in.Timezone); err != nil || *in.Timezone == "" || *in.Timezone == "Local" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "timezone must be an IANA time zone such as America/Toronto, or null"})
+			return
+		}
+	}
+	if err := s.db.SetTimezone(c.Request.Context(), in.Timezone, actor(c)); err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, in)
+}
+
+// zone is the time zone for days and times in stats and exports: ?tz= (the app sends the
+// one in use), else the facility's setting, else UTC.
+func (s *Server) zone(c *gin.Context) string {
+	if tz := c.Query("tz"); tz != "" {
+		return tz
+	}
+	if st, err := s.db.Settings(c.Request.Context()); err == nil && st.Timezone != nil {
+		return *st.Timezone
+	}
+	return "UTC"
 }
 
 func (s *Server) gatewayConfig(c *gin.Context) {

@@ -16,6 +16,38 @@ import (
 var migrations = []string{
 	// Dashcam-style clips: one per camera that saw the incident (incidents.clip_key is the main one).
 	`ALTER TABLE incident_cameras ADD COLUMN IF NOT EXISTS clip_key TEXT`,
+	// Facility time zone (Settings page); NULL = each browser's own.
+	`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS timezone TEXT`,
+}
+
+// Settings are facility-wide app settings.
+type Settings struct {
+	Timezone *string `json:"timezone"` // IANA zone, e.g. America/Toronto; null = each browser's own
+}
+
+// Settings returns the facility's settings.
+func (s *Store) Settings(ctx context.Context) (Settings, error) {
+	var out Settings
+	err := s.tx(ctx, func(tx pgx.Tx, tid string) error {
+		return tx.QueryRow(ctx, `SELECT timezone FROM tenants WHERE id::text = $1`, tid).Scan(&out.Timezone)
+	})
+	return out, err
+}
+
+// SetTimezone sets the facility time zone (nil = each browser's own) and logs the change.
+func (s *Store) SetTimezone(ctx context.Context, tz *string, actor string) error {
+	return s.tx(ctx, func(tx pgx.Tx, tid string) error {
+		var before *string
+		if err := tx.QueryRow(ctx, `SELECT timezone FROM tenants WHERE id::text = $1 FOR UPDATE`, tid).Scan(&before); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE tenants SET timezone = $1 WHERE id::text = $2`, tz, tid); err != nil {
+			return err
+		}
+		return audit(ctx, tx, tid, actor, "settings.timezone", "settings", "", map[string]any{
+			"message": "Time zone changed", "from": before, "to": tz,
+		})
+	})
 }
 
 // Migrate applies the migrations, retrying while the database is still starting.
