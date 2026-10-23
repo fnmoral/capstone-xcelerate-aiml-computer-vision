@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StatusBadge } from '../../components/ui/StatusBadge';
-import { useUiStore, type Theme } from '../../store/uiStore';
+import { useUiStore, type LiveLayout, type Theme } from '../../store/uiStore';
 import { api } from '../../services/api/fallguard';
 import { usePolling } from '../../services/api/usePolling';
 import type { GatewayConfig } from '../../types/domain';
@@ -57,7 +57,7 @@ function GatewaySettings() {
 }
 
 export default function SettingsPage() {
-  const { theme, setTheme } = useUiStore();
+  const { theme, setTheme, liveLayout, setLiveLayout } = useUiStore();
   const { data: health, error } = usePolling(() => api.health(), 5000);
 
   return (
@@ -95,6 +95,17 @@ export default function SettingsPage() {
                 className={`btn${theme === t ? ' btn--primary' : ''}`} style={{ textTransform: 'capitalize' }}>{t}</button>
             ))}
           </div>
+          <label className="field" style={{ marginTop: 16, maxWidth: 320 }}>Live View default layout
+            <select value={liveLayout} onChange={(e) => setLiveLayout(e.target.value as LiveLayout)}>
+              <option value="auto">Auto: every camera, scroll for more</option>
+              <option value="1">1 camera per page</option>
+              <option value="2">2 cameras per page</option>
+              <option value="4">4 cameras per page (2 × 2)</option>
+              <option value="8">8 cameras per page (4 × 2)</option>
+              <option value="fit">Fit all cameras to the window</option>
+            </select>
+            <small>Saved in this browser. Live View can also switch layout and "Set as default".</small>
+          </label>
         </section>
       </div>
     </>

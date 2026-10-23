@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../../services/api/fallguard';
 import { usePolling } from '../../services/api/usePolling';
 import { formatTime } from '../../lib/format';
+import { useUiStore } from '../../store/uiStore';
 import { Icon } from '../ui/Icon';
 import { StatusBadge } from '../ui/StatusBadge';
 
@@ -11,8 +12,12 @@ export function NotificationsMenu() {
   const { data } = usePolling(() => api.notifications(), 5000);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const alerts = data?.alerts ?? [];
-  const cameras = data?.cameras ?? [];
+  const { notifClearedAt, clearNotifications } = useUiStore();
+  // Cleared = hidden here only, in this browser; the alerts stay open in Fall Events.
+  const after = (iso: string | null) => !notifClearedAt || (iso ?? '') > notifClearedAt;
+  const alerts = (data?.alerts ?? []).filter((a) => after(a.triggered_at));
+  const cameras = (data?.cameras ?? []).filter((c) => after(c.status_since));
+  const hidden = (data?.alerts.length ?? 0) + (data?.cameras.length ?? 0) - alerts.length - cameras.length;
   const count = alerts.length + cameras.length;
 
   useEffect(() => {
@@ -38,8 +43,19 @@ export function NotificationsMenu() {
       </button>
       {open && (
         <div className="notif__panel card" id="notif-panel" role="region" aria-label="Notifications">
-          <h2 className="notif__title">Notifications</h2>
-          {count === 0 && <p className="muted notif__empty">Nothing needs attention.</p>}
+          <div className="notif__head">
+            <h2 className="notif__title">Notifications</h2>
+            <button className="btn btn--sm" disabled={count === 0} onClick={clearNotifications}
+              title="Hide these here. The alerts stay open in Fall Events until someone acknowledges or resolves them.">
+              Clear
+            </button>
+          </div>
+          {count === 0 && (
+            <p className="muted notif__empty">
+              {hidden > 0 ? `Nothing new. ${hidden}${(data?.alerts.length ?? 0) >= 200 ? '+' : ''} cleared item${hidden > 1 ? 's are' : ' is'} still open in Fall Events.`
+                : 'Nothing needs attention.'}
+            </p>
+          )}
           <ul className="notif__list">
             {cameras.map((c) => (
               <li key={'cam' + c.id}>

@@ -127,8 +127,8 @@ export default function ReportsPage() {
           </a>
         </div>
         <p className="muted rp-note">
-          One row per fall: when, where, how long the person was down, status, severity, and who acknowledged and closed
-          the alert, and when.
+          One row per fall: when, where, how long the person was down, status, severity, who acknowledged and closed
+          the alert and when, and every note with its author and time.
         </p>
         {list.error && <p className="notice notice--error">{list.error}</p>}
         {list.loading && !list.data ? <p className="muted">Loading…</p> : incidents.length === 0 ? (
@@ -137,18 +137,21 @@ export default function ReportsPage() {
           <div className="table-wrap">
             <table className="table">
               <thead>
-                <tr><th>Started</th><th>Where</th><th>Status</th><th>Severity</th><th className="num">Down for</th><th>Alert</th><th>Handled by</th></tr>
+                <tr><th>Started</th><th>Where</th><th>Status</th><th>Severity</th><th className="num">Down for</th><th>Alert</th><th>Handled by</th><th className="num">Notes</th></tr>
               </thead>
               <tbody>
                 {incidents.slice(0, PREVIEW_ROWS).map((i) => (
                   <tr key={i.id}>
                     <td><Link to={`/events/${i.id}`}>{formatTime(i.started_at)}</Link></td>
-                    <td>{i.location_label ?? i.camera_name ?? 'Unknown camera'}{i.zone && <div className="muted rp-sub">Zone: {i.zone}</div>}</td>
+                    <td>{i.location_label || i.camera_name || 'Unknown camera'}{i.zone && <div className="muted rp-sub">Zone: {i.zone}</div>}</td>
                     <td><StatusBadge value={i.status} /></td>
                     <td><StatusBadge value={i.severity} /></td>
                     <td className="num">{formatDuration(i.duration_seconds)}</td>
                     <td>{i.alert ? <StatusBadge value={i.alert.status} /> : <span className="muted">—</span>}</td>
                     <td className="rp-sub">{handledBy(i)}</td>
+                    <td className="num" title={i.note_list.map((n) => `${n.author}: ${n.text}`).join('\n')}>
+                      {i.note_list.length || <span className="muted">—</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>

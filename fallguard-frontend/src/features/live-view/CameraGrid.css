@@ -1,15 +1,41 @@
 .cam-grid { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr)); }
 .cam-tile { overflow: hidden; }
 .cam-tile--alert { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
+/* Stopped working, with "alert me" on: dashed red outline so it differs from a fall */
+.cam-tile--down { border: 2px dashed var(--danger); }
 .cam-tile__video { position: relative; aspect-ratio: 16 / 9; background: #0b0d10; display: grid; place-items: center; }
 .cam-tile__video img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.cam-tile__video.is-selectable { cursor: zoom-in; }
+.cam-tile__video.is-selectable:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
 .cam-tile__placeholder { margin: 0; color: #c9ced6; font-size: 14px; padding: 0 16px; text-align: center; }
 .cam-tile__overlay { position: absolute; top: 10px; left: 10px; }
 .cam-tile__overlay .badge { background: rgba(0, 0, 0, .65); border-color: transparent; }
 .cam-tile__incident { position: absolute; left: 10px; right: 10px; bottom: 10px; padding: 6px 10px; border-radius: 8px; background: var(--danger); color: #fff; font-weight: 600; font-size: 13px; }
+.cam-tile__incident--down { background: color-mix(in srgb, var(--danger) 85%, #000); }
 .cam-tile__meta { display: grid; gap: 8px; padding: 12px 14px; font-size: 14px; }
 .cam-tile__meta > div:first-child { display: grid; gap: 2px; }
 .cam-tile__people { display: flex; flex-wrap: wrap; gap: 6px; min-height: 22px; font-size: 13px; }
-/* Stopped working, with "alert me" on: dashed red outline so it differs from a fall */
-.cam-tile--down { border: 2px dashed var(--danger); }
-.cam-tile__incident--down { background: color-mix(in srgb, var(--danger) 85%, #000); }
+
+/* Fitted layouts (1 / 2 / 4 / 8 per page, fit all) and the enlarged camera:
+   the video takes whatever height the grid cell leaves, details on one compact line. */
+.cam-grid--fit { gap: 10px; }
+.cam-tile--fill { display: flex; flex-direction: column; min-height: 0; }
+.cam-tile--fill .cam-tile__video { aspect-ratio: auto; flex: 1; min-height: 0; }
+.cam-tile--fill .cam-tile__meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; padding: 6px 10px; font-size: 13px; }
+.cam-tile--fill .cam-tile__meta > div:first-child { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.cam-tile--fill .cam-tile__meta .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cam-tile--fill .cam-tile__people { min-height: 0; }
+
+/* Layout toolbar and enlarged view */
+.live-toolbar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.live-toolbar .tabs { margin-bottom: 0; }
+.live-toolbar__group { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; }
+.live-focus { list-style: none; margin: 0; padding: 0; display: grid; }
+.live-focus .cam-tile__video { cursor: zoom-out; }
+.live-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.live-chip { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border-radius: 99px; border: 1px solid var(--border); background: var(--surface); font-size: 13px; }
+.live-chip[aria-pressed='true'] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.live-chip__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); }
+.live-chip__dot--online { background: var(--ok); }
+.live-chip__dot--not_working, .live-chip__dot--alert { background: var(--danger); }
+.live-chip__dot--connecting { background: var(--warn); }

@@ -32,3 +32,5 @@
   /* Full width under the header, so it never runs off the left edge */
   .notif__panel { position: fixed; left: 16px; right: 16px; top: calc(var(--header-h) + 6px); width: auto; }
 }
+.notif__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.notif__head .notif__title { margin: 0; }

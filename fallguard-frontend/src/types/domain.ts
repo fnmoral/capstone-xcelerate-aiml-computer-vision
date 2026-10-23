@@ -6,6 +6,12 @@ export type CameraStatus = 'online' | 'paused' | 'not_on_gateway' | 'offline' | 
 /** What a camera is doing right now (kept by the backend's camera monitor). */
 export type CameraHealth = 'online' | 'paused' | 'not_working' | 'connecting' | 'not_connected';
 
+/** A gateway's camera limits: how many stream at once, how many can be saved (the rest paused). */
+export interface GatewayLimits {
+  max_streaming: number;
+  max_saved: number;
+}
+
 export interface LivePerson {
   track: number;
   label: 'upright' | 'falling' | 'lying' | string;
@@ -39,6 +45,7 @@ export interface IncidentCamera {
   track_id: number;
   joined_at: string;
   snapshot_key: string | null;
+  clip_key?: string | null; // this camera's video of the incident, once saved
 }
 
 export type AlertStatus = 'open' | 'acknowledged' | 'resolved' | 'false_positive';
@@ -72,9 +79,18 @@ export interface Incident {
   peak_confidence: number | null;
   location_label: string | null;
   snapshot_key: string | null;
-  notes: string | null;
+  clip_key: string | null; // main camera's video (clips/<incident>_<camera>.mp4)
+  notes: string | null; // the single note field used before; also first in note_list
+  note_list: Note[]; // every note, oldest first
   cameras: IncidentCamera[];
   alert: Alert | null;
+}
+
+/** One note on an incident. Several people can add notes; none is overwritten. */
+export interface Note {
+  at: string;
+  author: string;
+  text: string;
 }
 
 export interface Prediction {
@@ -102,7 +118,7 @@ export interface Stats {
 /** One line of the activity log: a user action, or a camera change the system noticed. */
 export interface LogEntry {
   at: string;
-  kind: 'alert' | 'incident' | 'camera';
+  kind: 'alert' | 'incident' | 'camera' | 'settings';
   action: string; // e.g. alert.acknowledged, camera.paused, camera.not_working
   actor: string | null; // null: noticed by the system
   camera_id: string | null;
@@ -141,9 +157,18 @@ export interface Health {
 export interface DetectionSettings {
   mode: string;
   model: string;
-  device: string;
+  device: string; // as configured: auto, a GPU number, or cpu
+  device_in_use: string | null; // what it resolved to, e.g. "GPU 0 (NVIDIA GeForce RTX 3060 Laptop GPU)" or "CPU"
   target_fps: number;
-  person_confidence: number;
+  analysis: { // measured over the last 30 s
+    average_fps: number | null; // frames analysed per second, averaged over cameras receiving video
+    cameras: { camera_id: string; received_fps: number; analysed_fps: number }[];
+  };
+  person_confidence: number; // in use now
+  person_confidence_default: number; // config.yaml
+  saved: { person_confidence?: number }; // set in this app; ml-service applies it within 15 s
+  clips: { enabled: boolean; pre_roll_s: number; post_roll_s: number; max_s: number; max_width: number;
+    retention_days: number; max_total_gb: number };
   rules: Record<string, number>;
   incidents: Record<string, number>;
   zones: Record<string, string[]>;

@@ -1,5 +1,5 @@
 import type {
-  Alert, Camera, DetectionSettings, GatewayConfig, Health, Incident, IncidentStatus, LogEntry, Notifications,
+  Alert, Camera, DetectionSettings, GatewayLimits, GatewayConfig, Health, Incident, IncidentStatus, LogEntry, Note, Notifications,
   Prediction, Stats,
 } from '../../types/domain';
 import { apiRequest, apiUrl } from './client';
@@ -52,10 +52,16 @@ export const api = {
   health: () => apiRequest<Health>('/health'),
   stats: () => apiRequest<Stats>('/stats'),
 
-  cameras: () => apiRequest<{ cameras: Camera[]; gateway_error?: string }>('/cameras'),
-  addCamera: (c: CameraInput) => apiRequest<{ id: string }>('/cameras', { method: 'POST', ...json(c) }),
+  cameras: () => apiRequest<{ cameras: Camera[]; gateway_error?: string; limits?: GatewayLimits }>('/cameras'),
+  /** status "paused" = saved on standby (the gateway is at its streaming limit). */
+  addCamera: (c: CameraInput) => apiRequest<{ id: string; status: string }>('/cameras', { method: 'POST', ...json(c) }),
+  /** Stream camera id instead of replaceId (pauses that one; resumes it again if id fails). */
+  switchCamera: (id: string, replaceId: string) =>
+    apiRequest('/cameras/' + enc(id) + '/switch', { method: 'POST', ...json({ replace_id: replaceId }) }),
   updateCamera: (id: string, c: { name?: string; location?: string; zone?: string; alert_offline?: boolean }) =>
     apiRequest('/cameras/' + enc(id), { method: 'PATCH', ...json(c) }),
+  /** Order shown in Live View and fall-event videos; first id first. */
+  setCameraOrder: (ids: string[]) => apiRequest('/cameras/order', { method: 'PUT', ...json({ camera_ids: ids }) }),
   deleteCamera: (id: string) => apiRequest('/cameras/' + enc(id), { method: 'DELETE' }),
   pauseCamera: (id: string) => apiRequest('/cameras/' + enc(id) + '/pause', { method: 'POST' }),
   resumeCamera: (id: string) => apiRequest('/cameras/' + enc(id) + '/resume', { method: 'POST' }),
@@ -65,6 +71,8 @@ export const api = {
     apiRequest<{ incident: Incident; predictions: Prediction[]; activity: LogEntry[] }>('/incidents/' + enc(id)),
   updateIncident: (id: string, body: { status?: IncidentStatus; notes?: string }) =>
     apiRequest('/incidents/' + enc(id), { method: 'PATCH', ...json(body) }),
+  addNote: (id: string, body: { author: string; text: string }) =>
+    apiRequest<{ note: Note }>('/incidents/' + enc(id) + '/notes', { method: 'POST', ...json(body) }),
 
   alerts: (status = '') => apiRequest<{ alerts: Alert[] }>('/alerts' + (status ? '?status=' + enc(status) : '')),
   alertAction: (id: string, action: 'acknowledge' | 'resolve' | 'false-positive') =>
@@ -74,6 +82,9 @@ export const api = {
   logs: (q: LogQuery = {}) => apiRequest<{ entries: LogEntry[] }>('/logs' + query(q)),
 
   detection: () => apiRequest<DetectionSettings>('/detection'),
+  /** person_confidence null = back to config.yaml's value. */
+  saveDetection: (d: { person_confidence: number | null }) =>
+    apiRequest('/detection', { method: 'PUT', ...json(d.person_confidence === null ? {} : d) }),
   gatewayConfig: () => apiRequest<GatewayConfig>('/gateway/config'),
   saveGatewayConfig: (c: GatewayConfig) => apiRequest('/gateway/config', { method: 'PUT', ...json(c) }),
 };
@@ -86,6 +97,9 @@ export const exportUrl = {
 
 /** MJPEG live video (annotated by ml-service). */
 export const streamUrl = (cameraId: string) => apiUrl('/cameras/' + enc(cameraId) + '/stream');
+
+/** Incident video; clip keys look like "clips/<incident>_<camera>.mp4". */
+export const clipUrl = (key: string) => apiUrl('/clips/' + enc(key.split('/').pop() ?? key));
 
 /** Incident photo; snapshot keys look like "snapshots/<id>.jpg". */
 export const snapshotUrl = (key: string) => apiUrl('/snapshots/' + enc(key.split('/').pop() ?? key));

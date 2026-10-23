@@ -3,6 +3,7 @@ import { StatusBadge } from '../../components/ui/StatusBadge';
 import { api } from '../../services/api/fallguard';
 import { usePolling } from '../../services/api/usePolling';
 import { formatDuration } from '../../lib/format';
+import { PersonConfidence } from './PersonConfidence';
 
 const RULES: { key: string; label: string; unit: string; help: string }[] = [
   { key: 'lying_torso_angle_deg', label: 'Lying: torso angle', unit: '°', help: 'Torso this far from vertical counts fully as lying' },
@@ -22,24 +23,56 @@ const TIMINGS: { key: string; label: string; help: string }[] = [
 ];
 
 export default function DetectionPage() {
-  const { data: d, error } = usePolling(() => api.detection(), 15000);
+  const { data: d, error, reload } = usePolling(() => api.detection(), 5000);
+  const { data: cams } = usePolling(() => api.cameras(), 15000);
+  const names = Object.fromEntries((cams?.cameras ?? []).map((c) => [c.id, c.name]));
 
   return (
     <>
       <PageHeader title="Detection Settings"
-        description="How the fall detector decides. These come from ml-service's config.yaml (see ml-service/CONFIG.md) and are read-only here." />
+        description="How the fall detector decides. Minimum person confidence can be changed here; the rest comes from ml-service's config.yaml (see ml-service/CONFIG.md)." />
       {error && <p className="notice notice--error">{error}</p>}
       {!d ? <p className="muted">Loading…</p> : (
         <div className="stack">
           <div className="tiles">
             <div className="tile card"><div className="tile__label">Model</div><div className="tile__value" style={{ fontSize: 18 }}>{d.model}</div>
               <div className="tile__hint">YOLO26 pose + fall rules</div></div>
-            <div className="tile card"><div className="tile__label">Analysis rate</div><div className="tile__value">{d.target_fps}</div>
-              <div className="tile__hint">frames per second, per camera</div></div>
-            <div className="tile card"><div className="tile__label">Device</div><div className="tile__value" style={{ fontSize: 18 }}>{d.device === 'auto' ? 'GPU if available' : d.device}</div>
-              <div className="tile__hint">mode: {d.mode}</div></div>
-            <div className="tile card"><div className="tile__label">Person confidence</div><div className="tile__value">{d.person_confidence}</div></div>
+            <div className="tile card"><div className="tile__label">Analysis rate (actual)</div>
+              <div className="tile__value">{d.analysis?.average_fps ?? '—'}</div>
+              <div className="tile__hint">
+                {d.analysis?.average_fps == null ? 'no camera sending video' : 'frames per second, average per camera, last 30 s'}
+                {' · '}target {d.target_fps}</div></div>
+            <div className="tile card"><div className="tile__label">Device in use</div>
+              <div className="tile__value" style={{ fontSize: 18 }}>{d.device_in_use ?? 'Starting…'}</div>
+              <div className="tile__hint">config: {d.device === 'auto' ? 'auto (GPU if available)' : d.device} · mode: {d.mode}</div></div>
+            <div className="tile card"><div className="tile__label">Person confidence</div><div className="tile__value">{d.person_confidence}</div>
+              <div className="tile__hint">{d.saved.person_confidence !== undefined ? 'set below' : 'default'}</div></div>
           </div>
+
+          {(d.analysis?.cameras.length ?? 0) > 0 && (
+            <section className="card" style={{ padding: 16 }}>
+              <h2 className="section-title">Analysis rate per camera</h2>
+              <div className="table-wrap"><table className="table">
+                <thead><tr><th>Camera</th><th className="num">Video received</th><th className="num">Analysed</th><th>Meaning</th></tr></thead>
+                <tbody>{d.analysis.cameras.map((c) => (
+                  <tr key={c.camera_id}>
+                    <td>{names[c.camera_id] ?? c.camera_id}</td>
+                    <td className="num">{c.received_fps} fps</td>
+                    <td className="num">{c.analysed_fps} fps</td>
+                    <td className="muted">{c.received_fps === 0 ? 'no video arriving'
+                      : c.analysed_fps < Math.min(d.target_fps, c.received_fps) * 0.8
+                        ? "below target: the model can't keep up (too many cameras, or running on the CPU)"
+                        : c.received_fps < d.target_fps ? 'OK (the camera sends fewer frames than the target)' : 'OK'}</td>
+                  </tr>
+                ))}</tbody>
+              </table></div>
+              <p className="muted" style={{ marginBottom: 0, fontSize: 13 }}>
+                The model looks at up to {d.target_fps} frames per second per camera; a camera sending fewer is analysed at its own rate.
+              </p>
+            </section>
+          )}
+
+          <PersonConfidence key={String(d.saved.person_confidence)} d={d} onSaved={reload} />
 
           <section className="card" style={{ padding: 16 }}>
             <h2 className="section-title">Labels</h2>
@@ -70,8 +103,22 @@ export default function DetectionPage() {
                 <li key={z}><strong>{z}</strong> <span className="muted">· {new Set(cams).size} camera reference(s)</span></li>
               ))}</ul>
             )}
-            <p className="muted" style={{ marginBottom: 0 }}>Zone changes made in Cameras are picked up within a minute.</p>
+            <p className="muted" style={{ marginBottom: 0 }}>Zone changes made in Cameras are picked up within 15 seconds.</p>
           </section>
+
+          {d.clips && (
+            <section className="card" style={{ padding: 16 }}>
+              <h2 className="section-title">Incident video clips</h2>
+              {!d.clips.enabled ? <p className="muted">Off (clips.enabled in config.yaml).</p> : (
+                <p style={{ margin: 0 }}>
+                  Like a dashcam: each camera keeps the last {d.clips.pre_roll_s} s of video in memory. A confirmed fall
+                  saves that, plus everything until {d.clips.post_roll_s} s after the person is back up or out of view
+                  (at most {formatDuration(d.clips.max_s)}), as an MP4 up to {d.clips.max_width} px wide. Clips are
+                  deleted after {d.clips.retention_days} days, or the oldest first above {d.clips.max_total_gb} GB.
+                </p>
+              )}
+            </section>
+          )}
         </div>
       )}
     </>

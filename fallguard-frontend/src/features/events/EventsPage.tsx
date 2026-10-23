@@ -54,14 +54,19 @@ export default function EventsPage() {
             <thead>
               <tr>
                 <th>Photo</th><th>Status</th><th>Severity</th><th>Started</th><th className="num">Down for</th>
-                <th>Where</th><th>Alert</th>
+                <th>Where</th><th>Alert</th><th>Notes</th>
               </tr>
             </thead>
             <tbody>
               {incidents.map((i) => (
                 <tr key={i.id} className="is-link" onClick={() => navigate(`/events/${i.id}`)}
                   onKeyDown={(e) => e.key === 'Enter' && navigate(`/events/${i.id}`)} tabIndex={0}>
-                  <td><Snapshot snapshotKey={i.snapshot_key} className="ev-thumb" /></td>
+                  <td>
+                    <span className="ev-thumb-wrap">
+                      <Snapshot snapshotKey={i.snapshot_key} className="ev-thumb" />
+                      {i.clip_key && <span className="ev-thumb-play" aria-label="Has video">▶</span>}
+                    </span>
+                  </td>
                   <td><StatusBadge value={i.status} /></td>
                   <td><StatusBadge value={i.severity} /></td>
                   <td>{formatTime(i.started_at)}</td>
@@ -71,7 +76,7 @@ export default function EventsPage() {
                       : formatDuration(i.duration_seconds)}
                   </td>
                   <td>
-                    <div>{i.location_label ?? i.camera_name ?? 'Unknown camera'}</div>
+                    <div>{i.location_label || i.camera_name || 'Unknown camera'}</div>
                     <div className="muted ev-sub">{[i.zone && `Zone: ${i.zone}`, i.cameras.length > 1 && `${i.cameras.length} cameras`].filter(Boolean).join(' · ')}</div>
                   </td>
                   <td>
@@ -80,6 +85,16 @@ export default function EventsPage() {
                       <div className="muted ev-sub">
                         {i.alert.closed_at ? alertBy(i.alert.closed_by, i.alert.closed_at) : alertBy(i.alert.acknowledged_by, i.alert.acknowledged_at)}
                       </div>
+                    )}
+                  </td>
+                  <td className="ev-note-cell">
+                    {i.note_list.length === 0 ? <span className="muted">—</span> : (
+                      <>
+                        <div className="ev-note-snippet">{i.note_list[i.note_list.length - 1].text}</div>
+                        <div className="muted ev-sub">
+                          {i.note_list.length > 1 ? `${i.note_list.length} notes · ` : ''}{i.note_list[i.note_list.length - 1].author}
+                        </div>
+                      </>
                     )}
                   </td>
                 </tr>

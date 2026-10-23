@@ -9,3 +9,22 @@
 .cams-row__actions { flex: 0 0 auto; }
 .cams-form__switch { margin-top: 14px; }
 .cams-row__since { font-size: 12px; }
+
+/* Camera order (drag and drop) */
+.cams-order { padding: 14px 16px; margin-bottom: 16px; }
+.cams-order__head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+.cams-order__head .section-title { margin: 0; }
+.cams-order__status { font-size: 13px; }
+.cams-order__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.cams-order__item { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); cursor: grab; }
+.cams-order__item.is-dragging { opacity: .5; border-style: dashed; }
+.cams-order__handle { color: var(--text-muted); font-size: 16px; }
+.cams-order__num { width: 18px; color: var(--text-muted); font-variant-numeric: tabular-nums; font-size: 13px; }
+.cams-order__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.cams-order__arrows { display: flex; gap: 4px; }
+
+/* Switch a paused camera in when every streaming slot is used */
+.cams-switch { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; }
+.cams-switch label { display: inline-flex; align-items: center; gap: 6px; }
+.cams-switch select { font: inherit; height: 30px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); padding: 0 6px; max-width: 180px; }
+.cams-form__standby { margin: 14px 0 0; }

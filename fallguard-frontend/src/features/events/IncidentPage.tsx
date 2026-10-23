@@ -3,11 +3,12 @@ import { Link, useParams } from 'react-router-dom';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Icon } from '../../components/ui/Icon';
-import { api, snapshotUrl } from '../../services/api/fallguard';
+import { api } from '../../services/api/fallguard';
 import { usePolling } from '../../services/api/usePolling';
 import { alertBy, byWhen, formatDuration, formatTime, LABEL_TEXT, secondsSince, shortId } from '../../lib/format';
 import type { Incident, LogEntry, Prediction } from '../../types/domain';
-import { Snapshot } from './Snapshot';
+import { IncidentVideos } from './IncidentVideos';
+import { Notes } from './Notes';
 import './events.css';
 
 /** What the detector saw, second by second: one colored step per prediction. */
@@ -53,7 +54,6 @@ export default function IncidentPage() {
   const { id = '' } = useParams();
   const { data, error, reload } = usePolling(() => api.incident(id), 3000, [id]);
   const [busy, setBusy] = useState(false);
-  const [notes, setNotes] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const run = async (fn: () => Promise<unknown>) => {
@@ -74,15 +74,11 @@ export default function IncidentPage() {
   const { incident: inc, predictions, activity = [] } = data;
   const alert = inc.alert;
   const down = inc.status === 'active' ? secondsSince(inc.started_at) : inc.duration_seconds;
-  const photos = inc.cameras.filter((c) => c.snapshot_key);
-  if (photos.length === 0 && inc.snapshot_key) {
-    photos.push({ camera_id: inc.camera_id, camera_name: inc.camera_name, track_id: 0, joined_at: inc.started_at, snapshot_key: inc.snapshot_key });
-  }
 
   return (
     <>
       <Link to="/events" className="row muted ev-back"><Icon name="back" size={16} /> All fall events</Link>
-      <PageHeader title={`Fall in ${inc.location_label ?? inc.camera_name ?? 'unknown camera'}`}
+      <PageHeader title={`Fall in ${inc.location_label || inc.camera_name || 'unknown camera'}`}
         description={`Started ${formatTime(inc.started_at)} · incident ${shortId(inc.id)}`}
         actions={<><StatusBadge value={inc.status} /><StatusBadge value={inc.severity} label={`Severity: ${inc.severity}`} /></>} />
       {actionError && <p className="notice notice--error">{actionError}</p>}
@@ -104,20 +100,8 @@ export default function IncidentPage() {
       <div className="ev-layout">
         <div className="stack">
           <section className="card ev-section">
-            <h2 className="section-title">Photos</h2>
-            {photos.length === 0 ? <p className="muted">No photo stored.</p> : (
-              <div className="ev-photos">
-                {photos.map((p) => (
-                  <figure key={p.camera_id + p.track_id}>
-                    <a href={snapshotUrl(p.snapshot_key!)} target="_blank" rel="noreferrer">
-                      <Snapshot snapshotKey={p.snapshot_key} className="ev-photo"
-                        alt={`Moment the fall was confirmed on ${p.camera_name ?? 'camera'}`} />
-                    </a>
-                    <figcaption className="muted">{p.camera_name ?? shortId(p.camera_id)} · person #{p.track_id} · {formatTime(p.joined_at)}</figcaption>
-                  </figure>
-                ))}
-              </div>
-            )}
+            <h2 className="section-title">Video</h2>
+            <IncidentVideos inc={inc} />
           </section>
           <section className="card ev-section">
             <h2 className="section-title">What the detector saw</h2>
@@ -164,16 +148,8 @@ export default function IncidentPage() {
             <History inc={inc} activity={activity} />
           </section>
           <section className="card ev-section">
-            <h2 className="section-title">Notes</h2>
-            <label className="field">
-              <span className="visually-hidden">Notes</span>
-              <textarea value={notes ?? inc.notes ?? ''} onChange={(e) => setNotes(e.target.value)}
-                placeholder="What happened, who responded…" />
-            </label>
-            <div className="row" style={{ marginTop: 8 }}>
-              <button className="btn" disabled={busy || notes === null}
-                onClick={() => run(async () => { await api.updateIncident(inc.id, { notes: notes ?? '' }); setNotes(null); })}>Save notes</button>
-            </div>
+            <h2 className="section-title">Notes ({inc.note_list.length})</h2>
+            <Notes incidentId={inc.id} notes={inc.note_list} onAdded={reload} />
           </section>
           <section className="card ev-section">
             <h2 className="section-title">Cameras that saw it</h2>
