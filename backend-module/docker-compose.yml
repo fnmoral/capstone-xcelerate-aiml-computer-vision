@@ -9,7 +9,7 @@
 #
 #   networks:
 #     fallguard:
-#       external: true          # created by this file; start this one first
+#       name: fallguard         # whichever project starts first creates it; the rest join
 #
 # Reset everything (schema changes, fresh seed):  docker compose down -v && docker compose up -d
 name: fallguard-db
@@ -70,4 +70,4 @@ volumes:
 
 networks:
   fallguard:
-    name: fallguard                   # fixed name so other compose projects can join it
+    name: fallguard                   # fixed name, shared by every module's compose file

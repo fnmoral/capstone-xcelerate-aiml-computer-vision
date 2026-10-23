@@ -38,7 +38,7 @@ services:
 
 networks:
   fallguard:
-    external: true        # start backend-module first, it creates the network
+    name: fallguard       # fixed name: whichever project starts first creates it, the rest join
 ```
 
 `ml-service/deploy/docker-compose.yml` already does this; its `ML_DATABASE_URL` is

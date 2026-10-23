@@ -1,0 +1,38 @@
+# The whole platform in Docker: database, ML service, stream hub and gateway.
+#
+#   docker compose up -d --build                         # everything
+#   docker compose --profile test-camera up -d --build   # + a looping test camera (see DOCKER.md)
+#   docker compose ps
+#   docker compose logs -f ml-service
+#
+# Each module also has its own compose file to run it alone. They all declare the same
+# fixed-name Docker network "fallguard", so they can be started in any order.
+#
+#   camera (RTSP) ─► gateway-back :8080 ─► stream-hub :8090 ─► ml-service :9999 ─► db :5432
+#                                              └─► browsers over WebSocket :9000
+name: fallguard
+
+include:
+  - backend-module/docker-compose.yml    # db + partitions; reads backend-module/.env
+  - ml-service/deploy/docker-compose.yml # reads ml-service/deploy/.env
+  - stream-hub/docker-compose.yml
+  - gateway-back/docker-compose.yml
+
+services:
+  # An RTSP "camera" that plays test-media/test.mp4 on a loop, for testing the full chain
+  # without real hardware. Add it in gateway-back as rtsp://test-camera:8554/test
+  test-camera:
+    image: bluenviron/mediamtx:1.21.2-ffmpeg
+    profiles: [test-camera]
+    restart: unless-stopped
+    environment:
+      MTX_PATHS_TEST_RUNONINIT: >-
+        ffmpeg -re -stream_loop -1 -i /media/test.mp4 -an
+        -c:v libx264 -preset ultrafast -tune zerolatency -g 50 -pix_fmt yuv420p
+        -f rtsp rtsp://localhost:$$RTSP_PORT/$$MTX_PATH
+      MTX_PATHS_TEST_RUNONINITRESTART: "yes"
+    volumes:
+      - ./test-media:/media:ro
+    ports:
+      - "8554:8554"                      # also playable from the host: rtsp://localhost:8554/test
+    networks: [fallguard]

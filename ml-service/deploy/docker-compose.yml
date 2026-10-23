@@ -4,6 +4,9 @@
 #   cp .env.example .env        # set ML_DATABASE_URL
 #   docker compose up -d --build
 #   docker compose logs -f ml-service
+# (the whole stack: ../../docker-compose.yml)
+name: fallguard-ml
+
 services:
   ml-service:
     build:
@@ -37,4 +40,4 @@ volumes:
 
 networks:
   fallguard:
-    external: true           # created by backend-module/docker-compose.yml
+    name: fallguard               # shared by every module; whichever starts first creates it
