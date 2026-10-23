@@ -1,6 +1,12 @@
-"""Per-camera processing: decode -> sample -> pose -> rules -> incidents -> sink."""
+"""Per-camera processing: decode -> sample -> pose -> rules -> incidents -> sink.
+
+Threading: reader threads call handle_nalu() / submit(), which never touch PyTorch.
+The main thread calls step(), which runs the model. PyTorch 2.14 on Python 3.15
+crashes the process when any tensor is created off the main thread.
+"""
 
 import logging
+import threading
 import time
 
 import cv2
@@ -27,18 +33,35 @@ class CameraPipeline:
         self.sink = sink
         self.decoder = H264Decoder(camera_id)
         self.sampler = FrameSampler(cfg.inference.target_fps)
-        self.pose = PoseTracker(cfg.inference.weights, cfg.inference.device, cfg.inference.conf,
-                                cfg.inference.imgsz, cfg.inference.tracker)
+        self.pose: PoseTracker | None = None  # created by step(), on the main thread
         self.classifier = RuleClassifier(cfg.rules)
         self.monitor = FallMonitor(cfg.monitor)
         self._last_prediction: dict[int, float] = {}
+        self._pending: np.ndarray | None = None
+        self._pending_lock = threading.Lock()
         self.latest_annotated: np.ndarray | None = None
 
     def handle_nalu(self, nalu: bytes) -> None:
         for frame in self.decoder.decode(nalu):
-            now = time.time()
-            if self.sampler.accept(now):
-                self._process(frame, now)
+            self.submit(frame)
+
+    def submit(self, frame: np.ndarray) -> None:
+        """Hand over a decoded BGR frame. Only the newest one is kept, so a slow model never falls behind."""
+        with self._pending_lock:
+            self._pending = frame
+
+    def step(self) -> bool:
+        """Run the model on the newest frame if one is due. Main thread only. Returns True if it ran."""
+        now = time.time()
+        with self._pending_lock:
+            if self._pending is None or not self.sampler.accept(now):
+                return False
+            frame, self._pending = self._pending, None
+        if self.pose is None:
+            inf = self.cfg.inference
+            self.pose = PoseTracker(inf.weights, inf.device, inf.conf, inf.imgsz, inf.tracker)
+        self._process(frame, now)
+        return True
 
     def _process(self, frame: np.ndarray, now: float) -> None:
         start = time.perf_counter()

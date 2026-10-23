@@ -1,4 +1,17 @@
-# Must match ai_server_addr in stream-hub/config.json
+# Where video comes from:
+#   tcp    = cameras streamed by stream-hub (the real pipeline)
+#   webcam = a camera plugged into this PC, for testing without the Go services
+#   file   = a local video file, e.g. a recorded fall
+source:
+  type: webcam
+  webcam_index: 0            # 0 = first camera, 1 = second, ... (try the other if the image is black)
+  path: ""                   # for type: file, relative to this folder
+  camera_id: local-webcam
+  loop: true
+
+preview: true                # open a window with the annotated video (press q to quit)
+
+# tcp source only. Must match ai_server_addr in stream-hub/config.json
 server:
   host: 127.0.0.1
   port: 9999
