@@ -4,5 +4,6 @@ export const env = {
   apiBaseUrl: import.meta.env.VITE_API_BASE_URL ?? '/api',
   // Push channel for later (services/realtime); the pages poll the REST API for now.
   wsUrl: import.meta.env.VITE_WS_URL ?? 'ws://localhost:8000/ws',
-  appVersion: import.meta.env.VITE_APP_VERSION ?? '0.2.0',
+  // MAJOR.MINOR.PATCH, worked out from package.json and git at build time (vite.config.ts).
+  appVersion: import.meta.env.VITE_APP_VERSION ?? '1.0.0',
 };

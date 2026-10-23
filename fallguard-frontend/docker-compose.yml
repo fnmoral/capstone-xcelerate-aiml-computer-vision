@@ -5,7 +5,9 @@ name: fallguard-frontend
 
 services:
   frontend:
-    build: .
+    build:
+      context: ..                           # repository root: git numbers the version
+      dockerfile: fallguard-frontend/Dockerfile
     image: capstone/fallguard-frontend:latest
     restart: unless-stopped
     ports:

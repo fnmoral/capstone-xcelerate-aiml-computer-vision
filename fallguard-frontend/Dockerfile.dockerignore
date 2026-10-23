@@ -1,0 +1,10 @@
+# The build context is the repository root (for git, to number the version); send only
+# the frontend and the git history.
+*
+!.git
+!fallguard-frontend
+fallguard-frontend/node_modules
+fallguard-frontend/dist
+fallguard-frontend/docs/*.png
+fallguard-frontend/Dockerfile*
+fallguard-frontend/docker-compose.yml
