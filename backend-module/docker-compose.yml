@@ -39,12 +39,38 @@ services:
     networks:
       fallguard:
         aliases: [postgres]           # reachable as db or postgres
+    logging:                           # cap Docker's log files (stream-hub logs every video chunk)
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 5s
       timeout: 5s
       retries: 12
       start_period: 20s
+
+  # Core backend API (Module 2): the REST API the fallguard frontend talks to. It reads the
+  # database and manages cameras through gateway-back; video/photos come from ml-service.
+  api:
+    build: ./api
+    image: capstone/backend-api:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Table owner for now; switch to a restricted role once user accounts exist.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-fallguard_admin}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-fallguard}
+      TENANT: ${TENANT:-demo-facility}
+      GATEWAY_URL: ${GATEWAY_URL:-http://gateway-back:8080}
+      ML_URL: ${ML_URL:-http://ml-service:8000}
+      STREAM_HUB_URL: ${STREAM_HUB_URL:-http://stream-hub:9000}
+    ports:
+      - "127.0.0.1:${API_PORT:-8100}:8000"   # for debugging; the frontend reaches it as api:8000
+    networks: [fallguard]
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
 
   # Keeps monthly partitions created ahead of time (see create_monthly_partitions in
   # schema.sql). Runs as the table owner, once at start and then daily.
@@ -64,6 +90,9 @@ services:
       - ./db/init/partitions.sh:/partitions.sh:ro
     entrypoint: ["bash", "/partitions.sh"]
     networks: [fallguard]
+    logging:                           # cap Docker's log files (stream-hub logs every video chunk)
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
 
 volumes:
   db-data:
