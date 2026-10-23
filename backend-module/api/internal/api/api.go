@@ -9,7 +9,6 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -69,6 +68,10 @@ func (s *Server) Register(r *gin.Engine) {
 	a.GET("/cameras/:id/stream", s.proxyML(func(id string) string { return "/stream/" + url.PathEscape(id) }))
 	a.GET("/cameras/:id/frame.jpg", s.proxyML(func(id string) string { return "/frame/" + url.PathEscape(id) + ".jpg" }))
 	a.GET("/zones", s.listZones)
+	a.GET("/notifications", s.notifications)
+	a.GET("/logs", s.listLogs)
+	a.GET("/export/incidents.csv", s.exportIncidents)
+	a.GET("/export/logs.csv", s.exportLogs)
 
 	a.GET("/incidents", s.listIncidents)
 	a.GET("/incidents/:id", s.getIncident)
@@ -116,6 +119,7 @@ func RequestLog() gin.HandlerFunc {
 		p := c.Request.URL.Path
 		if c.Request.Method == http.MethodGet && (strings.HasSuffix(p, "/stream") || strings.HasSuffix(p, "/frame.jpg") ||
 			p == "/api/cameras" || p == "/api/stats" || p == "/api/health" || p == "/api/alerts" ||
+			p == "/api/notifications" || p == "/api/logs" ||
 			strings.HasPrefix(p, "/api/snapshots/") || p == "/api/incidents") && c.Writer.Status() < 400 {
 			return
 		}
@@ -134,10 +138,12 @@ func (s *Server) health(c *gin.Context) {
 		Error   string `json:"error,omitempty"`
 	}
 	checks := map[string]func(context.Context) error{
-		"database":     s.db.Ping,
-		"gateway-back": func(ctx context.Context) error { return s.gateway.do(ctx, http.MethodGet, "/gateway/actions/health", nil, nil) },
-		"ml-service":   func(ctx context.Context) error { return s.ml.do(ctx, http.MethodGet, "/api/config", nil, nil) },
-		"stream-hub":   func(ctx context.Context) error { return s.hub.do(ctx, http.MethodGet, "/health", nil, nil) },
+		"database": s.db.Ping,
+		"gateway-back": func(ctx context.Context) error {
+			return s.gateway.do(ctx, http.MethodGet, "/gateway/actions/health", nil, nil)
+		},
+		"ml-service": func(ctx context.Context) error { return s.ml.do(ctx, http.MethodGet, "/api/config", nil, nil) },
+		"stream-hub": func(ctx context.Context) error { return s.hub.do(ctx, http.MethodGet, "/health", nil, nil) },
 	}
 	out := map[string]check{}
 	var mu sync.Mutex
@@ -173,7 +179,10 @@ type CameraView struct {
 	Name            string           `json:"name"`
 	Location        *string          `json:"location"`
 	Zone            *string          `json:"zone"`
-	Status          string           `json:"status"` // online | paused | not_on_gateway
+	Status          string           `json:"status"` // gateway state: online | paused | not_on_gateway
+	Health          string           `json:"health"` // online | paused | not_working | connecting | not_connected
+	HealthSince     *time.Time       `json:"health_since"`
+	AlertOffline    bool             `json:"alert_offline"` // notify when it stops working
 	OnGateway       bool             `json:"on_gateway"`
 	RTSPURL         string           `json:"rtsp_url"`
 	CreatedAt       time.Time        `json:"created_at"`
@@ -203,6 +212,8 @@ func (s *Server) listCameras(c *gin.Context) {
 			if _, ok := byID[g.ID]; !ok {
 				if err := s.db.UpsertCamera(ctx, g.ID, g.Name, g.RTSPURL, dbStatus(g.Status), nil, nil); err != nil {
 					log.Printf("registering gateway camera %s: %v", g.ID, err)
+				} else if err := s.db.CameraEvent(ctx, g.ID, g.Name, "added", "info", "Added from the gateway"); err != nil {
+					log.Printf("logging gateway camera %s: %v", g.ID, err)
 				}
 				synced = true
 			}
@@ -234,10 +245,12 @@ func (s *Server) listCameras(c *gin.Context) {
 	for _, g := range gw {
 		v := CameraView{ID: g.ID, Name: g.Name, Status: g.Status, OnGateway: true,
 			RTSPURL: store.SafeURL(g.RTSPURL), CreatedAt: g.CreatedAt, People: []map[string]any{}}
-		if d, ok := byID[g.ID]; ok {
+		d, ok := byID[g.ID]
+		if ok {
 			v.Name, v.Location, v.Zone = d.Name, d.Location, d.Zone
 		}
 		s.addLive(&v, live, active)
+		v.setHealth(&d, ok)
 		out = append(out, v)
 		seen[g.ID] = true
 	}
@@ -248,6 +261,7 @@ func (s *Server) listCameras(c *gin.Context) {
 		v := CameraView{ID: d.ID, Name: d.Name, Location: d.Location, Zone: d.Zone, Status: "not_on_gateway",
 			CreatedAt: d.CreatedAt, People: []map[string]any{}}
 		s.addLive(&v, live, active)
+		v.setHealth(&d, true)
 		out = append(out, v)
 	}
 	resp := gin.H{"cameras": out}
@@ -268,6 +282,21 @@ func (s *Server) addLive(v *CameraView, live map[string]MLCamera, active map[str
 	v.ActiveIncidents = active[v.ID]
 }
 
+func (v *CameraView) setHealth(d *store.Camera, inDB bool) {
+	if !inDB {
+		d = nil
+	}
+	v.Health = cameraHealth(*v, d)
+	v.AlertOffline = true
+	if d != nil {
+		v.AlertOffline = d.AlertOffline
+		v.HealthSince = d.StatusSince
+		if v.HealthSince == nil {
+			v.HealthSince = &d.CreatedAt
+		}
+	}
+}
+
 func dbStatus(gatewayStatus string) string {
 	if gatewayStatus == "paused" {
 		return "disabled"
@@ -276,12 +305,13 @@ func dbStatus(gatewayStatus string) string {
 }
 
 type cameraInput struct {
-	Name     *string `json:"name"`
-	RTSPURL  string  `json:"rtsp_url"`
-	Username string  `json:"username"`
-	Password string  `json:"password"`
-	Location *string `json:"location"`
-	Zone     *string `json:"zone"`
+	Name         *string `json:"name"`
+	AlertOffline *bool   `json:"alert_offline"`
+	RTSPURL      string  `json:"rtsp_url"`
+	Username     string  `json:"username"`
+	Password     string  `json:"password"`
+	Location     *string `json:"location"`
+	Zone         *string `json:"zone"`
 }
 
 var rtspURL = regexp.MustCompile(`^rtsps?://\S+$`)
@@ -307,6 +337,14 @@ func (s *Server) addCamera(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	if in.AlertOffline != nil && !*in.AlertOffline {
+		if err := s.db.SetCameraAlert(ctx, cam.ID, false); err != nil {
+			fail(c, err)
+			return
+		}
+	}
+	s.auditCamera(c, "camera.added", cam.ID, name, "Camera added", gin.H{
+		"rtsp_url": store.SafeURL(in.RTSPURL), "location": trimmed(in.Location), "zone": trimmed(in.Zone)})
 	c.JSON(http.StatusCreated, gin.H{"id": cam.ID})
 }
 
@@ -316,9 +354,26 @@ func (s *Server) updateCamera(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
 		return
 	}
-	if err := s.db.UpdateCamera(c.Request.Context(), c.Param("id"), trimmed(in.Name), trimmed(in.Location), trimmed(in.Zone)); err != nil {
-		fail(c, err)
-		return
+	ctx, id := c.Request.Context(), c.Param("id")
+	name, location, zone := trimmed(in.Name), trimmed(in.Location), trimmed(in.Zone)
+	if name != nil || location != nil || zone != nil {
+		if err := s.db.UpdateCamera(ctx, id, name, location, zone); err != nil {
+			fail(c, err)
+			return
+		}
+		s.auditCamera(c, "camera.updated", id, "", "Camera details changed",
+			gin.H{"name": name, "location": location, "zone": zone})
+	}
+	if in.AlertOffline != nil {
+		if err := s.db.SetCameraAlert(ctx, id, *in.AlertOffline); err != nil {
+			fail(c, err)
+			return
+		}
+		action, msg := "camera.alert_on", "Alert when not working: on"
+		if !*in.AlertOffline {
+			action, msg = "camera.alert_off", "Alert when not working: off"
+		}
+		s.auditCamera(c, action, id, "", msg, nil)
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -333,10 +388,12 @@ func (s *Server) deleteCamera(c *gin.Context) {
 			return
 		}
 	}
-	if err := s.db.DeleteCamera(ctx, id); err != nil {
+	name, err := s.db.DeleteCamera(ctx, id)
+	if err != nil {
 		fail(c, err)
 		return
 	}
+	s.auditCamera(c, "camera.removed", id, name, "Camera removed", nil)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
@@ -348,11 +405,28 @@ func (s *Server) pauseResume(action, status string) gin.HandlerFunc {
 			fail(c, err)
 			return
 		}
-		if err := s.db.SetCameraStatus(ctx, cam.ID, status); err != nil {
+		if _, _, err := s.db.SetCameraStatus(ctx, cam.ID, status); err != nil {
 			fail(c, err)
 			return
 		}
+		msg := map[string]string{"pause": "Camera paused", "resume": "Camera resumed"}[action]
+		s.auditCamera(c, "camera."+action+"d", cam.ID, cam.Name, msg, nil)
 		c.JSON(http.StatusOK, gin.H{"id": cam.ID, "status": cam.Status})
+	}
+}
+
+// auditCamera records a camera action by the current user. The change itself already
+// happened, so a logging failure goes to the API log instead of failing the request.
+func (s *Server) auditCamera(c *gin.Context, action, id, name, message string, extra gin.H) {
+	details := map[string]any{"message": message, "camera_id": id}
+	if name != "" {
+		details["camera_name"] = name
+	}
+	for k, v := range extra {
+		details[k] = v
+	}
+	if err := s.db.Audit(c.Request.Context(), actor(c), action, "camera", id, details); err != nil {
+		log.Printf("audit %s %s: %v", action, id, err)
 	}
 }
 
@@ -376,15 +450,9 @@ func trimmed(p *string) *string {
 // ---------- incidents and alerts ----------
 
 func (s *Server) listIncidents(c *gin.Context) {
-	f := store.IncidentFilter{Status: c.Query("status"), CameraID: c.Query("camera_id")}
-	f.Limit, _ = strconv.Atoi(c.DefaultQuery("limit", "100"))
-	if since := c.Query("since"); since != "" {
-		t, err := time.Parse(time.RFC3339, since)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "since must be RFC 3339"})
-			return
-		}
-		f.Since = &t
+	f, ok := incidentQuery(c, 100)
+	if !ok {
+		return
 	}
 	list, err := s.db.Incidents(c.Request.Context(), f)
 	if err != nil {
@@ -395,12 +463,18 @@ func (s *Server) listIncidents(c *gin.Context) {
 }
 
 func (s *Server) getIncident(c *gin.Context) {
-	inc, preds, err := s.db.Incident(c.Request.Context(), c.Param("id"))
+	ctx := c.Request.Context()
+	inc, preds, err := s.db.Incident(ctx, c.Param("id"))
 	if err != nil {
 		fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"incident": inc, "predictions": preds})
+	activity, err := s.db.Logs(ctx, store.LogFilter{IncidentID: inc.ID, Limit: 200})
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"incident": inc, "predictions": preds, "activity": activity})
 }
 
 var incidentStatuses = map[string]bool{"active": true, "recovered": true, "unresolved": true, "false_positive": true}
@@ -414,7 +488,7 @@ func (s *Server) updateIncident(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "status must be active, recovered, unresolved or false_positive"})
 		return
 	}
-	if err := s.db.UpdateIncident(c.Request.Context(), c.Param("id"), in.Status, in.Notes); err != nil {
+	if err := s.db.UpdateIncident(c.Request.Context(), c.Param("id"), in.Status, in.Notes, actor(c)); err != nil {
 		fail(c, err)
 		return
 	}
@@ -432,7 +506,7 @@ func (s *Server) listAlerts(c *gin.Context) {
 
 func (s *Server) alertStatus(status string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		a, err := s.db.SetAlertStatus(c.Request.Context(), c.Param("id"), status)
+		a, err := s.db.SetAlertStatus(c.Request.Context(), c.Param("id"), status, actor(c))
 		if err != nil {
 			fail(c, err)
 			return

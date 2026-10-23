@@ -49,6 +49,9 @@ type Alert struct {
 	Summary        *string    `json:"summary"`
 	SnapshotKey    *string    `json:"snapshot_key"`
 	AcknowledgedAt *time.Time `json:"acknowledged_at"`
+	AcknowledgedBy *string    `json:"acknowledged_by"`
+	ClosedAt       *time.Time `json:"closed_at"` // resolved or marked a false alarm
+	ClosedBy       *string    `json:"closed_by"`
 }
 
 // Prediction is one row of the ML output timeline.
@@ -60,12 +63,16 @@ type Prediction struct {
 	Output     json.RawMessage `json:"output"`
 }
 
-// IncidentFilter narrows the incident list.
+// IncidentFilter narrows the incident list. Empty strings and nil times mean "any".
 type IncidentFilter struct {
-	Status   string
-	CameraID string
-	Since    *time.Time
-	Limit    int
+	Status      string
+	Severity    string
+	CameraID    string // any camera that saw it
+	Zone        string
+	AlertStatus string     // open | acknowledged | resolved | false_positive | none (no alert)
+	Since       *time.Time // started at or after
+	Until       *time.Time // started before
+	Limit       int        // default 100, at most 10000 (exports)
 }
 
 const incidentColumns = `
@@ -80,8 +87,11 @@ func scanIncident(r pgx.Row, inc *Incident) error {
 
 // Incidents lists incidents, newest first.
 func (s *Store) Incidents(ctx context.Context, f IncidentFilter) ([]Incident, error) {
-	if f.Limit <= 0 || f.Limit > 500 {
+	if f.Limit <= 0 {
 		f.Limit = 100
+	}
+	if f.Limit > 10000 {
+		f.Limit = 10000
 	}
 	out := []Incident{}
 	err := s.tx(ctx, func(tx pgx.Tx, tid string) error {
@@ -93,7 +103,14 @@ func (s *Store) Incidents(ctx context.Context, f IncidentFilter) ([]Incident, er
 			  AND ($3 = '' OR i.camera_id::text = $3
 			       OR EXISTS (SELECT 1 FROM incident_cameras ic WHERE ic.incident_id = i.id AND ic.camera_id::text = $3))
 			  AND ($4::timestamptz IS NULL OR i.started_at >= $4)
-			ORDER BY i.started_at DESC LIMIT $5`, tid, f.Status, f.CameraID, f.Since, f.Limit)
+			  AND ($5::timestamptz IS NULL OR i.started_at < $5)
+			  AND ($6 = '' OR i.severity = $6)
+			  AND ($7 = '' OR i.zone = $7)
+			  AND ($8 = ''
+			       OR ($8 = 'none' AND NOT EXISTS (SELECT 1 FROM alerts a WHERE a.tenant_id = $1 AND a.incident_id = i.id))
+			       OR EXISTS (SELECT 1 FROM alerts a WHERE a.tenant_id = $1 AND a.incident_id = i.id AND a.status = $8))
+			ORDER BY i.started_at DESC LIMIT $9`,
+			tid, f.Status, f.CameraID, f.Since, f.Until, f.Severity, f.Zone, f.AlertStatus, f.Limit)
 		if err != nil {
 			return err
 		}
@@ -154,22 +171,72 @@ func (s *Store) Incident(ctx context.Context, id string) (*Incident, []Predictio
 	return &inc, preds, nil
 }
 
-// UpdateIncident sets the status (e.g. false_positive) and/or notes.
-func (s *Store) UpdateIncident(ctx context.Context, id string, status, notes *string) error {
+// UpdateIncident sets the status (e.g. false_positive) and/or notes and records who did it.
+func (s *Store) UpdateIncident(ctx context.Context, id string, status, notes *string, actor string) error {
 	return s.tx(ctx, func(tx pgx.Tx, tid string) error {
-		tag, err := tx.Exec(ctx, `
-			UPDATE incidents SET status = coalesce($3, status), notes = coalesce($4, notes)
-			WHERE tenant_id = $1 AND id::text = $2`, tid, id, status, notes)
+		var incID, cameraID, from string
+		var oldNotes *string
+		err := tx.QueryRow(ctx, `SELECT id::text, camera_id::text, status, notes FROM incidents
+			WHERE tenant_id = $1 AND id::text = $2 FOR UPDATE`, tid, id).Scan(&incID, &cameraID, &from, &oldNotes)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
 		if err != nil {
 			return err
 		}
-		if tag.RowsAffected() == 0 {
-			return ErrNotFound
+		if _, err := tx.Exec(ctx, `
+			UPDATE incidents SET status = coalesce($3, status), notes = coalesce($4, notes)
+			WHERE tenant_id = $1 AND id::text = $2`, tid, incID, status, notes); err != nil {
+			return err
 		}
-		if status != nil && *status == "false_positive" {
-			_, err = tx.Exec(ctx, `UPDATE alerts SET status = 'false_positive' WHERE tenant_id = $1 AND incident_id::text = $2`, tid, id)
+		ref := map[string]any{"incident_id": incID, "camera_id": cameraID}
+		with := func(extra map[string]any) map[string]any {
+			for k, v := range ref {
+				extra[k] = v
+			}
+			return extra
 		}
-		return err
+		if status != nil && *status != from {
+			if err := audit(ctx, tx, tid, actor, "incident.status", "incident", incID, with(map[string]any{
+				"message": "Incident status changed", "from": from, "to": *status,
+			})); err != nil {
+				return err
+			}
+		}
+		if notes != nil && (oldNotes == nil || *oldNotes != *notes) {
+			if err := audit(ctx, tx, tid, actor, "incident.notes", "incident", incID, with(map[string]any{
+				"message": "Notes updated", "notes": *notes,
+			})); err != nil {
+				return err
+			}
+		}
+		if status == nil || *status != "false_positive" {
+			return nil
+		}
+		// Its open alerts become false alarms too, logged like the alert's own button.
+		rows, err := tx.Query(ctx, `UPDATE alerts SET status = 'false_positive'
+			WHERE tenant_id = $1 AND incident_id::text = $2 AND status <> 'false_positive'
+			RETURNING id::text, camera_id::text`, tid, incID)
+		if err != nil {
+			return err
+		}
+		type changed struct{ id, camera string }
+		list, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (changed, error) {
+			var c changed
+			return c, r.Scan(&c.id, &c.camera)
+		})
+		if err != nil {
+			return err
+		}
+		for _, a := range list {
+			if err := audit(ctx, tx, tid, actor, "alert.false_positive", "alert", a.id, map[string]any{
+				"message": AlertActionText["false_positive"], "to": "false_positive",
+				"incident_id": incID, "camera_id": a.camera,
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }
 

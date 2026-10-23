@@ -10,6 +10,12 @@
 --     month has no partition yet (only 2026-10 existed)
 --   * pgcrypto dropped: gen_random_uuid() is built into PostgreSQL 13+
 --   * row-level security on the new tables and on model_predictions
+--
+-- Changes for the backend API (activity log, camera monitor):
+--   * indexes on audit_logs and system_logs for the activity log / Camera Logs page.
+--     Optional on an existing database (queries work without them).
+--   * cameras.status is kept current by the API; cameras.metadata holds status_since and
+--     alert_offline (notify when the camera stops working; default true)
 
 CREATE EXTENSION IF NOT EXISTS citext;
 CREATE EXTENSION IF NOT EXISTS vector;     -- only needed if using pgvector
@@ -233,6 +239,9 @@ CREATE TABLE audit_logs (                       -- who did what (security/compli
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (id, created_at)
 ) PARTITION BY RANGE (created_at);
+-- Backend API: alert / incident / camera actions; details.actor is who did it
+CREATE INDEX idx_audit_tenant_time ON audit_logs (tenant_id, created_at DESC);
+CREATE INDEX idx_audit_target      ON audit_logs (target_type, target_id, created_at);
 
 CREATE TABLE system_logs (                      -- pipeline health: stream drops, GPU errors
     id          UUID NOT NULL DEFAULT gen_random_uuid(),
@@ -245,6 +254,8 @@ CREATE TABLE system_logs (                      -- pipeline health: stream drops
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (id, created_at)
 ) PARTITION BY RANGE (created_at);
+-- Backend API camera monitor (module 'camera'): not working, back online, paused, ...
+CREATE INDEX idx_syslog_cam_time ON system_logs (tenant_id, module, camera_id, created_at DESC);
 
 -- One row per fall: when it was detected, when the person recovered, how long they were down
 -- A fall seen by several cameras of one zone is ONE row: camera_id is the first camera that

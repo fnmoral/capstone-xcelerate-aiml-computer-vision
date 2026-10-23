@@ -12,13 +12,18 @@ import (
 )
 
 // Camera is a row of the cameras table (DB1) plus its zone name.
+//
+// Status is kept up to date by the API's camera monitor: online, disabled (paused),
+// error (on the gateway but no video arriving) or offline (not on the gateway).
 type Camera struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Location  *string   `json:"location"`
-	Zone      *string   `json:"zone"`
-	Status    string    `json:"db_status"`
-	CreatedAt time.Time `json:"created_at"`
+	ID           string     `json:"id"`
+	Name         string     `json:"name"`
+	Location     *string    `json:"location"`
+	Zone         *string    `json:"zone"`
+	Status       string     `json:"db_status"`
+	StatusSince  *time.Time `json:"status_since"`  // when Status last changed (metadata.status_since)
+	AlertOffline bool       `json:"alert_offline"` // notify when it stops working (metadata.alert_offline, default on)
+	CreatedAt    time.Time  `json:"created_at"`
 }
 
 // ErrNameTaken is returned when another camera already has the name.
@@ -39,7 +44,9 @@ func (s *Store) Cameras(ctx context.Context) ([]Camera, error) {
 	var out []Camera
 	err := s.tx(ctx, func(tx pgx.Tx, tid string) error {
 		rows, err := tx.Query(ctx, `
-			SELECT c.id::text, c.name, c.location, z.name, c.status, c.created_at
+			SELECT c.id::text, c.name, c.location, z.name, c.status,
+			       (c.metadata->>'status_since')::timestamptz,
+			       coalesce((c.metadata->>'alert_offline')::boolean, true), c.created_at
 			FROM cameras c LEFT JOIN zones z ON z.id = c.zone_id
 			WHERE c.tenant_id = $1 ORDER BY c.created_at`, tid)
 		if err != nil {
@@ -47,7 +54,7 @@ func (s *Store) Cameras(ctx context.Context) ([]Camera, error) {
 		}
 		out, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (Camera, error) {
 			var c Camera
-			err := r.Scan(&c.ID, &c.Name, &c.Location, &c.Zone, &c.Status, &c.CreatedAt)
+			err := r.Scan(&c.ID, &c.Name, &c.Location, &c.Zone, &c.Status, &c.StatusSince, &c.AlertOffline, &c.CreatedAt)
 			return c, err
 		})
 		return err
@@ -73,8 +80,8 @@ func (s *Store) UpsertCamera(ctx context.Context, id, name, rtspURL, status stri
 				return err
 			}
 			_, err = tx.Exec(ctx, `
-				INSERT INTO cameras (id, tenant_id, name, rtsp_url_enc, status, location, zone_id)
-				VALUES ($1, $2, $3, $4, $5, $6, $7)
+				INSERT INTO cameras (id, tenant_id, name, rtsp_url_enc, status, location, zone_id, metadata)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, jsonb_build_object('status_since', now()))
 				ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status`,
 				id, tid, candidate, []byte(SafeURL(rtspURL)), status, location, zoneID)
 			if isUnique(err, "cameras_tenant_id_name_key") {
@@ -131,20 +138,50 @@ func (s *Store) UpdateCamera(ctx context.Context, id string, name, location, zon
 	})
 }
 
-// SetCameraStatus stores the DB status ('online', 'disabled' while paused, ...).
-func (s *Store) SetCameraStatus(ctx context.Context, id, status string) error {
+// SetCameraStatus stores the status ('online', 'disabled' while paused, 'error', 'offline')
+// and when it changed. It returns the previous status; changed is false if the camera
+// already had it (or doesn't exist), so callers log only real changes.
+func (s *Store) SetCameraStatus(ctx context.Context, id, status string) (from string, changed bool, err error) {
+	err = s.tx(ctx, func(tx pgx.Tx, tid string) error {
+		err := tx.QueryRow(ctx, `
+			UPDATE cameras c
+			SET status = $1, metadata = c.metadata || jsonb_build_object('status_since', now())
+			FROM (SELECT id, status FROM cameras WHERE id::text = $2 AND tenant_id = $3 FOR UPDATE) old
+			WHERE c.id = old.id AND old.status <> $1
+			RETURNING old.status`, status, id, tid).Scan(&from)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		changed = err == nil
+		return err
+	})
+	return from, changed, err
+}
+
+// SetCameraAlert turns "notify me when this camera stops working" on or off.
+func (s *Store) SetCameraAlert(ctx context.Context, id string, on bool) error {
 	return s.tx(ctx, func(tx pgx.Tx, tid string) error {
-		_, err := tx.Exec(ctx, `UPDATE cameras SET status = $1 WHERE id = $2 AND tenant_id = $3`, status, id, tid)
+		tag, err := tx.Exec(ctx, `UPDATE cameras SET metadata = metadata || jsonb_build_object('alert_offline', $1::boolean)
+			WHERE id::text = $2 AND tenant_id = $3`, on, id, tid)
+		if err == nil && tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
 		return err
 	})
 }
 
-// DeleteCamera removes the camera row. Its incidents keep their (soft) camera_id.
-func (s *Store) DeleteCamera(ctx context.Context, id string) error {
-	return s.tx(ctx, func(tx pgx.Tx, tid string) error {
-		_, err := tx.Exec(ctx, `DELETE FROM cameras WHERE id = $1 AND tenant_id = $2`, id, tid)
+// DeleteCamera removes the camera row and returns its name ("" if it didn't exist).
+// Its incidents keep their (soft) camera_id.
+func (s *Store) DeleteCamera(ctx context.Context, id string) (string, error) {
+	var name string
+	err := s.tx(ctx, func(tx pgx.Tx, tid string) error {
+		err := tx.QueryRow(ctx, `DELETE FROM cameras WHERE id::text = $1 AND tenant_id = $2 RETURNING name`, id, tid).Scan(&name)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
 		return err
 	})
+	return name, err
 }
 
 // Zone is a zone with its cameras.

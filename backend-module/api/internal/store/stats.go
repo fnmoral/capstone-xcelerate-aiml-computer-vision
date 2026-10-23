@@ -9,17 +9,17 @@ import (
 
 // Stats summarises incidents for the dashboard and the Analytics page.
 type Stats struct {
-	ActiveIncidents      int             `json:"active_incidents"`
-	OpenAlerts           int             `json:"open_alerts"`
-	IncidentsToday       int             `json:"incidents_today"`
-	Incidents7d          int             `json:"incidents_7d"`
-	AvgDownSeconds7d     *float64        `json:"avg_down_seconds_7d"`
-	FalsePositives7d     int             `json:"false_positives_7d"`
-	PerDay               []DayCount      `json:"per_day"`      // last 14 days, oldest first, zero-filled
-	PerCamera            []CameraCount   `json:"per_camera"`   // last 30 days
-	BySeverity           map[string]int  `json:"by_severity"`  // last 30 days
-	ByStatus             map[string]int  `json:"by_status"`    // last 30 days
-	PredictionsLastHour  map[string]int  `json:"predictions_last_hour"` // label -> count
+	ActiveIncidents     int            `json:"active_incidents"`
+	OpenAlerts          int            `json:"open_alerts"`
+	IncidentsToday      int            `json:"incidents_today"`
+	Incidents7d         int            `json:"incidents_7d"`
+	AvgDownSeconds7d    *float64       `json:"avg_down_seconds_7d"`
+	FalsePositives7d    int            `json:"false_positives_7d"`
+	PerDay              []DayCount     `json:"per_day"`               // last 14 days, oldest first, zero-filled
+	PerCamera           []CameraCount  `json:"per_camera"`            // last 30 days
+	BySeverity          map[string]int `json:"by_severity"`           // last 30 days
+	ByStatus            map[string]int `json:"by_status"`             // last 30 days
+	PredictionsLastHour map[string]int `json:"predictions_last_hour"` // label -> count
 }
 
 // DayCount is the number of incidents on one day.

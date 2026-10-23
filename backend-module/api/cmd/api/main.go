@@ -7,10 +7,12 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
 	"time"
+	_ "time/tzdata" // CSV exports convert times to the browser's zone; Alpine has no zoneinfo
 
 	"github.com/gin-gonic/gin"
 
@@ -44,7 +46,9 @@ func main() {
 	gin.SetMode(env("GIN_MODE", gin.ReleaseMode))
 	r := gin.New()
 	r.Use(gin.Recovery(), api.RequestLog())
-	api.New(cfg, db).Register(r)
+	server := api.New(cfg, db)
+	server.Register(r)
+	go server.WatchCameras(context.Background()) // camera status + "not working" log
 
 	srv := &http.Server{Addr: cfg.Addr, Handler: r, ReadHeaderTimeout: 10 * time.Second}
 	log.Printf("backend API on %s (tenant %s, gateway %s, ml %s)", cfg.Addr, cfg.Tenant, cfg.GatewayURL, cfg.MLURL)
