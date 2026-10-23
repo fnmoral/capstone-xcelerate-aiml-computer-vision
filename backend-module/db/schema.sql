@@ -14,6 +14,8 @@
 -- Changes for the backend API (activity log, camera monitor):
 --   * indexes on audit_logs and system_logs for the activity log / Camera Logs page.
 --     Optional on an existing database (queries work without them).
+--   * incident_cameras.clip_key: dashcam-style video per camera (the API adds it to an
+--     existing database at startup)
 --   * cameras.status is kept current by the API; cameras.metadata holds status_since and
 --     alert_offline (notify when the camera stops working; default true)
 
@@ -293,6 +295,7 @@ CREATE TABLE incident_cameras (
     track_id      INT  NOT NULL,                -- ML tracker ID of the person on that camera
     joined_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     snapshot_key  TEXT,                         -- object storage key for this camera's image
+    clip_key      TEXT,                         -- this camera's video clip of the incident (ml-service clips)
     PRIMARY KEY (incident_id, camera_id, track_id)
 );
 CREATE INDEX idx_incident_cameras_cam ON incident_cameras (tenant_id, camera_id, joined_at DESC);

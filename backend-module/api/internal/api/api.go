@@ -9,6 +9,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -62,9 +63,11 @@ func (s *Server) Register(r *gin.Engine) {
 	a.GET("/cameras", s.listCameras)
 	a.POST("/cameras", s.addCamera)
 	a.PATCH("/cameras/:id", s.updateCamera)
+	a.PUT("/cameras/order", s.cameraOrder)
 	a.DELETE("/cameras/:id", s.deleteCamera)
 	a.POST("/cameras/:id/pause", s.pauseResume("pause", "disabled"))
 	a.POST("/cameras/:id/resume", s.pauseResume("resume", "online"))
+	a.POST("/cameras/:id/switch", s.switchCamera)
 	a.GET("/cameras/:id/stream", s.proxyML(func(id string) string { return "/stream/" + url.PathEscape(id) }))
 	a.GET("/cameras/:id/frame.jpg", s.proxyML(func(id string) string { return "/frame/" + url.PathEscape(id) + ".jpg" }))
 	a.GET("/zones", s.listZones)
@@ -76,6 +79,7 @@ func (s *Server) Register(r *gin.Engine) {
 	a.GET("/incidents", s.listIncidents)
 	a.GET("/incidents/:id", s.getIncident)
 	a.PATCH("/incidents/:id", s.updateIncident)
+	a.POST("/incidents/:id/notes", s.addNote)
 	a.GET("/alerts", s.listAlerts)
 	a.POST("/alerts/:id/acknowledge", s.alertStatus("acknowledged"))
 	a.POST("/alerts/:id/resolve", s.alertStatus("resolved"))
@@ -83,7 +87,9 @@ func (s *Server) Register(r *gin.Engine) {
 
 	a.GET("/stats", s.stats)
 	a.GET("/snapshots/:name", s.snapshot)
+	a.GET("/clips/:name", s.clip)
 	a.GET("/detection", s.detection)
+	a.PUT("/detection", s.saveDetection)
 	a.GET("/gateway/config", s.gatewayConfig)
 	a.PUT("/gateway/config", s.gatewayConfig)
 }
@@ -120,7 +126,8 @@ func RequestLog() gin.HandlerFunc {
 		if c.Request.Method == http.MethodGet && (strings.HasSuffix(p, "/stream") || strings.HasSuffix(p, "/frame.jpg") ||
 			p == "/api/cameras" || p == "/api/stats" || p == "/api/health" || p == "/api/alerts" ||
 			p == "/api/notifications" || p == "/api/logs" ||
-			strings.HasPrefix(p, "/api/snapshots/") || p == "/api/incidents") && c.Writer.Status() < 400 {
+			strings.HasPrefix(p, "/api/snapshots/") || strings.HasPrefix(p, "/api/clips/") || p == "/api/incidents") &&
+			c.Writer.Status() < 400 {
 			return
 		}
 		log.Printf("%s %s %d %s", c.Request.Method, p, c.Writer.Status(), time.Since(start).Round(time.Millisecond))
@@ -264,11 +271,28 @@ func (s *Server) listCameras(c *gin.Context) {
 		v.setHealth(&d, true)
 		out = append(out, v)
 	}
-	resp := gin.H{"cameras": out}
+	sortByOrder(out, dbCams)
+	resp := gin.H{"cameras": out, "limits": s.gateway.limits(ctx)}
 	if gwErr != nil {
 		resp["gateway_error"] = gwErr.Error()
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+// sortByOrder puts cameras in the order set on the Cameras page (dbCams is sorted by it);
+// cameras not in the database yet go last.
+func sortByOrder(out []CameraView, dbCams []store.Camera) {
+	rank := make(map[string]int, len(dbCams))
+	for i, d := range dbCams {
+		rank[d.ID] = i
+	}
+	pos := func(id string) int {
+		if r, ok := rank[id]; ok {
+			return r
+		}
+		return len(rank)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return pos(out[i].ID) < pos(out[j].ID) })
 }
 
 func (s *Server) addLive(v *CameraView, live map[string]MLCamera, active map[string]int) {
@@ -333,7 +357,8 @@ func (s *Server) addCamera(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if err := s.db.UpsertCamera(ctx, cam.ID, name, in.RTSPURL, "online", trimmed(in.Location), trimmed(in.Zone)); err != nil {
+	// The gateway saves it paused ("standby") when its streaming limit is reached.
+	if err := s.db.UpsertCamera(ctx, cam.ID, name, in.RTSPURL, dbStatus(cam.Status), trimmed(in.Location), trimmed(in.Zone)); err != nil {
 		fail(c, err)
 		return
 	}
@@ -345,7 +370,7 @@ func (s *Server) addCamera(c *gin.Context) {
 	}
 	s.auditCamera(c, "camera.added", cam.ID, name, "Camera added", gin.H{
 		"rtsp_url": store.SafeURL(in.RTSPURL), "location": trimmed(in.Location), "zone": trimmed(in.Zone)})
-	c.JSON(http.StatusCreated, gin.H{"id": cam.ID})
+	c.JSON(http.StatusCreated, gin.H{"id": cam.ID, "status": cam.Status})
 }
 
 func (s *Server) updateCamera(c *gin.Context) {
@@ -415,6 +440,43 @@ func (s *Server) pauseResume(action, status string) gin.HandlerFunc {
 	}
 }
 
+// switchCamera streams camera :id instead of {replace_id}: pauses that one, then resumes
+// this one (for a gateway at its streaming limit). If this one can't start, the other
+// is resumed again, so nothing is left without video by a failed switch.
+func (s *Server) switchCamera(c *gin.Context) {
+	var in struct {
+		ReplaceID string `json:"replace_id"`
+	}
+	id := c.Param("id")
+	if err := c.ShouldBindJSON(&in); err != nil || in.ReplaceID == "" || in.ReplaceID == id {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "replace_id: the streaming camera to pause instead"})
+		return
+	}
+	ctx := c.Request.Context()
+	old, err := s.gateway.camera(ctx, "pause", in.ReplaceID)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	cam, err := s.gateway.camera(ctx, "resume", id)
+	if err != nil {
+		if _, rerr := s.gateway.camera(ctx, "resume", in.ReplaceID); rerr != nil {
+			log.Printf("switch: could not resume %s again: %v", in.ReplaceID, rerr)
+		}
+		fail(c, err)
+		return
+	}
+	for camID, status := range map[string]string{old.ID: "disabled", cam.ID: "online"} {
+		if _, _, err := s.db.SetCameraStatus(ctx, camID, status); err != nil {
+			fail(c, err)
+			return
+		}
+	}
+	s.auditCamera(c, "camera.paused", old.ID, old.Name, "Camera paused (switched to "+cam.Name+")", nil)
+	s.auditCamera(c, "camera.resumed", cam.ID, cam.Name, "Camera resumed (instead of "+old.Name+")", nil)
+	c.JSON(http.StatusOK, gin.H{"id": cam.ID, "status": cam.Status, "paused": old.ID})
+}
+
 // auditCamera records a camera action by the current user. The change itself already
 // happened, so a logging failure goes to the API log instead of failing the request.
 func (s *Server) auditCamera(c *gin.Context, action, id, name, message string, extra gin.H) {
@@ -428,6 +490,22 @@ func (s *Server) auditCamera(c *gin.Context, action, id, name, message string, e
 	if err := s.db.Audit(c.Request.Context(), actor(c), action, "camera", id, details); err != nil {
 		log.Printf("audit %s %s: %v", action, id, err)
 	}
+}
+
+// cameraOrder: {camera_ids: [...]}, first shown first.
+func (s *Server) cameraOrder(c *gin.Context) {
+	var in struct {
+		CameraIDs []string `json:"camera_ids"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || len(in.CameraIDs) == 0 || len(in.CameraIDs) > 500 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "camera_ids: the cameras in the order to show them"})
+		return
+	}
+	if err := s.db.SetCameraOrder(c.Request.Context(), in.CameraIDs, actor(c)); err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
 func (s *Server) listZones(c *gin.Context) {
@@ -495,6 +573,33 @@ func (s *Server) updateIncident(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// addNote appends a note. author is the name typed in the app; there are no user
+// accounts yet, so it falls back to actor() ("Current user").
+func (s *Server) addNote(c *gin.Context) {
+	var in struct {
+		Author string `json:"author"`
+		Text   string `json:"text"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
+		return
+	}
+	text, author := strings.TrimSpace(in.Text), strings.TrimSpace(in.Author)
+	if text == "" || len(text) > 4000 || len(author) > 80 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "text is required (at most 4000 characters); author at most 80"})
+		return
+	}
+	if author == "" {
+		author = actor(c)
+	}
+	note, err := s.db.AddNote(c.Request.Context(), c.Param("id"), author, text)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"note": note})
+}
+
 func (s *Server) listAlerts(c *gin.Context) {
 	list, err := s.db.Alerts(c.Request.Context(), c.Query("status"))
 	if err != nil {
@@ -526,7 +631,10 @@ func (s *Server) stats(c *gin.Context) {
 
 // ---------- pass-through to ml-service and gateway-back ----------
 
-var snapshotName = regexp.MustCompile(`^[\w.-]+\.jpg$`)
+var (
+	snapshotName = regexp.MustCompile(`^[\w.-]+\.jpg$`)
+	clipName     = regexp.MustCompile(`^[\w.-]+\.mp4$`)
+)
 
 func (s *Server) proxyML(path func(id string) string) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -549,13 +657,51 @@ func (s *Server) snapshot(c *gin.Context) {
 	s.mlProxy.ServeHTTP(c.Writer, c.Request)
 }
 
+// clip streams an incident video from ml-service. Range requests (seeking) pass through.
+func (s *Server) clip(c *gin.Context) {
+	name := c.Param("name")
+	if !clipName.MatchString(name) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		return
+	}
+	c.Request.URL.Path = "/clips/" + name
+	c.Request.URL.RawQuery = ""
+	s.mlProxy.ServeHTTP(c.Writer, c.Request)
+}
+
+// detection: ml-service's settings (what it runs with now) plus "saved", the values set
+// in the frontend. ml-service picks those up within 15 s.
 func (s *Server) detection(c *gin.Context) {
+	ctx := c.Request.Context()
 	var out map[string]any
-	if err := s.ml.do(c.Request.Context(), http.MethodGet, "/api/config", nil, &out); err != nil {
+	if err := s.ml.do(ctx, http.MethodGet, "/api/config", nil, &out); err != nil {
 		fail(c, err)
 		return
 	}
+	saved, err := s.db.Detection(ctx)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	out["saved"] = saved
 	c.JSON(http.StatusOK, out)
+}
+
+func (s *Server) saveDetection(c *gin.Context) {
+	var in store.DetectionOverrides
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
+		return
+	}
+	if p := in.PersonConfidence; p != nil && (*p < 0.05 || *p > 0.95) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "person_confidence must be between 0.05 and 0.95 (null = default)"})
+		return
+	}
+	if err := s.db.SetDetection(c.Request.Context(), in, actor(c)); err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"saved": in})
 }
 
 func (s *Server) gatewayConfig(c *gin.Context) {

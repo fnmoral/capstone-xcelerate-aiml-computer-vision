@@ -43,7 +43,7 @@ func audit(ctx context.Context, tx pgx.Tx, tid, actor, action, targetType, targe
 	details["actor"] = actor
 	_, err := tx.Exec(ctx, `
 		INSERT INTO audit_logs (tenant_id, action, target_type, target_id, details)
-		VALUES ($1, $2, $3, $4::uuid, $5)`, tid, action, targetType, targetID, details)
+		VALUES ($1, $2, $3, nullif($4, '')::uuid, $5)`, tid, action, targetType, targetID, details)
 	return err
 }
 

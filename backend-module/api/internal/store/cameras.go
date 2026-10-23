@@ -48,7 +48,7 @@ func (s *Store) Cameras(ctx context.Context) ([]Camera, error) {
 			       (c.metadata->>'status_since')::timestamptz,
 			       coalesce((c.metadata->>'alert_offline')::boolean, true), c.created_at
 			FROM cameras c LEFT JOIN zones z ON z.id = c.zone_id
-			WHERE c.tenant_id = $1 ORDER BY c.created_at`, tid)
+			WHERE c.tenant_id = $1 ORDER BY coalesce((c.metadata->>'sort_order')::int, 2147483647), c.created_at`, tid)
 		if err != nil {
 			return err
 		}
@@ -65,6 +65,9 @@ func (s *Store) Cameras(ctx context.Context) ([]Camera, error) {
 // UpsertCamera registers a camera under the ID gateway-back gave it. If the name is
 // already used by another camera, a numbered suffix is added.
 func (s *Store) UpsertCamera(ctx context.Context, id, name, rtspURL, status string, location, zone *string) error {
+	if location != nil && *location == "" {
+		location = nil // no location: incidents then use the camera's name
+	}
 	return s.tx(ctx, func(tx pgx.Tx, tid string) error {
 		zoneID, err := zoneID(ctx, tx, tid, zone)
 		if err != nil {
@@ -156,6 +159,27 @@ func (s *Store) SetCameraStatus(ctx context.Context, id, status string) (from st
 		return err
 	})
 	return from, changed, err
+}
+
+// SetCameraOrder stores the order cameras are shown in (Live View, incident videos):
+// ids[0] first. Cameras not listed keep their place after the listed ones.
+func (s *Store) SetCameraOrder(ctx context.Context, ids []string, actor string) error {
+	return s.tx(ctx, func(tx pgx.Tx, tid string) error {
+		if _, err := tx.Exec(ctx, `
+			UPDATE cameras c SET metadata = c.metadata || jsonb_build_object('sort_order', o.ord)
+			FROM unnest($1::text[]) WITH ORDINALITY AS o(id, ord)
+			WHERE c.id::text = o.id AND c.tenant_id = $2`, ids, tid); err != nil {
+			return err
+		}
+		var names []string
+		if err := tx.QueryRow(ctx, `SELECT coalesce(array_agg(c.name ORDER BY o.ord), '{}')
+			FROM unnest($1::text[]) WITH ORDINALITY AS o(id, ord) JOIN cameras c ON c.id::text = o.id`, ids).Scan(&names); err != nil {
+			return err
+		}
+		return audit(ctx, tx, tid, actor, "camera.reordered", "settings", "", map[string]any{
+			"message": "Camera order changed", "order": names,
+		})
+	})
 }
 
 // SetCameraAlert turns "notify me when this camera stops working" on or off.

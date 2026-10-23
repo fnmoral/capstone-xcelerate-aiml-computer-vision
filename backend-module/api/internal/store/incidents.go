@@ -23,7 +23,9 @@ type Incident struct {
 	PeakConfidence  *float32         `json:"peak_confidence"`
 	LocationLabel   *string          `json:"location_label"`
 	SnapshotKey     *string          `json:"snapshot_key"`
-	Notes           *string          `json:"notes"`
+	ClipKey         *string          `json:"clip_key"` // video of the main camera (clips/<incident>_<camera>.mp4)
+	Notes           *string          `json:"notes"`     // single note field used before; also first in NoteList
+	NoteList        []Note           `json:"note_list"` // all notes, oldest first
 	Cameras         []IncidentCamera `json:"cameras"`
 	Alert           *Alert           `json:"alert"`
 }
@@ -35,6 +37,7 @@ type IncidentCamera struct {
 	TrackID     int       `json:"track_id"`
 	JoinedAt    time.Time `json:"joined_at"`
 	SnapshotKey *string   `json:"snapshot_key"`
+	ClipKey     *string   `json:"clip_key"` // this camera's video of the incident, once saved
 }
 
 // Alert is what staff act on.
@@ -77,12 +80,12 @@ type IncidentFilter struct {
 
 const incidentColumns = `
 	i.id::text, i.camera_id::text, c.name, i.zone, i.started_at, i.recovered_at, i.duration_seconds,
-	i.status, i.severity, i.peak_confidence, i.location_label, i.snapshot_key, i.notes`
+	i.status, i.severity, i.peak_confidence, i.location_label, i.snapshot_key, i.clip_key, i.notes`
 
 func scanIncident(r pgx.Row, inc *Incident) error {
 	return r.Scan(&inc.ID, &inc.CameraID, &inc.CameraName, &inc.Zone, &inc.StartedAt, &inc.RecoveredAt,
 		&inc.DurationSeconds, &inc.Status, &inc.Severity, &inc.PeakConfidence, &inc.LocationLabel,
-		&inc.SnapshotKey, &inc.Notes)
+		&inc.SnapshotKey, &inc.ClipKey, &inc.Notes)
 }
 
 // Incidents lists incidents, newest first.
@@ -125,7 +128,10 @@ func (s *Store) Incidents(ctx context.Context, f IncidentFilter) ([]Incident, er
 		if err := rows.Err(); err != nil {
 			return err
 		}
-		return attachCameras(ctx, tx, out)
+		if err := attachCameras(ctx, tx, out); err != nil {
+			return err
+		}
+		return attachNotes(ctx, tx, tid, out)
 	})
 	return out, err
 }
@@ -146,6 +152,9 @@ func (s *Store) Incident(ctx context.Context, id string) (*Incident, []Predictio
 		}
 		list := []Incident{inc}
 		if err := attachCameras(ctx, tx, list); err != nil {
+			return err
+		}
+		if err := attachNotes(ctx, tx, tid, list); err != nil {
 			return err
 		}
 		inc = list[0]
@@ -253,16 +262,16 @@ func attachCameras(ctx context.Context, tx pgx.Tx, list []Incident) error {
 		list[i].Cameras = []IncidentCamera{}
 	}
 	rows, err := tx.Query(ctx, `
-		SELECT ic.incident_id::text, ic.camera_id::text, c.name, ic.track_id, ic.joined_at, ic.snapshot_key
+		SELECT ic.incident_id::text, ic.camera_id::text, c.name, ic.track_id, ic.joined_at, ic.snapshot_key, ic.clip_key
 		FROM incident_cameras ic LEFT JOIN cameras c ON c.id = ic.camera_id
-		WHERE ic.incident_id::text = ANY($1::text[]) ORDER BY ic.joined_at`, ids)
+		WHERE ic.incident_id::text = ANY($1::text[]) ORDER BY coalesce((c.metadata->>'sort_order')::int, 2147483647), ic.joined_at`, ids)
 	if err != nil {
 		return err
 	}
 	for rows.Next() {
 		var incID string
 		var ic IncidentCamera
-		if err := rows.Scan(&incID, &ic.CameraID, &ic.CameraName, &ic.TrackID, &ic.JoinedAt, &ic.SnapshotKey); err != nil {
+		if err := rows.Scan(&incID, &ic.CameraID, &ic.CameraName, &ic.TrackID, &ic.JoinedAt, &ic.SnapshotKey, &ic.ClipKey); err != nil {
 			rows.Close()
 			return err
 		}

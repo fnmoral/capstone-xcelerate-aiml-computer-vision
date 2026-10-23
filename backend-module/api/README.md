@@ -11,13 +11,16 @@ from ml-service.
 | `GET /api/cameras` | Gateway cameras (status) + database details (name, location, zone) + live ML state (video arriving, people, active incidents) + `health` (online / paused / not_working / connecting / not_connected), `health_since`, `alert_offline`. Cameras added directly in the gateway UI are registered in the database here |
 | `POST /api/cameras` | `{name, rtsp_url, username?, password?, location?, zone?}` → added on the gateway, registered in the database with the same UUID. Credentials stay on the gateway only |
 | `PATCH /api/cameras/:id` | `{name?, location?, zone?, alert_offline?}` (database only; an empty zone clears it). `alert_offline`: notify when the camera stops working (default on) |
+| `PUT /api/cameras/order` | `{camera_ids: [...]}`: the order cameras are shown in (Live View, incident videos); stored as `cameras.metadata.sort_order`. `GET /api/cameras` and incident cameras come back in this order |
 | `DELETE /api/cameras/:id` | Removed from the gateway and the database (its incidents are kept) |
-| `POST /api/cameras/:id/pause` · `/resume` | Stops / restarts the camera's stream on the gateway |
+| `POST /api/cameras/:id/pause` · `/resume` | Stops / restarts the camera's stream on the gateway. The gateway streams at most 5 at once (resume: 409 at 5) and keeps up to 50; `GET /api/cameras` returns `limits`. A camera added while 5 stream is saved paused (`status: "paused"`) |
+| `POST /api/cameras/:id/switch` | `{replace_id}`: stream this paused camera instead of `replace_id` (pauses that one, resumes this one; if this one fails, `replace_id` is resumed again) |
 | `GET /api/cameras/:id/stream` · `/frame.jpg` | Annotated live video (MJPEG) / one frame, from ml-service |
 | `GET /api/zones` | Zones and their cameras |
 | `GET /api/incidents?status=&severity=&camera_id=&zone=&alert_status=&from=&to=&limit=` | Incidents, newest first, with their cameras and alert (who acknowledged / closed it, and when). `alert_status=none`: no alert. Times RFC 3339 |
 | `GET /api/incidents/:id` | One incident + its prediction timeline + `activity` (who did what to it and its alert) |
 | `PATCH /api/incidents/:id` | `{status?, notes?}` |
+| `POST /api/incidents/:id/notes` | `{author?, text}`: append a note (several people can; none is overwritten). Stored in `audit_logs` (`incident.note`); incidents return them as `note_list`, the CSV export as one cell |
 | `GET /api/alerts?status=` | Alerts |
 | `POST /api/alerts/:id/acknowledge` · `/resolve` · `/false-positive` | Alert workflow; a false positive also marks its incident |
 | `GET /api/notifications` | Open fall alerts + cameras that stopped working with `alert_offline` on (the header bell) |
@@ -25,7 +28,9 @@ from ml-service.
 | `GET /api/export/incidents.csv?…` · `/api/export/logs.csv?…` | CSV downloads with the same filters, plus `tz` (IANA zone, e.g. `America/Toronto`) for the times |
 | `GET /api/stats` | Dashboard / Analytics numbers |
 | `GET /api/snapshots/:name` | Incident photo (from ml-service) |
-| `GET /api/detection` | ml-service's detection settings (read-only) |
+| `GET /api/clips/:name` | Incident video clip, MP4 (from ml-service; Range requests pass through for seeking). Incidents return `clip_key` and each camera's `clip_key` |
+| `GET /api/detection` | ml-service's detection settings (what it runs with now) + `saved`: values set in the app |
+| `PUT /api/detection` | `{person_confidence}` (0.05–0.95; `{}` = back to config.yaml). Stored in the fall rule's `parsed_config.detection`; ml-service applies it within 15 s. Logged as `settings.detection` |
 | `GET` · `PUT /api/gateway/config` | gateway-back's settings (stream-hub address) |
 
 ## Configuration (environment)
@@ -49,6 +54,12 @@ pause / resume / remove / alert setting are written to `audit_logs` (`action` su
 `alert.acknowledged`, `details.actor` = who, `details.message`). There are no user
 accounts yet, so the actor is always **"Current user"**: `actor()` in
 `internal/api/reports.go` is the one place to return the signed-in user later.
+
+## Migrations
+
+At start the API brings an existing database up to date (idempotent statements in
+`internal/store/settings.go`), e.g. `incident_cameras.clip_key`. New databases get the same
+from `db/schema.sql`.
 
 ## Camera monitor
 

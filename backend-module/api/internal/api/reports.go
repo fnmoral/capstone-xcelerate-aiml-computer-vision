@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -42,7 +43,7 @@ func timeWindow(c *gin.Context) (from, to *time.Time, ok bool) {
 var (
 	severities    = map[string]bool{"": true, "low": true, "medium": true, "high": true, "critical": true}
 	alertStatuses = map[string]bool{"": true, "open": true, "acknowledged": true, "resolved": true, "false_positive": true, "none": true}
-	logKinds      = map[string]bool{"": true, "alert": true, "incident": true, "camera": true}
+	logKinds      = map[string]bool{"": true, "alert": true, "incident": true, "camera": true, "settings": true}
 )
 
 // incidentQuery reads the incident filters shared by the list and the export.
@@ -64,7 +65,7 @@ func incidentQuery(c *gin.Context, defaultLimit int) (store.IncidentFilter, bool
 func logQuery(c *gin.Context, defaultLimit int) (store.LogFilter, bool) {
 	f := store.LogFilter{Kind: c.Query("kind"), CameraID: c.Query("camera_id"), IncidentID: c.Query("incident_id")}
 	if !logKinds[f.Kind] {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "kind must be alert, incident or camera"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "kind must be alert, incident, camera or settings"})
 		return f, false
 	}
 	f.Limit, _ = strconv.Atoi(c.DefaultQuery("limit", strconv.Itoa(defaultLimit)))
@@ -164,7 +165,7 @@ func (s *Server) exportIncidents(c *gin.Context) {
 		"Incident ID", "Started" + tz, "Recovered" + tz, "Down for (s)", "Status", "Severity",
 		"Camera", "Location", "Zone", "Cameras that saw it", "Peak confidence",
 		"Alert status", "Alert raised" + tz, "Acknowledged" + tz, "Acknowledged by",
-		"Closed" + tz, "Closed by", "Notes",
+		"Closed" + tz, "Closed by", "Notes", "Video",
 	})
 	for _, i := range list {
 		names := make([]string, 0, len(i.Cameras))
@@ -174,7 +175,10 @@ func (s *Server) exportIncidents(c *gin.Context) {
 		row := []string{
 			i.ID, when(&i.StartedAt, loc), when(i.RecoveredAt, loc), "", i.Status, i.Severity,
 			str(i.CameraName), str(i.LocationLabel), str(i.Zone), strings.Join(names, "; "), "",
-			"", "", "", "", "", "", str(i.Notes),
+			"", "", "", "", "", "", notesCell(i.NoteList, loc), "",
+		}
+		if i.ClipKey != nil { // a link the app can open (same origin as the export)
+			row[18] = "/api/clips/" + path.Base(*i.ClipKey)
 		}
 		if i.DurationSeconds != nil {
 			row[3] = strconv.Itoa(*i.DurationSeconds)
@@ -190,6 +194,16 @@ func (s *Server) exportIncidents(c *gin.Context) {
 		w.Write(row) //nolint:errcheck
 	}
 	w.Flush()
+}
+
+// notesCell puts all of an incident's notes in one cell, one per line:
+// "2026-10-23 14:02 Nurse Ana: Checked, patient is fine".
+func notesCell(notes []store.Note, loc *time.Location) string {
+	lines := make([]string, len(notes))
+	for i, n := range notes {
+		lines[i] = n.At.In(loc).Format("2006-01-02 15:04") + " " + n.Author + ": " + n.Text
+	}
+	return cell(strings.Join(lines, "\n"))
 }
 
 func (s *Server) exportLogs(c *gin.Context) {

@@ -118,6 +118,19 @@ func (g gateway) camera(ctx context.Context, action, id string) (*GatewayCamera,
 	return &out, err
 }
 
+// Limits are the gateway's camera limits: streaming at once, and saved in total.
+type Limits struct {
+	MaxStreaming int `json:"max_streaming"`
+	MaxSaved     int `json:"max_saved"`
+}
+
+// limits asks the gateway; older gateways without /limits allowed 3 cameras in all.
+func (g gateway) limits(ctx context.Context) Limits {
+	out := Limits{MaxStreaming: 3, MaxSaved: 3}
+	_ = g.do(ctx, http.MethodGet, "/gateway/actions/limits", nil, &out)
+	return out
+}
+
 func (g gateway) deleteCamera(ctx context.Context, id string) error {
 	return g.do(ctx, http.MethodDelete, "/gateway/actions/cameras/"+url.PathEscape(id), nil, nil)
 }
