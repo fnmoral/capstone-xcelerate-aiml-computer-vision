@@ -36,6 +36,11 @@ prod:
   preview: false             # no display on a server
   server:
     host: 0.0.0.0            # accept stream-hub from other machines
+  # Cameras that see the same area. A fall seen by several cameras of one zone raises one
+  # incident instead of one per camera. Use the camera IDs gateway-back assigns.
+  zones: {}
+  #   ward-a: [3f2c8e1a-...-camera-1, 9b77d0c4-...-camera-2]
+  #   lobby:  [5d1e...-camera-3, 0a9f...-camera-4, 77c2...-camera-5]
 
 # ---------------------------------------------------------------------------
 # Shared by both modes. A dev: or prod: section can override any of these.
@@ -71,7 +76,9 @@ fall:
   lost_track_seconds: 10
   high_after_seconds: 60
   critical_after_seconds: 300   # 5min=300 Seconds; if the person is still down after this long, mark the incident as critical
+  merge_window_seconds: 10   # zones: falls on different cameras of a zone starting this close together are one incident
 
 output:
   dir: data
   prediction_interval_s: 1.0 # at most one model_predictions row per person per second
+  stats_interval_s: 30       # log frames received/analysed per camera this often; 0 = off

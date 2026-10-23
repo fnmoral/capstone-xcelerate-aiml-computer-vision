@@ -28,6 +28,7 @@ import cv2
 import numpy as np
 
 import config
+from fall.zones import IncidentAggregator
 from ingest.protocol import MAX_NALU_LEN, ProtocolError, read_handshake, read_message
 from pipeline import CameraPipeline
 from sinks.jsonl import JsonlSink
@@ -40,6 +41,12 @@ RTSP_TIMEOUT_MS = 5000  # OpenCV's default is ~30 s, too slow to notice a dead c
 
 pipelines: dict[str, CameraPipeline] = {}
 pipelines_lock = threading.Lock()
+# Shared by all cameras so overlapping cameras raise one incident; set in main().
+aggregator = IncidentAggregator({}, 0.0)
+
+
+def new_pipeline(tenant_id: str, camera_id: str, cfg: config.Config, sink: JsonlSink) -> CameraPipeline:
+    return CameraPipeline(tenant_id, camera_id, cfg, sink, aggregator)
 
 
 def register(pipeline: CameraPipeline) -> bool:
@@ -53,8 +60,10 @@ def register(pipeline: CameraPipeline) -> bool:
 
 def unregister(pipeline: CameraPipeline) -> None:
     with pipelines_lock:
-        if pipelines.get(pipeline.camera_id) is pipeline:
-            del pipelines[pipeline.camera_id]
+        if pipelines.get(pipeline.camera_id) is not pipeline:
+            return
+        del pipelines[pipeline.camera_id]
+    pipeline.close()  # open incidents on this camera become unresolved
 
 
 # ---------- tcp: cameras streamed by stream-hub ----------
@@ -65,7 +74,7 @@ def handle_connection(conn: socket.socket, addr, cfg: config.Config, sink: Jsonl
     try:
         tenant_id, camera_id = read_handshake(conn, cfg.tenant_in_handshake, cfg.default_tenant_id)
         log.info("camera [%s] tenant [%s] connected from %s", camera_id, tenant_id, addr)
-        pipeline = CameraPipeline(tenant_id, camera_id, cfg, sink)
+        pipeline = new_pipeline(tenant_id, camera_id, cfg, sink)
         if not register(pipeline):
             return
         while (nalu := read_message(conn, MAX_NALU_LEN)) is not None:
@@ -135,7 +144,7 @@ def run_capture(src: config.SourceConfig, cfg: config.Config, sink: JsonlSink, s
     disappears and is retried every few seconds. A file plays once, or loops.
     """
     label = describe_source(src)
-    pipeline = CameraPipeline(src.tenant_id, src.camera_id, cfg, sink)
+    pipeline = new_pipeline(src.tenant_id, src.camera_id, cfg, sink)
     if not register(pipeline):
         return
 
@@ -210,10 +219,37 @@ def render_grid(active: list[CameraPipeline]) -> np.ndarray:
     return np.vstack([np.hstack(frames[i:i + cols]) for i in range(0, len(frames), cols)])
 
 
-def main_loop(stop: threading.Event, show: bool, capture_threads: list[threading.Thread], uses_tcp: bool) -> None:
+def log_stats(active: list[CameraPipeline], seconds: float, target_fps: float) -> None:
+    """One line per camera: frames received and analysed per second, and average model time."""
+    parts = []
+    behind = []
+    for p in active:
+        frames_in, analysed, model_ms = p.take_stats()
+        fps = analysed / seconds
+        avg_ms = model_ms / analysed if analysed else 0.0
+        parts.append(f"{p.camera_id} in={frames_in / seconds:.1f}fps analysed={fps:.1f}fps model={avg_ms:.0f}ms")
+        # Sources slower than target_fps can't reach it; only flag cameras that have frames to spare.
+        if frames_in / seconds >= target_fps and fps < 0.8 * target_fps:
+            behind.append(p.camera_id)
+    log.info("stats: %d camera(s) | %s", len(active), " | ".join(parts) or "none connected")
+    if behind:
+        log.warning("analysing fewer than %.0f fps on %s; the GPU is saturated. Lower inference.target_fps "
+                    "or use a faster GPU/model", target_fps, ", ".join(behind))
+
+
+def main_loop(stop: threading.Event, show: bool, capture_threads: list[threading.Thread], uses_tcp: bool,
+              stats_interval_s: float, target_fps: float) -> None:
     """Runs the model for every camera, and the preview window. Both must stay on the main thread."""
     last_render = 0.0
+    last_stats = time.monotonic()
     while not stop.is_set():
+        if stats_interval_s > 0 and time.monotonic() - last_stats >= stats_interval_s:
+            with pipelines_lock:
+                active = list(pipelines.values())
+            elapsed = time.monotonic() - last_stats
+            last_stats = time.monotonic()
+            log_stats(active, elapsed, target_fps)
+
         if not uses_tcp and not any(t.is_alive() for t in capture_threads):
             log.info("all sources have ended")
             return
@@ -283,6 +319,11 @@ def main() -> None:
         log.warning("no display found; preview turned off")
         cfg.show = False
 
+    global aggregator
+    aggregator = IncidentAggregator(cfg.zones, cfg.merge_window_s)
+    for name, cams in cfg.zones.items():
+        log.info("zone [%s]: %s (falls seen by several of these cameras count once)", name, ", ".join(cams))
+
     warm_up(cfg)
     sink = JsonlSink(cfg.output_dir)
     stop = threading.Event()
@@ -296,7 +337,7 @@ def main() -> None:
             capture_threads.append(thread)
 
     try:
-        main_loop(stop, cfg.show, capture_threads, cfg.uses_tcp)
+        main_loop(stop, cfg.show, capture_threads, cfg.uses_tcp, cfg.stats_interval_s, cfg.inference.target_fps)
     except KeyboardInterrupt:
         pass
     finally:

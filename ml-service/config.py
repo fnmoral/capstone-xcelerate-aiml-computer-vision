@@ -27,7 +27,7 @@ class InferenceConfig:
 
 SOURCE_TYPES = ("tcp", "webcam", "rtsp", "file")
 PROD_SOURCE_TYPES = ("tcp", "rtsp")  # production watches IP cameras only
-MODE_KEYS = {"sources", "source", "preview", "server", "handshake", "inference", "output", "fall"}
+MODE_KEYS = {"sources", "source", "preview", "server", "handshake", "inference", "output", "fall", "zones"}
 
 
 @dataclass(slots=True)
@@ -54,8 +54,11 @@ class Config:
     rules: RuleThresholds = field(default_factory=RuleThresholds)
     rules_min_kpt_conf: float = 0.3
     monitor: MonitorConfig = field(default_factory=MonitorConfig)
+    zones: dict[str, list[str]] = field(default_factory=dict)  # zone name -> camera_ids seeing the same area
+    merge_window_s: float = 10.0
     output_dir: str = "data"
     prediction_interval_s: float = 1.0
+    stats_interval_s: float = 30.0
     show: bool = False
 
     @property
@@ -151,6 +154,24 @@ def parse_sources(raw_sources: list[dict], base: Path, default_tenant: str) -> l
     return sources
 
 
+def parse_zones(raw_zones) -> dict[str, list[str]]:
+    if not raw_zones:
+        return {}
+    if not isinstance(raw_zones, dict):
+        raise ValueError("zones must map a zone name to a list of camera_ids")
+    zones: dict[str, list[str]] = {}
+    seen: dict[str, str] = {}
+    for name, cams in raw_zones.items():
+        if not isinstance(cams, list) or not all(isinstance(c, str) and c for c in cams):
+            raise ValueError(f"zones.{name} must be a list of camera_ids")
+        for cam in cams:
+            if cam in seen:
+                raise ValueError(f"camera {cam!r} is in two zones: {seen[cam]} and {name}")
+            seen[cam] = str(name)
+        zones[str(name)] = list(cams)
+    return zones
+
+
 def load(path: str | Path, prod_mode: bool | None = None) -> Config:
     """Read the config file for one mode. prod_mode=None means ML_PROD_MODE, then the file's prod_mode.
 
@@ -166,6 +187,7 @@ def load(path: str | Path, prod_mode: bool | None = None) -> Config:
     default_tenant = handshake.get("default_tenant_id", "tenant_example")
 
     min_kpt_conf = fall.pop("min_keypoint_conf", 0.3)
+    merge_window = float(fall.pop("merge_window_seconds", 10.0))
     rule_keys = RuleThresholds.__dataclass_fields__.keys()
     monitor_keys = MonitorConfig.__dataclass_fields__.keys()
     unknown = set(fall) - set(rule_keys) - set(monitor_keys)
@@ -196,8 +218,11 @@ def load(path: str | Path, prod_mode: bool | None = None) -> Config:
         rules=RuleThresholds(**{k: v for k, v in fall.items() if k in rule_keys}),
         rules_min_kpt_conf=float(min_kpt_conf),
         monitor=MonitorConfig(**{k: v for k, v in fall.items() if k in monitor_keys}),
+        zones=parse_zones(raw.get("zones")),
+        merge_window_s=merge_window,
         output_dir=str(base / output.get("dir", "data")),
         prediction_interval_s=float(output.get("prediction_interval_s", 1.0)),
+        stats_interval_s=float(output.get("stats_interval_s", 30.0)),
     )
     cfg.check_mode()
     return cfg

@@ -111,6 +111,13 @@ class FallMonitor:
             del self._tracks[track_id]
         return events
 
+    def close_all(self, t: float) -> list[IncidentEvent]:
+        """The camera went away: every open incident becomes unresolved and all tracks are dropped."""
+        events = [IncidentEvent(UNRESOLVED, track.incident, t)
+                  for track in self._tracks.values() if track.incident is not None]
+        self._tracks.clear()
+        return events
+
     def _severity(self, down_for: float) -> str:
         if down_for >= self.cfg.critical_after_seconds:
             return "critical"

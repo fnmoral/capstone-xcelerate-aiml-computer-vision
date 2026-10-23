@@ -29,6 +29,10 @@ and how long they were down.
 It can watch several cameras at the same time. A webcam is handled exactly like an IP
 camera, so what you see in a demo is what happens with real cameras.
 
+**Cameras that overlap.** When two or more cameras look at the same room, they can be
+grouped into a *zone*. A fall seen by several cameras of a zone is then recorded **once**,
+with every camera that saw it and a photo from each, instead of raising one alert per camera.
+
 ## What it recognises
 
 For every person, several times a second, it decides one of three states:
@@ -56,7 +60,8 @@ service waits to be sure:
 3. **They get up and stay up for 3 seconds** → the incident is marked **recovered**, with
    how long they were on the floor.
 4. **They disappear from view while still down** (for example, the camera loses sight of
-   them on the floor) → the incident is marked **unresolved**, meaning someone should check.
+   them on the floor, or the camera goes offline) → the incident is marked **unresolved**,
+   meaning someone should check.
 
 Things that do **not** count as a fall: bending over to pick something up, crouching,
 sitting down quickly, or a single frame where the camera briefly misreads someone.
@@ -89,8 +94,9 @@ later is straightforward.
   appear in the web app yet. They are saved to files.
 - **Rules, not a trained model.** The decision is made by hand-tuned rules, so expect some
   false alarms or misses until they are tuned on real footage. A trained model is planned.
-- **Overlapping cameras.** If two cameras see the same person, they count as two people and
-  a fall may be recorded twice.
+- **Overlapping cameras need setting up.** Cameras only merge their alerts once they are
+  grouped into a zone. And if two different people fall at almost the same moment, each
+  seen by a different camera of the same zone, they are recorded as one fall.
 
 ---
 
@@ -106,7 +112,9 @@ prototyping and in a Linux container on the GPU server for production
 ```
 stream-hub (H.264) ─► decode (PyAV) ─┐
 webcam / RTSP / file (OpenCV) ───────┴─► newest frame ─► YOLO26-pose + ByteTrack (≤ 10 fps)
-   ─► pose features ─► fall rules ─► incident state machine ─► data/*.jsonl
+   ─► pose features ─► fall rules ─► incident state machine ─┐
+                                        (one per camera)      ├─► zone merge ─► data/*.jsonl
+                              other cameras' state machines ──┘
 ```
 
 Every source becomes a camera with its own tracker, fall state and outputs. A webcam goes
@@ -122,6 +130,7 @@ through exactly the same steps as an IP camera, so prototyping results carry ove
 | Features | `fall/features.py` | Torso angle, box aspect ratio, hip height, head below hips |
 | Rules | `fall/rules.py` | Labels each pose `upright`, `falling` or `lying` (Stage A, no training needed) |
 | Incidents | `fall/state_machine.py` | Down for `confirm_seconds` opens an incident; up for `recover_seconds` closes it |
+| Zones | `fall/zones.py` | Merges incidents from cameras of the same zone, so one fall gives one alert |
 | Output | `sinks/jsonl.py` | `model_predictions.jsonl`, `incidents.jsonl`, snapshots; fields match `backend-module/db/schema.sql` |
 | Config | `config.py`, `config.yaml` | Typed settings with a dev and a prod section; documented in [CONFIG.md](CONFIG.md) |
 | Test sender | `tools/send_video.py` | Plays the part of stream-hub from a webcam or video file |
@@ -196,7 +205,27 @@ What this filters out:
 - **A `falling` label alone never opens an incident.** The person has to end up `lying`.
 - **One misdetected frame** doesn't close an incident either. Recovery needs 3 seconds of `upright`.
 
-### 5. Outputs
+A camera that disconnects with an incident still open closes it as `unresolved`.
+
+### 5. Zones: one alert per fall across overlapping cameras (`fall/zones.py`)
+
+Each camera's state machine only knows its own people. Track IDs are per camera, so one
+person seen by two cameras is two tracks. Cameras that see the same area are grouped into a
+zone (`zones:` in `config.yaml`, see [CONFIG.md](CONFIG.md#zones)), and every camera-level
+event passes through a shared aggregator:
+
+| Camera-level event | Zone-level result |
+|---|---|
+| `incident_started`, no open incident in the zone within `merge_window_seconds` (10 s) from another camera | **`incident_started`**: a new zone incident |
+| `incident_started`, an open incident in the zone started within the window and has no open fall from this camera | **`incident_updated`**: the camera joins it (closest start time wins) |
+| `incident_updated` (severity rose) | `incident_updated` only if the zone incident's severity (highest of its cameras) changed |
+| `incident_recovered` / `incident_unresolved` | Nothing until **every** camera has closed; then `incident_recovered` if any camera saw the person get up, else `incident_unresolved` |
+
+Two falls on the *same* camera are never merged, because that camera's tracker already
+tells the people apart. An unzoned camera is its own zone. Known limitation: two different
+people falling within the window, each on a different camera of one zone, become one incident.
+
+### 6. Outputs
 
 All output goes to `data/` (git-ignored), using the field names of
 `backend-module/db/schema.sql` so the backend can store records unchanged.
@@ -204,8 +233,11 @@ All output goes to `data/` (git-ignored), using the field names of
 | File | Written when | Contents |
 |---|---|---|
 | `model_predictions.jsonl` | At most once per second per person (`prediction_interval_s`) | Label, confidence, box, keypoints, torso angle, aspect ratio, hip speed, inference time |
-| `incidents.jsonl` | On every incident event above | Incident ID, event, status (`active` / `recovered` / `unresolved`), severity, start and recovery times, peak confidence, snapshot path |
-| `snapshots/<incident id>.jpg` | On `incident_started` | The frame at the moment the fall was confirmed |
+| `incidents.jsonl` | On every zone-level incident event above | Incident ID, event, status (`active` / `recovered` / `unresolved`), severity, start and recovery times, peak confidence, snapshot path, `camera_id` (first camera), `camera_ids` (all), `zone`, `tracks` |
+| `snapshots/<incident id>.jpg` | When a camera confirms the fall | The frame at that moment; extra cameras of a zone incident add `<incident id>_<camera>.jpg` |
+
+The `incidents` table in the schema has one `camera_id`; storing `camera_ids` will need an
+extra table (e.g. `incident_cameras`) when the backend is connected.
 
 Each event is also logged, e.g. `incident_started track=1 severity=medium`, and the preview
 window draws every person's box with `#<track> <label> <confidence>`.
@@ -330,18 +362,47 @@ To change sources or thresholds without rebuilding, mount your own `config.yaml`
 
 Port 9999 has no authentication, so keep it on the internal network.
 
-### Performance on the server
+### Capacity and performance
 
-Measure before changing anything; `inference_ms` in `model_predictions.jsonl` shows the
-time per frame.
+There is no camera limit in ml-service. (gateway-back allows 3 cameras *per gateway*;
+stream-hub accepts several gateways.) The cameras share a fixed number of analysed frames
+per second: each camera gets up to `inference.target_fps` (10), always on its newest frame,
+and the share shrinks evenly when the machine is saturated.
 
-1. **Bigger model.** A stronger GPU can afford `yolo26s-pose.pt` or `yolo26m-pose.pt`,
-   which detect people more reliably.
-2. **`inference.half: true` (FP16).** Usually faster on data-center GPUs, but it was slower
-   on an RTX 3060 laptop with the nano model (58 vs 40 ms), so compare first.
-3. **More cameras.** The main thread runs the model for each camera in turn. If the GPU
-   still has headroom with many cameras, the next step is batching all cameras' frames
-   into one model call (not built yet).
+Measured on the development laptop (RTX 3060 Laptop, i7-11800H), with simulated stream-hub
+cameras sending 720p H.264 at 25 fps, `yolo26n-pose.pt`:
+
+| Cameras | Analysed per camera | Total analysed | GPU busy | ml-service CPU |
+|---|---|---|---|---|
+| 1 | 9.6 fps | 10 fps | 34% | 0.5 cores |
+| 4 | 9.1 fps | 36 fps | 31% | 1.7 cores |
+| 8 | 3.6 fps | 29 fps | 29% | 2.6 cores |
+| 12 | 1.8 fps | 22 fps | 36% | 3.4 cores |
+
+What this shows:
+
+- **About 4 cameras at full rate** on that laptop, and it keeps running beyond that with
+  fewer frames per camera. Incidents still open at low rates, because a fall is confirmed
+  by 3 s of `lying`; the `falling` label (hip speed) gets less reliable below ~5 fps.
+- **The GPU is not the bottleneck** (about 30% busy). The limit is Python-side work: image
+  preparation, tracking and per-camera decoding threads competing for the interpreter.
+  The server's CPU matters as much as its GPU, and past ~4–6 cameras the total goes down
+  slightly as more decoding threads compete.
+- Only frames that may be analysed are converted from H.264 to images (at most 2 ×
+  `target_fps` per camera); this took 4 cameras from 1.9 to 9.1 analysed fps.
+
+On the server:
+
+1. **Check the `stats:` log line** (every 30 s). A warning appears when cameras get fewer
+   than 80% of `target_fps`.
+2. **`inference.target_fps: 5`** roughly doubles the number of cameras at full rate and is
+   still enough to detect falls.
+3. **Bigger model** (`yolo26s-pose.pt`, `yolo26m-pose.pt`) if the GPU has headroom; it
+   detects people more reliably.
+4. **`inference.half: true` (FP16)**: compare first; it was slower on the laptop (58 vs 40 ms).
+5. **Next code steps for many cameras** (not built yet): batch all cameras' frames into one
+   model call, and move H.264 decoding into separate processes so it doesn't compete with
+   the model loop.
 
 ## Threading
 
@@ -367,8 +428,11 @@ python -m pytest
 - Results are written to local files. Sending them to `backend-module` is the next step.
 - Stage B (a learned classifier over keypoint sequences, trained on public fall datasets)
   should replace `RuleClassifier` behind the same `classify()` interface.
-- Cross-camera identity: track IDs are per camera, so one person seen by two overlapping
-  cameras gives two tracks and possibly two incidents.
+- Cross-camera identity: zones stop duplicate alerts, but track IDs are still per camera.
+  Telling two people apart across cameras would need a shared floor plan (camera
+  calibration), not built yet.
+- Throughput beyond ~4–6 cameras per machine needs batched inference and out-of-process
+  decoding (see [Capacity and performance](#capacity-and-performance)).
 - stream-hub's `ai_worker.go` sends only `camera_id`, so `tenant_id` comes from
   `handshake.default_tenant_id`. Set `tenant_in_handshake: true` once the hub sends it.
 - stream-hub drops NALUs when the AI buffer is full, which corrupts decoding until the

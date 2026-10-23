@@ -5,8 +5,8 @@ developer PC and on the production server; a single switch decides which mode ru
 
 - [Dev or prod: the mode switch](#dev-or-prod-the-mode-switch)
 - [How the file is organised](#how-the-file-is-organised)
-- [All options](#all-options): [sources](#sources) · [preview](#preview) · [server](#server) ·
-  [handshake](#handshake) · [inference](#inference) · [fall](#fall) · [output](#output)
+- [All options](#all-options): [sources](#sources) · [zones](#zones) · [preview](#preview) ·
+  [server](#server) · [handshake](#handshake) · [inference](#inference) · [fall](#fall) · [output](#output)
 - [Command-line flags](#command-line-flags) · [Environment variables](#environment-variables)
 - [Recipes](#recipes) · [Errors you may see](#errors-you-may-see)
 
@@ -62,7 +62,7 @@ output: {...}
 ```
 
 - The `dev:` or `prod:` section is laid **on top of** the shared settings. Any shared
-  section can be overridden per mode: `sources`, `preview`, `server`, `handshake`,
+  section can be overridden per mode: `sources`, `zones`, `preview`, `server`, `handshake`,
   `inference`, `fall`, `output`.
 - Sections merge key by key. For example, `prod: inference: {weights: yolo26s-pose.pt}`
   changes only the weights; every other `inference` setting stays shared.
@@ -121,6 +121,40 @@ dev:
       path: videos/test-fall.mp4
       camera_id: replay-1
 ```
+
+### zones
+
+Groups of cameras that see the same area, so **one fall gives one alert** even when several
+cameras see it.
+
+```yaml
+prod:
+  zones:
+    ward-a: [3f2c8e1a-...-camera-1, 9b77d0c4-...-camera-2]
+    lobby:  [5d1e...-camera-3, 0a9f...-camera-4]
+```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `zones` | `{}` (none) | Zone name → list of `camera_id`s. For stream-hub cameras, use the IDs gateway-back assigns (shown in the log when a camera connects) |
+| `fall.merge_window_seconds` | `10` | Falls on different cameras of a zone that start within this many seconds of each other are one incident |
+
+How a zone incident behaves:
+
+- The first camera to confirm the fall raises `incident_started`. Other cameras of the zone
+  that confirm it within the window **join** it: that is reported as `incident_updated`
+  with the extra camera, not a new alert.
+- The incident lists every camera (`camera_ids`), takes the highest severity and confidence
+  of any camera, and keeps a snapshot from each one.
+- It closes when **every** camera has closed it: `recovered` if any camera saw the person
+  get up, otherwise `unresolved`.
+- Two people falling on the **same** camera are still two incidents; that camera's tracker
+  tells them apart.
+- A camera not in any zone works as before: its falls are never merged with another camera's.
+- A camera can be in only one zone.
+
+Limitation: if two *different* people fall within the window, each seen by a *different*
+camera of the same zone, they are merged into one incident.
 
 ### preview
 
@@ -182,6 +216,7 @@ Thresholds for the fall rules and incident timing. See *Detection logic in detai
 | `fall.lost_track_seconds` | `10` | A person not seen for this long is forgotten; an open incident becomes `unresolved` |
 | `fall.high_after_seconds` | `60` | Incident severity becomes `high` after this long |
 | `fall.critical_after_seconds` | `300` | Incident severity becomes `critical` after this long |
+| `fall.merge_window_seconds` | `10` | See [zones](#zones) |
 
 Tune `confirm_seconds` first if you get false alarms (raise it) or late alerts (lower it).
 
@@ -191,6 +226,12 @@ Tune `confirm_seconds` first if you get false alarms (raise it) or late alerts (
 |---|---|---|
 | `output.dir` | `data` | Folder for `model_predictions.jsonl`, `incidents.jsonl` and `snapshots/`. In the container this is the `ml-data` volume |
 | `output.prediction_interval_s` | `1.0` | At most one `model_predictions` record per person per this many seconds |
+| `output.stats_interval_s` | `30` | How often to log a stats line per camera: frames received and analysed per second, and model time. `0` turns it off |
+
+The stats line looks like
+`stats: 4 camera(s) | cam-1 in=25.1fps analysed=9.1fps model=24ms | ...`. If cameras get
+noticeably fewer than `inference.target_fps` analysed frames, a warning says the machine
+is saturated; lower `target_fps` or add capacity.
 
 ---
 
@@ -267,6 +308,13 @@ and build the image with the same weights:
 `docker build --build-arg YOLO_WEIGHTS=yolo26s-pose.pt .` (or `YOLO_WEIGHTS` in
 `deploy/docker-compose.yml`). The build fails if the two don't match.
 
+**Overlapping cameras in production**: start the service, note each camera's ID from the
+`camera [...] connected` log lines, then group the ones that see the same room under
+`prod: zones:`.
+
+**Many cameras**: watch the `stats:` lines. If `analysed` falls well below `target_fps`,
+set `inference.target_fps: 5`; that is still enough to detect a fall.
+
 **Different thresholds per mode**, e.g. faster confirmation while demoing:
 
 ```yaml
@@ -291,3 +339,5 @@ running with a bad setting.
 | `sources[n] (...): type must be one of ...` | Use `tcp`, `rtsp`, `webcam` or `file` |
 | `unknown keys under dev: [...]` / `under fall: [...]` | Check the spelling against the tables above |
 | `sources is empty` | List at least one source |
+| `camera '...' is in two zones: ...` | Put each camera in one zone only |
+| `zones.<name> must be a list of camera_ids` | Write the cameras as a list: `[cam-1, cam-2]` |
