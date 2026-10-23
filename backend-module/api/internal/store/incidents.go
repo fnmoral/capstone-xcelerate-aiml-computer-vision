@@ -240,7 +240,7 @@ func (s *Store) UpdateIncident(ctx context.Context, id string, status, notes *st
 		for _, a := range list {
 			if err := audit(ctx, tx, tid, actor, "alert.false_positive", "alert", a.id, map[string]any{
 				"message": AlertActionText["false_positive"], "to": "false_positive",
-				"incident_id": incID, "camera_id": a.camera,
+				"incident_id": incID, "camera_id": a.camera, "incident_from": from,
 			}); err != nil {
 				return err
 			}

@@ -84,6 +84,7 @@ func (s *Server) Register(r *gin.Engine) {
 	a.POST("/alerts/:id/acknowledge", s.alertStatus("acknowledged"))
 	a.POST("/alerts/:id/resolve", s.alertStatus("resolved"))
 	a.POST("/alerts/:id/false-positive", s.alertStatus("false_positive"))
+	a.POST("/alerts/:id/reopen", s.reopenAlert)
 
 	a.GET("/stats", s.stats)
 	a.GET("/snapshots/:name", s.snapshot)
@@ -620,6 +621,20 @@ func (s *Server) alertStatus(status string) gin.HandlerFunc {
 		}
 		c.JSON(http.StatusOK, gin.H{"alert": a})
 	}
+}
+
+// reopenAlert undoes Resolve or False alarm (e.g. clicked by mistake).
+func (s *Server) reopenAlert(c *gin.Context) {
+	a, err := s.db.ReopenAlert(c.Request.Context(), c.Param("id"), actor(c))
+	if errors.Is(err, store.ErrNotClosed) {
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		return
+	}
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"alert": a})
 }
 
 func (s *Server) stats(c *gin.Context) {

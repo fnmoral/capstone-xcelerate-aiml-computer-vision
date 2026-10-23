@@ -23,6 +23,7 @@ from ml-service.
 | `POST /api/incidents/:id/notes` | `{author?, text}`: append a note (several people can; none is overwritten). Stored in `audit_logs` (`incident.note`); incidents return them as `note_list`, the CSV export as one cell |
 | `GET /api/alerts?status=` | Alerts |
 | `POST /api/alerts/:id/acknowledge` · `/resolve` · `/false-positive` | Alert workflow; a false positive also marks its incident |
+| `POST /api/alerts/:id/reopen` | Undo Resolve or False alarm (clicked by mistake): the alert goes back to open / acknowledged; after a false alarm the incident gets its previous status back. 409 if the alert isn't resolved or a false alarm. Logged as `alert.reopened` |
 | `GET /api/notifications` | Open fall alerts + cameras that stopped working with `alert_offline` on (the header bell) |
 | `GET /api/logs?kind=&camera_id=&incident_id=&from=&to=&limit=` | Activity log, newest first: user actions (`audit_logs`) and camera changes the monitor noticed (`system_logs`). `kind`: alert, incident, camera |
 | `GET /api/export/incidents.csv?…` · `/api/export/logs.csv?…` | CSV downloads with the same filters, plus `tz` (IANA zone, e.g. `America/Toronto`) for the times |
