@@ -1,0 +1,73 @@
+# backend-module database: PostgreSQL 17 + pgvector, with the schema loaded on first start.
+#
+#   cd backend-module
+#   cp .env.example .env        # then set the passwords
+#   docker compose up -d
+#   docker compose logs -f db
+#
+# Other containers reach it as  db:5432  by joining the shared "fallguard" network:
+#
+#   networks:
+#     fallguard:
+#       external: true          # created by this file; start this one first
+#
+# Reset everything (schema changes, fresh seed):  docker compose down -v && docker compose up -d
+name: fallguard-db
+
+services:
+  db:
+    image: pgvector/pgvector:0.8.7-pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-fallguard}
+      POSTGRES_USER: ${POSTGRES_USER:-fallguard_admin}          # owns the tables
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      ML_SERVICE_PASSWORD: ${ML_SERVICE_PASSWORD:?set ML_SERVICE_PASSWORD in .env}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}                   # load seed.sql on first start
+      TZ: UTC
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      # Run once, in name order, only when the data volume is empty:
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./db/init/02-seed.sh:/docker-entrypoint-initdb.d/02-seed.sh:ro
+      - ./db/init/03-roles.sh:/docker-entrypoint-initdb.d/03-roles.sh:ro
+      - ./db/seed.sql:/seed/seed.sql:ro
+    ports:
+      # Host access for psql / DB tools / ml-service running outside Docker.
+      # Only this machine by default; set DB_BIND=0.0.0.0 to open it to the network.
+      - "${DB_BIND:-127.0.0.1}:${DB_PORT:-5432}:5432"
+    networks:
+      fallguard:
+        aliases: [postgres]           # reachable as db or postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  # Keeps monthly partitions created ahead of time (see create_monthly_partitions in
+  # schema.sql). Runs as the table owner, once at start and then daily.
+  partitions:
+    image: pgvector/pgvector:0.8.7-pg17
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGDATABASE: ${POSTGRES_DB:-fallguard}
+      PGUSER: ${POSTGRES_USER:-fallguard_admin}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      MONTHS_AHEAD: ${PARTITION_MONTHS_AHEAD:-3}
+    volumes:
+      - ./db/init/partitions.sh:/partitions.sh:ro
+    entrypoint: ["bash", "/partitions.sh"]
+    networks: [fallguard]
+
+volumes:
+  db-data:
+
+networks:
+  fallguard:
+    name: fallguard                   # fixed name so other compose projects can join it

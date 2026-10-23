@@ -2,8 +2,15 @@
 -- DB1 = config/identity (low volume, relational)
 -- DB2 = events/alerts/logs (high volume, time-partitioned)
 -- Vector DB = embeddings only (pgvector shown; swap for Qdrant/Milvus if needed)
+--
+-- Changes for the ML service (ml-service) integration:
+--   * zones + cameras.zone_id: cameras that see the same area, so one fall = one incident
+--   * incidents.zone + incident_cameras: every camera that saw an incident
+--   * create_monthly_partitions() + DEFAULT partitions: inserts no longer fail when a
+--     month has no partition yet (only 2026-10 existed)
+--   * pgcrypto dropped: gen_random_uuid() is built into PostgreSQL 13+
+--   * row-level security on the new tables and on model_predictions
 
-CREATE EXTENSION IF NOT EXISTS pgcrypto;   -- gen_random_uuid()
 CREATE EXTENSION IF NOT EXISTS citext;
 CREATE EXTENSION IF NOT EXISTS vector;     -- only needed if using pgvector
 
@@ -79,11 +86,23 @@ CREATE TABLE gateways (
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Cameras that see the same area. A fall seen by several cameras of one zone is recorded
+-- as one incident (ml-service merges them). A camera belongs to at most one zone.
+CREATE TABLE zones (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id  UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    site_id    UUID REFERENCES sites(id) ON DELETE SET NULL,
+    name       TEXT NOT NULL,                  -- e.g. 'Ward A', shown on incidents
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (tenant_id, name)
+);
+
 CREATE TABLE cameras (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     site_id         UUID REFERENCES sites(id) ON DELETE SET NULL,
     gateway_id      UUID REFERENCES gateways(id) ON DELETE SET NULL,
+    zone_id         UUID REFERENCES zones(id) ON DELETE SET NULL,
     name            TEXT NOT NULL,
     rtsp_url_enc    BYTEA NOT NULL,            -- encrypted, URLs often contain credentials
     status          TEXT NOT NULL DEFAULT 'offline' CHECK (status IN ('online','offline','error','disabled')),
@@ -95,6 +114,7 @@ CREATE TABLE cameras (
     UNIQUE (tenant_id, name)
 );
 CREATE INDEX idx_cameras_tenant ON cameras(tenant_id);
+CREATE INDEX idx_cameras_zone ON cameras(zone_id) WHERE zone_id IS NOT NULL;
 
 -- ---------- Prompts and detection rules (Module 1 input) ----------
 
@@ -227,10 +247,13 @@ CREATE TABLE system_logs (                      -- pipeline health: stream drops
 ) PARTITION BY RANGE (created_at);
 
 -- One row per fall: when it was detected, when the person recovered, how long they were down
+-- A fall seen by several cameras of one zone is ONE row: camera_id is the first camera that
+-- confirmed it; incident_cameras lists all of them.
 CREATE TABLE incidents (
     id               UUID NOT NULL DEFAULT gen_random_uuid(),
     tenant_id        UUID NOT NULL,
-    camera_id        UUID NOT NULL,
+    camera_id        UUID NOT NULL,             -- first camera that confirmed the fall
+    zone             TEXT,                      -- zone name at the time (zones.name), null if the camera has none
     incident_type    TEXT NOT NULL DEFAULT 'fall',
     started_at       TIMESTAMPTZ NOT NULL,      -- fall first detected
     recovered_at     TIMESTAMPTZ,               -- person back on their feet, null while still down
@@ -250,6 +273,19 @@ CREATE TABLE incidents (
 CREATE INDEX idx_incidents_cam_time ON incidents (tenant_id, camera_id, started_at DESC);
 CREATE INDEX idx_incidents_status   ON incidents (tenant_id, status, started_at DESC);
 
+-- Every camera (and tracked person on it) that saw an incident, with its own snapshot.
+-- Low volume, so not partitioned.
+CREATE TABLE incident_cameras (
+    tenant_id     UUID NOT NULL,
+    incident_id   UUID NOT NULL,                -- soft link to incidents
+    camera_id     UUID NOT NULL,
+    track_id      INT  NOT NULL,                -- ML tracker ID of the person on that camera
+    joined_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    snapshot_key  TEXT,                         -- object storage key for this camera's image
+    PRIMARY KEY (incident_id, camera_id, track_id)
+);
+CREATE INDEX idx_incident_cameras_cam ON incident_cameras (tenant_id, camera_id, joined_at DESC);
+
 -- Raw ML output per inference, so reports and model reviews can trace back to the numbers
 CREATE TABLE model_predictions (
     id            UUID NOT NULL DEFAULT gen_random_uuid(),
@@ -260,7 +296,7 @@ CREATE TABLE model_predictions (
     predicted_at  TIMESTAMPTZ NOT NULL,
     model_name    TEXT NOT NULL,
     model_version TEXT NOT NULL,
-    label         TEXT NOT NULL,                -- 'standing','fall','on_floor', ...
+    label         TEXT NOT NULL,                -- ml-service: 'upright','falling','lying'
     confidence    REAL NOT NULL,
     output        JSONB NOT NULL DEFAULT '{}',  -- keypoints, torso angle, anything the model returns
     inference_ms  INT,
@@ -285,23 +321,40 @@ CREATE TABLE reports (
 );
 CREATE INDEX idx_reports_incident ON reports (tenant_id, incident_id);
 
--- Example monthly partitions (automate with pg_partman or a cron job)
-CREATE TABLE events_2026_10 PARTITION OF events
-    FOR VALUES FROM ('2026-10-01') TO ('2026-11-01');
-CREATE TABLE frames_2026_10 PARTITION OF frames
-    FOR VALUES FROM ('2026-10-01') TO ('2026-11-01');
-CREATE TABLE alerts_2026_10 PARTITION OF alerts
-    FOR VALUES FROM ('2026-10-01') TO ('2026-11-01');
-CREATE TABLE alert_deliveries_2026_10 PARTITION OF alert_deliveries
-    FOR VALUES FROM ('2026-10-01') TO ('2026-11-01');
-CREATE TABLE audit_logs_2026_10 PARTITION OF audit_logs
-    FOR VALUES FROM ('2026-10-01') TO ('2026-11-01');
-CREATE TABLE system_logs_2026_10 PARTITION OF system_logs
-    FOR VALUES FROM ('2026-10-01') TO ('2026-11-01');
-CREATE TABLE incidents_2026_10 PARTITION OF incidents
-    FOR VALUES FROM ('2026-10-01') TO ('2026-11-01');
-CREATE TABLE model_predictions_2026_10 PARTITION OF model_predictions
-    FOR VALUES FROM ('2026-10-01') TO ('2026-11-01');
+-- ---------- Monthly partitions ----------
+-- create_monthly_partitions(from_month, months) creates <table>_YYYY_MM for every partitioned
+-- table. ml-service calls it at startup for the current and next month; it can also run
+-- from a monthly cron job. Safe to call repeatedly.
+CREATE OR REPLACE FUNCTION create_monthly_partitions(from_month date, months int)
+RETURNS void LANGUAGE plpgsql AS $$
+DECLARE
+    t text;
+    m date;
+BEGIN
+    FOREACH t IN ARRAY ARRAY['frames', 'events', 'alerts', 'alert_deliveries', 'audit_logs',
+                             'system_logs', 'incidents', 'model_predictions'] LOOP
+        FOR i IN 0 .. months - 1 LOOP
+            m := (date_trunc('month', from_month) + make_interval(months => i))::date;
+            EXECUTE format('CREATE TABLE IF NOT EXISTS %I PARTITION OF %I FOR VALUES FROM (%L) TO (%L)',
+                           t || '_' || to_char(m, 'YYYY_MM'), t, m, (m + interval '1 month')::date);
+        END LOOP;
+    END LOOP;
+END $$;
+
+-- Oct 2026 (seed data) through Jan 2027.
+SELECT create_monthly_partitions(date '2026-10-01', 4);
+
+-- Safety net: rows outside every monthly partition land here instead of failing the insert.
+-- Create monthly partitions ahead of time, though: a month can't be split off the default
+-- partition later while it holds rows for that month.
+CREATE TABLE frames_default            PARTITION OF frames            DEFAULT;
+CREATE TABLE events_default            PARTITION OF events            DEFAULT;
+CREATE TABLE alerts_default            PARTITION OF alerts            DEFAULT;
+CREATE TABLE alert_deliveries_default  PARTITION OF alert_deliveries  DEFAULT;
+CREATE TABLE audit_logs_default        PARTITION OF audit_logs        DEFAULT;
+CREATE TABLE system_logs_default       PARTITION OF system_logs       DEFAULT;
+CREATE TABLE incidents_default         PARTITION OF incidents         DEFAULT;
+CREATE TABLE model_predictions_default PARTITION OF model_predictions DEFAULT;
 
 -- =====================================================================
 -- VECTOR DB (Module 5): embeddings only, metadata stays in DB2
@@ -347,4 +400,28 @@ CREATE POLICY tenant_isolation ON incidents
 ALTER TABLE reports ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON reports
     USING (tenant_id = current_setting('app.tenant_id')::uuid);
--- repeat for sites, gateways, api_keys, notification_channels, frames, model_predictions, etc.
+
+ALTER TABLE zones ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON zones
+    USING (tenant_id = current_setting('app.tenant_id')::uuid);
+
+ALTER TABLE incident_cameras ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON incident_cameras
+    USING (tenant_id = current_setting('app.tenant_id')::uuid);
+
+ALTER TABLE model_predictions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON model_predictions
+    USING (tenant_id = current_setting('app.tenant_id')::uuid);
+-- repeat for sites, gateways, api_keys, notification_channels, frames, etc.
+
+-- =====================================================================
+-- ML SERVICE ROLE (optional, recommended for production)
+-- ml-service only needs to write detections and read camera/zone setup. It sets
+-- app.tenant_id per transaction, so row-level security applies to it too.
+-- =====================================================================
+-- CREATE ROLE ml_service LOGIN PASSWORD '<from a secret store>';
+-- GRANT SELECT ON tenants, cameras, zones, rules TO ml_service;
+-- GRANT SELECT, INSERT, UPDATE ON incidents, incident_cameras, alerts TO ml_service;
+-- GRANT INSERT ON model_predictions TO ml_service;
+-- GRANT EXECUTE ON FUNCTION create_monthly_partitions(date, int) TO ml_service;  -- also needs CREATE on the schema
+-- RLS also needs policies on tenants/cameras/rules or a SECURITY DEFINER lookup if ml_service reads them under RLS.

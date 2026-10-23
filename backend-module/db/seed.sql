@@ -26,6 +26,11 @@ VALUES ('44444444-4444-4444-4444-444444444444', '11111111-1111-1111-1111-1111111
         '33333333-3333-3333-3333-333333333333', 'gateway-main-01', 'dev-only-token-hash',
         '2026-10-13 06:05:00-04');
 
+-- Cameras 02 and 03 both cover the ground floor living area, so a fall seen by both is one incident.
+INSERT INTO zones (id, tenant_id, site_id, name)
+VALUES ('99999999-9999-9999-9999-999999999901', '11111111-1111-1111-1111-111111111111',
+        '33333333-3333-3333-3333-333333333333', 'Ground floor living area');
+
 INSERT INTO cameras (id, tenant_id, site_id, gateway_id, name, rtsp_url_enc, status,
                      keyframe_interval_s, resolution, location) VALUES
 ('c0000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111',
@@ -37,6 +42,9 @@ INSERT INTO cameras (id, tenant_id, site_id, gateway_id, name, rtsp_url_enc, sta
 ('c0000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111',
  '33333333-3333-3333-3333-333333333333', '44444444-4444-4444-4444-444444444444',
  'CAM-03 Bathroom Corridor', 'placeholder'::bytea, 'online', 2, '1280x720', 'Ground floor bathroom corridor');
+
+UPDATE cameras SET zone_id = '99999999-9999-9999-9999-999999999901'
+WHERE id IN ('c0000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000003');
 
 -- ---------- Rule and notification channels ----------
 
@@ -115,6 +123,21 @@ INSERT INTO incidents (id, tenant_id, camera_id, incident_type, started_at, reco
  'false_positive', 'low', 0.58, 'Ground floor living room',
  'demo-facility/cam-02/2026/10/11/153000.jpg', 'Person was bending to pick up an item');
 
+-- Cameras that saw each incident (one each here; a zone incident would list several)
+INSERT INTO incident_cameras (tenant_id, incident_id, camera_id, track_id, joined_at, snapshot_key) VALUES
+('11111111-1111-1111-1111-111111111111', 'd0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000002',
+ 1, '2026-10-12 09:14:05-04', 'demo-facility/cam-02/2026/10/12/091405.jpg'),
+('11111111-1111-1111-1111-111111111111', 'd0000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000001',
+ 1, '2026-10-12 21:47:30-04', 'demo-facility/cam-01/2026/10/12/214730.jpg'),
+('11111111-1111-1111-1111-111111111111', 'd0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000003',
+ 1, '2026-10-13 06:02:11-04', 'demo-facility/cam-03/2026/10/13/060211.jpg'),
+('11111111-1111-1111-1111-111111111111', 'd0000000-0000-0000-0000-000000000004', 'c0000000-0000-0000-0000-000000000002',
+ 1, '2026-10-11 15:30:00-04', 'demo-facility/cam-02/2026/10/11/153000.jpg');
+
+UPDATE incidents SET zone = 'Ground floor living area'
+WHERE id IN ('d0000000-0000-0000-0000-000000000001', 'd0000000-0000-0000-0000-000000000003',
+             'd0000000-0000-0000-0000-000000000004');
+
 -- ---------- ML model predictions (sequence per incident) ----------
 
 INSERT INTO model_predictions (id, tenant_id, camera_id, frame_id, incident_id, predicted_at,
@@ -122,40 +145,40 @@ INSERT INTO model_predictions (id, tenant_id, camera_id, frame_id, incident_id, 
 -- incident 1
 ('b0000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'c0000000-0000-0000-0000-000000000002',
  'f0000000-0000-0000-0000-000000000001', 'd0000000-0000-0000-0000-000000000001', '2026-10-12 09:14:05-04',
- 'fall-detector', 'dev', 'fall',     0.91, '{"torso_angle_deg":78}', 42),
+ 'fall-detector', 'dev', 'falling', 0.91, '{"torso_angle_deg":78}', 42),
 ('b0000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'c0000000-0000-0000-0000-000000000002',
  NULL, 'd0000000-0000-0000-0000-000000000001', '2026-10-12 09:14:09-04',
- 'fall-detector', 'dev', 'on_floor', 0.84, '{"torso_angle_deg":85}', 40),
+ 'fall-detector', 'dev', 'lying',    0.84, '{"torso_angle_deg":85}', 40),
 ('b0000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'c0000000-0000-0000-0000-000000000002',
  NULL, 'd0000000-0000-0000-0000-000000000001', '2026-10-12 09:14:13-04',
- 'fall-detector', 'dev', 'standing', 0.93, '{"torso_angle_deg":8}', 41),
+ 'fall-detector', 'dev', 'upright',  0.93, '{"torso_angle_deg":8}', 41),
 -- incident 2
 ('b0000000-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'c0000000-0000-0000-0000-000000000001',
  'f0000000-0000-0000-0000-000000000002', 'd0000000-0000-0000-0000-000000000002', '2026-10-12 21:47:30-04',
- 'fall-detector', 'dev', 'fall',     0.97, '{"torso_angle_deg":81}', 44),
+ 'fall-detector', 'dev', 'falling', 0.97, '{"torso_angle_deg":81}', 44),
 ('b0000000-0000-0000-0000-000000000005', '11111111-1111-1111-1111-111111111111', 'c0000000-0000-0000-0000-000000000001',
  NULL, 'd0000000-0000-0000-0000-000000000002', '2026-10-12 21:47:45-04',
- 'fall-detector', 'dev', 'on_floor', 0.95, '{"torso_angle_deg":87}', 43),
+ 'fall-detector', 'dev', 'lying',    0.95, '{"torso_angle_deg":87}', 43),
 ('b0000000-0000-0000-0000-000000000006', '11111111-1111-1111-1111-111111111111', 'c0000000-0000-0000-0000-000000000001',
  NULL, 'd0000000-0000-0000-0000-000000000002', '2026-10-12 21:48:45-04',
- 'fall-detector', 'dev', 'on_floor', 0.96, '{"torso_angle_deg":88}', 42),
+ 'fall-detector', 'dev', 'lying',    0.96, '{"torso_angle_deg":88}', 42),
 ('b0000000-0000-0000-0000-000000000007', '11111111-1111-1111-1111-111111111111', 'c0000000-0000-0000-0000-000000000001',
  NULL, 'd0000000-0000-0000-0000-000000000002', '2026-10-12 21:49:52-04',
- 'fall-detector', 'dev', 'standing', 0.90, '{"torso_angle_deg":10}', 41),
+ 'fall-detector', 'dev', 'upright',  0.90, '{"torso_angle_deg":10}', 41),
 -- incident 3 (still active)
 ('b0000000-0000-0000-0000-000000000008', '11111111-1111-1111-1111-111111111111', 'c0000000-0000-0000-0000-000000000003',
  'f0000000-0000-0000-0000-000000000003', 'd0000000-0000-0000-0000-000000000003', '2026-10-13 06:02:11-04',
- 'fall-detector', 'dev', 'fall',     0.95, '{"torso_angle_deg":80}', 39),
+ 'fall-detector', 'dev', 'falling', 0.95, '{"torso_angle_deg":80}', 39),
 ('b0000000-0000-0000-0000-000000000009', '11111111-1111-1111-1111-111111111111', 'c0000000-0000-0000-0000-000000000003',
  NULL, 'd0000000-0000-0000-0000-000000000003', '2026-10-13 06:02:41-04',
- 'fall-detector', 'dev', 'on_floor', 0.96, '{"torso_angle_deg":86}', 40),
+ 'fall-detector', 'dev', 'lying',    0.96, '{"torso_angle_deg":86}', 40),
 ('b0000000-0000-0000-0000-000000000010', '11111111-1111-1111-1111-111111111111', 'c0000000-0000-0000-0000-000000000003',
  NULL, 'd0000000-0000-0000-0000-000000000003', '2026-10-13 06:03:41-04',
- 'fall-detector', 'dev', 'on_floor', 0.97, '{"torso_angle_deg":88}', 40),
+ 'fall-detector', 'dev', 'lying',    0.97, '{"torso_angle_deg":88}', 40),
 -- incident 4 (false positive, low confidence)
 ('b0000000-0000-0000-0000-000000000011', '11111111-1111-1111-1111-111111111111', 'c0000000-0000-0000-0000-000000000002',
  'f0000000-0000-0000-0000-000000000004', 'd0000000-0000-0000-0000-000000000004', '2026-10-11 15:30:00-04',
- 'fall-detector', 'dev', 'fall',     0.58, '{"torso_angle_deg":55}', 43);
+ 'fall-detector', 'dev', 'falling', 0.58, '{"torso_angle_deg":55}', 43);
 
 -- ---------- Alerts and delivery attempts ----------
 
