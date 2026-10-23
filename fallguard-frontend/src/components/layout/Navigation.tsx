@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom';
 import { NAV_ITEMS, SECTION_LABELS, type NavSection } from '../../config/navigation';
 import { useUiStore } from '../../store/uiStore';
 import { Icon } from '../ui/Icon';
+import { SidebarClock } from './SidebarClock';
 import './Navigation.css';
 
 const SECTIONS: NavSection[] = ['monitor', 'manage', 'system'];
@@ -30,6 +31,7 @@ export function Navigation() {
             </ul>
           </div>
         ))}
+        <SidebarClock collapsed={navCollapsed} />
         <button className="nav__collapse" onClick={toggleCollapsed}
           aria-label={navCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
           <Icon name={navCollapsed ? 'expand' : 'collapse'} />

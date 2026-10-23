@@ -77,7 +77,8 @@ export const api = {
     apiRequest<{ note: Note }>('/incidents/' + enc(id) + '/notes', { method: 'POST', ...json(body) }),
 
   alerts: (status = '') => apiRequest<{ alerts: Alert[] }>('/alerts' + (status ? '?status=' + enc(status) : '')),
-  alertAction: (id: string, action: 'acknowledge' | 'resolve' | 'false-positive') =>
+  /** reopen = undo Resolve or False alarm (back to open / acknowledged). */
+  alertAction: (id: string, action: 'acknowledge' | 'resolve' | 'false-positive' | 'reopen') =>
     apiRequest<{ alert: Alert }>('/alerts/' + enc(id) + '/' + action, { method: 'POST' }),
 
   notifications: () => apiRequest<Notifications>('/notifications'),

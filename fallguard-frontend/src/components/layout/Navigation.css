@@ -14,10 +14,16 @@
 }
 .nav__link:hover { background: var(--surface-2); color: var(--text); }
 .nav__link--active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-.nav__collapse { display: none; margin-top: auto; align-items: center; gap: 12px; min-height: 40px; padding: 0 10px; border-radius: 8px; color: var(--text-muted); }
+.nav__collapse { display: none; align-items: center; gap: 12px; min-height: 40px; padding: 0 10px; border-radius: 8px; color: var(--text-muted); }
 .nav__collapse:hover { background: var(--surface-2); }
 .nav-scrim { position: fixed; inset: var(--header-h) 0 0 0; z-index: 20; background: rgba(0,0,0,.35); opacity: 0; pointer-events: none; transition: opacity .2s; }
 .nav-scrim--show { opacity: 1; pointer-events: auto; }
+
+/* Clock above Collapse: pushed to the bottom; on phones (no Collapse) it is the last item */
+.nav-clock { margin-top: auto; display: grid; gap: 1px; padding: 10px; border-radius: 8px; background: var(--surface-2); line-height: 1.25; }
+.nav-clock__time { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; color: var(--text); }
+.nav-clock__date { font-size: 12px; color: var(--text); }
+.nav-clock__zone { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 @media (min-width: 1024px) {
   .nav { transform: none; box-shadow: none; }
@@ -26,4 +32,8 @@
   .nav--collapsed { width: var(--nav-w-collapsed); }
   .nav--collapsed .nav__label, .nav--collapsed .nav__heading { display: none; }
   .nav--collapsed .nav__link, .nav--collapsed .nav__collapse { justify-content: center; padding: 0; }
+  /* Collapsed rail: time and short date, centred, smaller */
+  .nav-clock--rail { padding: 8px 2px; text-align: center; justify-items: center; }
+  .nav-clock--rail .nav-clock__time { font-size: 12px; }
+  .nav-clock--rail .nav-clock__date { font-size: 10px; color: var(--text-muted); }
 }
