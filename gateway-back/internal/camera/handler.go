@@ -34,6 +34,7 @@ func NewHandler(service Service, tenantID string) *Handler {
 //   - DELETE /cameras/:id   -> RemoveCamera
 //   - POST   /cameras/:id/pause  -> PauseCamera
 //   - POST   /cameras/:id/resume -> ResumeCamera
+//   - GET    /limits             -> {max_streaming, max_saved}
 func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	cams := router.Group("/cameras")
 	{
@@ -44,6 +45,9 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		cams.POST("/:id/resume", h.ResumeCamera)
 	}
 	router.GET("/health", h.HealthCheck)
+	router.GET("/limits", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"max_streaming": MaxStreaming, "max_saved": MaxSaved})
+	})
 }
 
 // AddCamera handles the creation of a new camera.
@@ -53,7 +57,8 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 //
 // Responses:
 //   - 400 Bad Request if the request body is invalid.
-//   - 409 Conflict if the maximum number of cameras has been reached.
+//   - 409 Conflict if MaxSaved cameras are saved.
+//   - 201 Created with status "paused" when MaxStreaming are already streaming (standby).
 //   - 500 Internal Server Error for any other service error.
 //   - 201 Created with the created camera on success.
 func (h *Handler) AddCamera(c *gin.Context) {
@@ -121,6 +126,7 @@ func (h *Handler) PauseCamera(c *gin.Context) {
 //
 // Responses:
 //   - 404 Not Found if no camera has the ID.
+//   - 409 Conflict if MaxStreaming cameras are already streaming.
 //   - 500 Internal Server Error for any other service error.
 //   - 200 OK with the camera (status "online") on success.
 func (h *Handler) ResumeCamera(c *gin.Context) {
@@ -132,6 +138,10 @@ func (h *Handler) respondCamera(c *gin.Context, action func(id string) (*Camera,
 	if err != nil {
 		if errors.Is(err, ErrCameraNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"Error": err.Error()})
+			return
+		}
+		if errors.Is(err, ErrMaxStreaming) {
+			c.JSON(http.StatusConflict, gin.H{"Error": err.Error()})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})

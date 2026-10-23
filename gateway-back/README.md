@@ -19,7 +19,8 @@ communication.
 - **TCP relay to cloud** — sends NALUs to a remote server using a custom
   length-prefixed protocol with an initial handshake identifying the camera.
 - **Camera management API** — create, list, and remove cameras through REST
-  endpoints, with a hard limit of 3 cameras per gateway.
+  endpoints: up to 5 cameras **streaming** at once per gateway and up to 50 saved; the rest
+  stay paused (standby) and can be switched in with pause / resume (`GET /gateway/actions/limits`).
 - **Hot configuration updates** — update the cloud server address and server
   port at runtime, persisted to `config.json` and applied to active streams.
 - **Stream restoration on startup** — restores all previously saved camera
@@ -48,7 +49,7 @@ gateway-back/
 │ │ ├── handler.go # HTTP endpoints (Gin)
 │ │ ├── model.go # Structs with JSON and DB tags
 │ │ ├── repository.go # Manual SQL queries (sqlx)
-│ │ └── service.go # Business logic (max 3 cameras, stream relay)
+│ │ └── service.go # Business logic (5 streaming / 50 saved, stream relay)
 │ ├── config/
 │ │ ├── config.go # Config struct, loading and saving
 │ │ └── handler.go # Config HTTP endpoints (get/update)
@@ -78,7 +79,7 @@ gateway-back/
 | `internal/camera/handler.go` | HTTP endpoints (Gin) for creating, listing, and removing cameras. |
 | `internal/camera/model.go` | Camera structs with JSON and database tags, plus DTOs. |
 | `internal/camera/repository.go` | Manual SQL queries using `sqlx`. |
-| `internal/camera/service.go` | Business logic: enforces the max of 3 cameras, manages stream relays, and restores saved streams on startup. |
+| `internal/camera/service.go` | Business logic: at most `MaxStreaming` (5) streaming and `MaxSaved` (50) saved cameras (a new camera over 5 is saved paused; resume returns 409 at 5), manages stream relays, and restores saved streams on startup. |
 | `internal/config/config.go` | `Config` struct plus `LoadConfig` and `SaveConfig` functions. |
 | `internal/config/handler.go` | HTTP endpoints to get and update the configuration at runtime. |
 | `internal/database/sqlite.go` | SQLite connection setup and schema initialization. |
@@ -97,7 +98,7 @@ gateway-back/
 | Package | Responsibility |
 |---|---|
 | `cmd/api` | Bootstraps the application: loads config, initializes DB, stream manager, service, and HTTP server. |
-| `camera` | Camera domain: HTTP handlers, models, repository, and business logic (max 3 cameras). |
+| `camera` | Camera domain: HTTP handlers, models, repository, and business logic (5 streaming / 50 saved). |
 | `config` | Configuration struct plus handlers for reading and updating it at runtime. |
 | `database` | SQLite initialization and schema creation. |
 | `extractor` | Decodes RTP packets and detects H.264 keyframes (IDR / NALU type 5). |

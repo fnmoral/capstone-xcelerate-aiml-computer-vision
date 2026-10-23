@@ -6,6 +6,10 @@ export default function CameraList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showForm, setShowForm] = useState(false);
+  // At most max_streaming cameras stream at once; the rest stay saved, paused (standby).
+  const [limits, setLimits] = useState({ max_streaming: 5, max_saved: 50 });
+  const streaming = cameras.filter((c) => c.status !== 'paused').length;
+  const full = cameras.length >= limits.max_saved;
 
   // Fetch camera list from backend
   const fetchCameras = async () => {
@@ -30,6 +34,7 @@ export default function CameraList() {
 
   useEffect(() => {
     fetchCameras();
+    fetch('/gateway/actions/limits').then((r) => (r.ok ? r.json() : null)).then((l) => l && setLimits(l)).catch(() => {});
   }, []);
 
   const [busyId, setBusyId] = useState(null);
@@ -73,21 +78,24 @@ export default function CameraList() {
           <div className="flex items-center gap-2 mt-0.5">
             <h2 className="text-base font-bold text-slate-900">Connected Cameras</h2>
             <span className="px-2 py-0.5 text-xs font-semibold bg-slate-100 text-slate-600 rounded-lg">
-              {cameras.length} / 3
+              {streaming} / {limits.max_streaming} streaming
+            </span>
+            <span className="px-2 py-0.5 text-xs font-semibold bg-slate-100 text-slate-500 rounded-lg">
+              {cameras.length} / {limits.max_saved} saved
             </span>
           </div>
         </div>
 
         <button
           onClick={() => setShowForm(true)}
-          disabled={cameras.length >= 3}
+          disabled={full}
           className={`px-4 py-2 text-xs font-semibold rounded-xl transition shadow-sm ${
-            cameras.length >= 3
+            full
               ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
               : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20 cursor-pointer'
           }`}
         >
-          {cameras.length >= 3 ? 'Maximum Limit Reached' : '+ Add Camera'}
+          {full ? 'Maximum Limit Reached' : '+ Add Camera'}
         </button>
       </div>
 

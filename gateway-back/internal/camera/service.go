@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,9 +18,19 @@ import (
 	"gateway-back/internal/stream"
 )
 
-// ErrMaxCamerasReached is returned when an attempt is made to add a camera
-// beyond the maximum allowed limit of three cameras per gateway.
-var ErrMaxCamerasReached = errors.New("Limit reached: Only up to 3 cameras are allowed per gateway.")
+// Per gateway: at most MaxStreaming cameras stream at once; up to MaxSaved are kept, the
+// rest paused ("standby"). A paused camera costs nothing (no connection, no video), so
+// cameras can be switched with pause / resume instead of being removed and added again.
+const (
+	MaxStreaming = 5
+	MaxSaved     = 50
+)
+
+// ErrMaxCamerasReached is returned when adding a camera beyond MaxSaved.
+var ErrMaxCamerasReached = fmt.Errorf("Limit reached: up to %d cameras can be saved per gateway.", MaxSaved)
+
+// ErrMaxStreaming is returned when resuming a camera while MaxStreaming are streaming.
+var ErrMaxStreaming = fmt.Errorf("%d cameras are already streaming on this gateway: pause one first.", MaxStreaming)
 
 // ErrCameraNotFound is returned when no camera has the given ID.
 var ErrCameraNotFound = errors.New("Camera not found.")
@@ -62,6 +73,10 @@ type service struct {
 
 	// streamManager coordinates the RTSP stream relays for the cameras.
 	streamManager *stream.StreamManager
+
+	// mu makes "count the streaming cameras, then start one" atomic, so two requests at
+	// once can't go over MaxStreaming.
+	mu sync.Mutex
 }
 
 // NewService creates a new camera Service with the given repository and stream manager.
@@ -77,20 +92,29 @@ func NewService(repo Repository, sm *stream.StreamManager) Service {
 // AddCamera creates a new camera with the provided data, persists it, and
 // starts its stream relay.
 //
-// It enforces a maximum of three cameras per gateway. If the limit has been
-// reached, it returns ErrMaxCamerasReached.
+// Up to MaxSaved cameras are kept (else ErrMaxCamerasReached). While MaxStreaming are
+// already streaming, a new camera is saved paused (standby) and not started.
 //
 // If the camera is saved successfully but the stream relay fails to start,
 // the camera is still persisted and a warning is logged instead of returning
 // an error.
 func (s *service) AddCamera(dto CreateCameraDTO, tenantID string) (*Camera, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	count, err := s.repo.Count()
 	if err != nil {
 		return nil, fmt.Errorf("ERROR checking total number of cameras: %w", err)
 	}
-
-	if count >= 3 {
+	if count >= MaxSaved {
 		return nil, ErrMaxCamerasReached
+	}
+	streaming, err := s.repo.CountStreaming()
+	if err != nil {
+		return nil, fmt.Errorf("ERROR checking streaming cameras: %w", err)
+	}
+	status := StatusOnline
+	if streaming >= MaxStreaming {
+		status = StatusPaused
 	}
 
 	now := time.Now()
@@ -101,13 +125,17 @@ func (s *service) AddCamera(dto CreateCameraDTO, tenantID string) (*Camera, erro
 		RTSPURL:   dto.RTSPURL,
 		Username:  dto.Username,
 		Password:  dto.Password,
-		Status:    "online",
+		Status:    status,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
 
 	if err := s.repo.Create(cam); err != nil {
 		return nil, fmt.Errorf("ERROR saving camera: %w", err)
+	}
+	if status == StatusPaused {
+		log.Printf("Camera [%s] (%s) saved on standby: %d cameras already streaming", cam.ID, cam.Name, streaming)
+		return cam, nil
 	}
 
 	fullRTSPURL := buildRTSPURL(cam.RTSPURL, cam.Username, cam.Password)
@@ -159,6 +187,16 @@ func (s *service) ResumeCamera(id string) (*Camera, error) {
 	}
 	if cam == nil {
 		return nil, ErrCameraNotFound
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if cam.Status != StatusPaused {
+		return cam, nil // already streaming
+	}
+	if streaming, err := s.repo.CountStreaming(); err != nil {
+		return nil, err
+	} else if streaming >= MaxStreaming {
+		return nil, ErrMaxStreaming
 	}
 	fullURL := buildRTSPURL(cam.RTSPURL, cam.Username, cam.Password)
 	if err := s.streamManager.StartRelay(cam.ID, cam.TenantID, fullURL); err != nil {
@@ -241,7 +279,9 @@ func (s *service) RestoreSavedStreams(ctx context.Context) error {
 		// Launch each stream in its own goroutine.
 		go func(c Camera) {
 			log.Printf("Restoring relay for camera [%s] (%s) -> URL: %s", c.ID, c.Name, rtsp.Redact(c.RTSPURL))
-			if err := s.streamManager.StartRelay(c.ID, c.TenantID, c.RTSPURL); err != nil {
+			// With the camera's login, as when it was added (cameras that need one got 401
+			// after every gateway restart without it).
+			if err := s.streamManager.StartRelay(c.ID, c.TenantID, buildRTSPURL(c.RTSPURL, c.Username, c.Password)); err != nil {
 				log.Printf("ERROR restoring relay for camera [%s]: %v", c.ID, err)
 			}
 		}(cam)

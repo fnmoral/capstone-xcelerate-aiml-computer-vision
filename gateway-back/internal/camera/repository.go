@@ -14,6 +14,7 @@ type Repository interface {
 	FindByID(id string) (*Camera, error)
 	FindAll() ([]Camera, error)
 	Count() (int64, error)
+	CountStreaming() (int64, error) // cameras that are not paused
 	Delete(id string) error
 	UpdateStatus(id, status string) error
 }
@@ -76,6 +77,14 @@ func (r *sqliteRepository) Count() (int64, error) {
 	err := r.db.Get(&count, query)
 	if err != nil {
 		return 0, fmt.Errorf("Rrror counting camera records: %w", err)
+	}
+	return count, nil
+}
+
+func (r *sqliteRepository) CountStreaming() (int64, error) {
+	var count int64
+	if err := r.db.Get(&count, `SELECT COUNT(*) FROM cameras WHERE status != 'paused'`); err != nil {
+		return 0, fmt.Errorf("Error counting streaming cameras: %w", err)
 	}
 	return count, nil
 }

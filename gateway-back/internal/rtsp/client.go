@@ -12,7 +12,6 @@ import (
 	"github.com/bluenviron/gortsplib/v5"
 	"github.com/bluenviron/gortsplib/v5/pkg/base"
 	"github.com/bluenviron/gortsplib/v5/pkg/description"
-	"github.com/bluenviron/gortsplib/v5/pkg/format"
 	"github.com/pion/rtp"
 
 	"gateway-back/internal/extractor"
@@ -122,7 +121,8 @@ func (c *RTSPClient) connectionLoop() {
 // It creates a new gortsplib client on each attempt (required to allow clean
 // reconnections), performs the Describe, selects the video track, initializes
 // the keyframe extractor, configures the Setup, registers the RTP packet
-// callback, sends the initial SPS/PPS (if H.264), and executes Play.
+// callback, sends the initial parameter sets (H.264 SPS/PPS or H.265 VPS/SPS/PPS),
+// and executes Play.
 //
 // It blocks until the connection is lost or fails (client.Wait).
 //
@@ -202,12 +202,12 @@ func (c *RTSPClient) connectAndStream() error {
 		}
 	})
 
-	if h264Format, ok := forma.(*format.H264); ok && c.sender != nil {
-		if h264Format.SPS != nil {
-			_ = c.sender.SendNALU(h264Format.SPS)
-		}
-		if h264Format.PPS != nil {
-			_ = c.sender.SendNALU(h264Format.PPS)
+	// Parameter sets first (SPS/PPS, or VPS/SPS/PPS for H.265), so the decoder can
+	// start at the first keyframe. ml-service tells the codec apart from these.
+	if c.extractor != nil && c.sender != nil {
+		log.Printf("[%s] Video codec: %s", c.ID, c.extractor.Codec)
+		for _, ps := range c.extractor.ParameterSets {
+			_ = c.sender.SendNALU(ps)
 		}
 	}
 
