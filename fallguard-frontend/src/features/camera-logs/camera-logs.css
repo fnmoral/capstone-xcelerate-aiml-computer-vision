@@ -1,0 +1,5 @@
+.cl-section { padding: 16px; margin-bottom: 20px; }
+.cl-filters { padding: 0; }
+.cl-sub { font-size: 12px; }
+.cl-time { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.table tr.cl-down td { background: color-mix(in srgb, var(--danger) 8%, var(--surface)); }

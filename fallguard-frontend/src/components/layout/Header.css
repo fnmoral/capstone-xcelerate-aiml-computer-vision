@@ -17,3 +17,18 @@
 @keyframes header-pulse { 50% { opacity: .75; } }
 @media (min-width: 1024px) { .header__menu { display: none; } }
 @media (max-width: 380px) { .header__name { display: none; } }
+
+/* Notifications dropdown */
+.notif { position: relative; }
+.notif__panel { position: absolute; right: 0; top: calc(100% + 6px); width: min(380px, calc(100vw - 32px)); max-height: 70vh; overflow-y: auto; padding: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, .18); z-index: 40; }
+.notif__title { font-size: 15px; margin: 0 0 8px; }
+.notif__empty { margin: 4px 0 8px; font-size: 14px; }
+.notif__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.notif__item { display: grid; gap: 4px; justify-items: start; padding: 8px; border-radius: 8px; font-size: 14px; }
+.notif__item:hover { background: var(--surface-2); }
+.notif__sub { font-size: 12px; }
+.notif__footer { display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 13px; color: var(--accent); }
+@media (max-width: 640px) {
+  /* Full width under the header, so it never runs off the left edge */
+  .notif__panel { position: fixed; left: 16px; right: 16px; top: calc(var(--header-h) + 6px); width: auto; }
+}

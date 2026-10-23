@@ -7,3 +7,5 @@
 .cams-row__info { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
 .cams-row__edit { max-width: 560px; }
 .cams-row__actions { flex: 0 0 auto; }
+.cams-form__switch { margin-top: 14px; }
+.cams-row__since { font-size: 12px; }

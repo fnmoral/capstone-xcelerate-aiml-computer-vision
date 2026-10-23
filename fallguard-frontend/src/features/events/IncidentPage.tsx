@@ -5,8 +5,8 @@ import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Icon } from '../../components/ui/Icon';
 import { api, snapshotUrl } from '../../services/api/fallguard';
 import { usePolling } from '../../services/api/usePolling';
-import { formatDuration, formatTime, LABEL_TEXT, secondsSince, shortId } from '../../lib/format';
-import type { Prediction } from '../../types/domain';
+import { alertBy, byWhen, formatDuration, formatTime, LABEL_TEXT, secondsSince, shortId } from '../../lib/format';
+import type { Incident, LogEntry, Prediction } from '../../types/domain';
 import { Snapshot } from './Snapshot';
 import './events.css';
 
@@ -33,6 +33,22 @@ function Timeline({ predictions }: { predictions: Prediction[] }) {
   );
 }
 
+/** Who did what to this incident and its alert, newest first, ending with the detection itself. */
+function History({ inc, activity }: { inc: Incident; activity: LogEntry[] }) {
+  const lines = [
+    ...activity.map((e) => ({ at: e.at, text: e.message, by: e.actor ?? 'System' })),
+    ...(inc.alert ? [{ at: inc.alert.triggered_at, text: 'Alert raised', by: 'Detector' }] : []),
+    { at: inc.started_at, text: 'Fall detected', by: 'Detector' },
+  ].sort((a, b) => b.at.localeCompare(a.at));
+  return (
+    <ol className="history" aria-label="Incident history">
+      {lines.map((l, i) => (
+        <li key={i}><span>{l.text}</span><span className="history__by">{byWhen(l.by, l.at)}</span></li>
+      ))}
+    </ol>
+  );
+}
+
 export default function IncidentPage() {
   const { id = '' } = useParams();
   const { data, error, reload } = usePolling(() => api.incident(id), 3000, [id]);
@@ -55,7 +71,7 @@ export default function IncidentPage() {
 
   if (error && !data) return <p className="notice notice--error">{error}</p>;
   if (!data) return <p className="muted">Loading…</p>;
-  const { incident: inc, predictions } = data;
+  const { incident: inc, predictions, activity = [] } = data;
   const alert = inc.alert;
   const down = inc.status === 'active' ? secondsSince(inc.started_at) : inc.duration_seconds;
   const photos = inc.cameras.filter((c) => c.snapshot_key);
@@ -117,7 +133,14 @@ export default function IncidentPage() {
                 <p className="row"><StatusBadge value={alert.status} />
                   <span className="muted">triggered {formatTime(alert.triggered_at)}</span></p>
                 {alert.summary && <p>{alert.summary}</p>}
-                {alert.acknowledged_at && <p className="muted ev-sub">Acknowledged {formatTime(alert.acknowledged_at)}</p>}
+                {alert.acknowledged_at && (
+                  <p className="muted ev-sub">Acknowledged by {alertBy(alert.acknowledged_by, alert.acknowledged_at)}</p>
+                )}
+                {alert.closed_at && (
+                  <p className="muted ev-sub">
+                    {alert.status === 'false_positive' ? 'Marked false alarm' : 'Resolved'} by {alertBy(alert.closed_by, alert.closed_at)}
+                  </p>
+                )}
                 <div className="row">
                   {alert.status === 'open' && (
                     <button className="btn btn--primary" disabled={busy} onClick={() => run(() => api.alertAction(alert.id, 'acknowledge'))}>
@@ -135,6 +158,10 @@ export default function IncidentPage() {
                 </div>
               </>
             )}
+          </section>
+          <section className="card ev-section">
+            <h2 className="section-title">History</h2>
+            <History inc={inc} activity={activity} />
           </section>
           <section className="card ev-section">
             <h2 className="section-title">Notes</h2>

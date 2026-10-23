@@ -10,6 +10,7 @@ const TONE: Record<string, string> = {
   critical: 'critical', high: 'critical', medium: 'warning', low: 'muted',
   // cameras
   online: 'good', paused: 'muted', not_on_gateway: 'muted', offline: 'warning',
+  not_working: 'critical', connecting: 'warning', not_connected: 'muted',
   // live labels
   lying: 'critical', falling: 'warning', upright: 'good',
 };

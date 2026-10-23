@@ -59,3 +59,24 @@
 .tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 16px; }
 .tab { height: 32px; padding: 0 12px; border-radius: 99px; border: 1px solid var(--border); font-size: 13px; background: var(--surface); }
 .tab[aria-pressed='true'] { background: var(--text); color: var(--bg); border-color: var(--text); }
+
+/* Filter bars (Reports, Camera Logs) */
+.filters { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-end; padding: 16px; margin-bottom: 20px; }
+.filters .field { min-width: 170px; }
+.filters .tabs { margin-bottom: 0; }
+.time-window { display: grid; gap: 10px; }
+.time-window .field { min-width: 200px; }
+
+/* On/off switch: a checkbox with its text label */
+.switch { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.switch input { appearance: none; width: 34px; height: 20px; border-radius: 99px; background: var(--border); position: relative; cursor: pointer; transition: background .15s; flex: 0 0 auto; }
+.switch input::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.switch input:checked { background: var(--accent); }
+.switch input:checked::after { transform: translateX(14px); }
+.switch input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.switch input:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Who did what, when (incident history, activity log) */
+.history { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; font-size: 14px; }
+.history li { display: grid; gap: 2px; padding-left: 14px; border-left: 2px solid var(--border); }
+.history__by { font-size: 12px; color: var(--text-muted); }

@@ -9,6 +9,7 @@ export default function LiveViewPage() {
   const { data, error, loading } = usePolling(() => api.cameras(), 2000);
   const cameras = (data?.cameras ?? []).filter((c) => c.on_gateway);
   const active = cameras.reduce((n, c) => n + c.active_incidents, 0);
+  const broken = cameras.filter((c) => c.health === 'not_working' && c.alert_offline);
 
   return (
     <>
@@ -21,6 +22,13 @@ export default function LiveViewPage() {
         <p className="notice notice--error" role="alert">
           <strong>{active} active fall incident{active > 1 ? 's' : ''}.</strong>{' '}
           <Link to="/events?status=active">Review now →</Link>
+        </p>
+      )}
+      {broken.length > 0 && (
+        <p className="notice notice--error" role="alert">
+          <strong>{broken.length === 1 ? `${broken[0].name} is not working` : `${broken.length} cameras are not working`}</strong>
+          {' '}(no video, so falls there can't be detected).{' '}
+          <Link to="/camera-logs">Camera logs →</Link>
         </p>
       )}
       {loading && !data ? <p className="muted">Loading cameras…</p> : cameras.length ? <CameraGrid cameras={cameras} /> : (

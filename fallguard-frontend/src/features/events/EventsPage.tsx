@@ -5,7 +5,7 @@ import { StatusBadge } from '../../components/ui/StatusBadge';
 import { api } from '../../services/api/fallguard';
 import { Snapshot } from './Snapshot';
 import { usePolling } from '../../services/api/usePolling';
-import { formatDuration, formatTime, secondsSince } from '../../lib/format';
+import { alertBy, formatDuration, formatTime, secondsSince } from '../../lib/format';
 import './events.css';
 
 const FILTERS = [
@@ -74,7 +74,14 @@ export default function EventsPage() {
                     <div>{i.location_label ?? i.camera_name ?? 'Unknown camera'}</div>
                     <div className="muted ev-sub">{[i.zone && `Zone: ${i.zone}`, i.cameras.length > 1 && `${i.cameras.length} cameras`].filter(Boolean).join(' · ')}</div>
                   </td>
-                  <td>{i.alert ? <StatusBadge value={i.alert.status} /> : <span className="muted">—</span>}</td>
+                  <td>
+                    {i.alert ? <StatusBadge value={i.alert.status} /> : <span className="muted">—</span>}
+                    {(i.alert?.closed_at || i.alert?.acknowledged_at) && (
+                      <div className="muted ev-sub">
+                        {i.alert.closed_at ? alertBy(i.alert.closed_by, i.alert.closed_at) : alertBy(i.alert.acknowledged_by, i.alert.acknowledged_at)}
+                      </div>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

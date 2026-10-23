@@ -5,15 +5,20 @@ backend API (`backend-module/api`) under `/api`.
 
 | Page | What it does |
 |---|---|
-| Live View | Annotated live video per camera (boxes + upright / falling / lying), who is in view, active-incident banner |
-| Fall Events | All incidents with status filters; detail page with photos, label timeline, alert actions (acknowledge, resolve, false alarm) and notes |
+| Live View | Annotated live video per camera (boxes + upright / falling / lying), who is in view, active-incident banner. A camera that stopped working (with its alert on) gets a red dashed outline and a banner |
+| Fall Events | All incidents with status filters; detail page with photos, label timeline, alert actions (acknowledge, resolve, false alarm), notes, and a history of who did what and when |
 | Analytics | Active incidents, open alerts, falls per day, average time down, by camera / outcome / severity |
-| Cameras | Add IP cameras (through the gateway), set location and zone, pause / resume, remove |
+| Reports & Export | Time window (24 h / 7 / 30 days / all / custom from–to) + status, severity, where (zone or camera), alert status; preview; CSV download of the incident report and of the activity log |
+| Cameras | Add IP cameras (through the gateway), set location and zone, pause / resume, remove, "alert me if it stops working" toggle (default on) |
+| Camera Logs | Each camera's status right now (online, paused, not working, not connected) and since when; full history of changes with who made them; CSV export (for audits) |
 | Detection Settings | The detector's thresholds and timings (read-only, from ml-service) |
 | Settings | Health of every service, the gateway's stream-hub address, theme |
 
+The header bell lists open fall alerts and cameras that stopped working.
+
 Live data is polled (every 2–10 s); there is no push channel yet. User accounts are not
-implemented: the API serves one tenant (`TENANT`, default `demo-facility`).
+implemented: the API serves one tenant (`TENANT`, default `demo-facility`), and every action
+is recorded as "Current user".
 
 ## Run
 

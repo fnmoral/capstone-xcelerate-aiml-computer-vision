@@ -10,3 +10,6 @@
 .cam-tile__meta { display: grid; gap: 8px; padding: 12px 14px; font-size: 14px; }
 .cam-tile__meta > div:first-child { display: grid; gap: 2px; }
 .cam-tile__people { display: flex; flex-wrap: wrap; gap: 6px; min-height: 22px; font-size: 13px; }
+/* Stopped working, with "alert me" on: dashed red outline so it differs from a fall */
+.cam-tile--down { border: 2px dashed var(--danger); }
+.cam-tile__incident--down { background: color-mix(in srgb, var(--danger) 85%, #000); }

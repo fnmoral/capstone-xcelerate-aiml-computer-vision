@@ -3,22 +3,30 @@ import { Link } from 'react-router-dom';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { streamUrl } from '../../services/api/fallguard';
 import type { Camera } from '../../types/domain';
-import { LABEL_TEXT } from '../../lib/format';
+import { formatTime, LABEL_TEXT } from '../../lib/format';
 import './CameraGrid.css';
+
+const PLACEHOLDER: Record<string, string> = {
+  paused: 'Paused. Resume it in Cameras to watch.',
+  not_connected: 'Not connected to a gateway.',
+  connecting: 'Waiting for video…',
+};
 
 /** Annotated live video (MJPEG from ml-service, through the backend) with who is in view. */
 function CameraTile({ cam }: { cam: Camera }) {
   const [attempt, setAttempt] = useState(0);
   const watching = cam.on_gateway && cam.status !== 'paused';
   const down = cam.people.filter((p) => p.label !== 'upright');
+  const broken = cam.health === 'not_working';
+  // Highlighted only when its "alert me" toggle is on; otherwise it just shows the status.
+  const flagged = broken && cam.alert_offline;
 
-  let placeholder = '';
-  if (cam.status === 'paused') placeholder = 'Paused. Resume it in Cameras to watch.';
-  else if (!cam.on_gateway) placeholder = 'Not connected to a gateway.';
-  else if (!cam.live) placeholder = 'Waiting for video…';
+  const placeholder = broken
+    ? `No video since ${formatTime(cam.health_since)}. Check the camera's power and network.`
+    : PLACEHOLDER[cam.health] ?? 'Waiting for video…';
 
   return (
-    <li className={`cam-tile card${cam.active_incidents ? ' cam-tile--alert' : ''}`}>
+    <li className={`cam-tile card${cam.active_incidents ? ' cam-tile--alert' : flagged ? ' cam-tile--down' : ''}`}>
       <div className="cam-tile__video">
         {watching && cam.live ? (
           <img key={attempt} src={`${streamUrl(cam.id)}?a=${attempt}`} alt={`Live video from ${cam.name}`}
@@ -27,12 +35,15 @@ function CameraTile({ cam }: { cam: Camera }) {
           <p className="cam-tile__placeholder">{placeholder}</p>
         )}
         <span className="cam-tile__overlay">
-          <StatusBadge value={cam.live && watching ? 'online' : cam.status}
-            label={cam.live && watching ? 'Live' : undefined} />
+          <StatusBadge value={cam.health} label={cam.health === 'online' ? 'Live' : undefined} />
         </span>
-        {cam.active_incidents > 0 && (
+        {cam.active_incidents > 0 ? (
           <Link to={`/events?status=active&camera=${encodeURIComponent(cam.id)}`} className="cam-tile__incident">
             Fall detected: {cam.active_incidents} active
+          </Link>
+        ) : flagged && (
+          <Link to={`/camera-logs?camera=${encodeURIComponent(cam.id)}`} className="cam-tile__incident cam-tile__incident--down">
+            Camera not working since {formatTime(cam.health_since)}
           </Link>
         )}
       </div>

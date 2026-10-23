@@ -3,6 +3,9 @@
  */
 export type CameraStatus = 'online' | 'paused' | 'not_on_gateway' | 'offline' | string;
 
+/** What a camera is doing right now (kept by the backend's camera monitor). */
+export type CameraHealth = 'online' | 'paused' | 'not_working' | 'connecting' | 'not_connected';
+
 export interface LivePerson {
   track: number;
   label: 'upright' | 'falling' | 'lying' | string;
@@ -14,7 +17,10 @@ export interface Camera {
   name: string;
   location: string | null;
   zone: string | null;
-  status: CameraStatus;
+  status: CameraStatus; // as the gateway reports it
+  health: CameraHealth;
+  health_since: string | null;
+  alert_offline: boolean; // notify when it stops working
   on_gateway: boolean;
   rtsp_url: string; // without credentials
   created_at: string;
@@ -48,6 +54,9 @@ export interface Alert {
   summary: string | null;
   snapshot_key: string | null;
   acknowledged_at: string | null;
+  acknowledged_by: string | null;
+  closed_at: string | null; // resolved or marked a false alarm
+  closed_by: string | null;
 }
 
 export interface Incident {
@@ -88,6 +97,33 @@ export interface Stats {
   by_severity: Record<string, number>;
   by_status: Record<string, number>;
   predictions_last_hour: Record<string, number>;
+}
+
+/** One line of the activity log: a user action, or a camera change the system noticed. */
+export interface LogEntry {
+  at: string;
+  kind: 'alert' | 'incident' | 'camera';
+  action: string; // e.g. alert.acknowledged, camera.paused, camera.not_working
+  actor: string | null; // null: noticed by the system
+  camera_id: string | null;
+  camera_name: string | null;
+  target_id: string | null;
+  incident_id: string | null;
+  message: string;
+}
+
+/** A camera row from the database, as the notifications list returns it. */
+export interface DownCamera {
+  id: string;
+  name: string;
+  location: string | null;
+  zone: string | null;
+  status_since: string | null;
+}
+
+export interface Notifications {
+  alerts: Alert[];
+  cameras: DownCamera[]; // stopped working, with alerts on
 }
 
 export interface ServiceCheck {

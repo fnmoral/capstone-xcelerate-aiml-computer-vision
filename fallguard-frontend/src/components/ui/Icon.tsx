@@ -18,6 +18,8 @@ const PATHS: Record<string, string> = {
   plus: 'M12 5v14M5 12h14',
   back: 'M15 6l-6 6 6 6',
   check: 'M5 12l5 5 9-10',
+  download: 'M12 4v11M7 10l5 5 5-5M5 20h14',
+  log: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
 };
 
 export function Icon({ name, size = 20 }: { name: string; size?: number }) {

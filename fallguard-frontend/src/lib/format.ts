@@ -41,6 +41,20 @@ export const STATUS_TEXT: Record<string, string> = {
   online: 'Online',
   paused: 'Paused',
   not_on_gateway: 'Not on gateway',
+  not_working: 'Not working',
+  connecting: 'Waiting for video',
+  not_connected: 'Not connected',
 };
+
+/**
+ * "Current user · 14:02:10" for who-did-what lines. `unknown` is shown when nobody is
+ * recorded: "System" in the activity log; for alerts, "Not recorded" (handled before
+ * actions were logged).
+ */
+export const byWhen = (who: string | null | undefined, at: string | null | undefined, unknown = 'System') =>
+  [who ?? unknown, formatTime(at)].join(' · ');
+
+/** Who acknowledged or closed an alert. */
+export const alertBy = (who: string | null | undefined, at: string | null | undefined) => byWhen(who, at, 'Not recorded');
 
 export const shortId = (id: string) => id.slice(0, 8);

@@ -3,12 +3,12 @@ import { useUiStore } from '../../store/uiStore';
 import { api } from '../../services/api/fallguard';
 import { usePolling } from '../../services/api/usePolling';
 import { Icon } from '../ui/Icon';
+import { NotificationsMenu } from './NotificationsMenu';
 import './Header.css';
 
 export function Header() {
   const { navOpen, toggleNav } = useUiStore();
   const { data: stats } = usePolling(() => api.stats(), 5000);
-  const open = stats?.open_alerts ?? 0;
   const active = stats?.active_incidents ?? 0;
 
   return (
@@ -29,11 +29,7 @@ export function Header() {
         </Link>
       )}
       <div className="header__actions">
-        <Link to="/events" className="header__icon-btn header__bell"
-          aria-label={open ? `${open} open alert${open > 1 ? 's' : ''}` : 'No open alerts'}>
-          <Icon name="bell" />
-          {open > 0 && <span className="header__count">{open > 99 ? '99+' : open}</span>}
-        </Link>
+        <NotificationsMenu />
         <Link to="/settings" className="header__icon-btn" aria-label="Settings"><Icon name="user" /></Link>
       </div>
     </header>

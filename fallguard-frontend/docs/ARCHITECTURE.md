@@ -17,6 +17,7 @@ Module 1 is the web interface of FallGuard Vision. Per the Project Vision Docume
 | WebSocket client | Stub, unused (pages poll; a push channel can replace polling later) |
 | Live video playback | IMPLEMENTED as MJPEG: annotated video from ml-service, through `/api/cameras/:id/stream` |
 | Camera CRUD, events, analytics, detection settings | IMPLEMENTED (2026-10-23) |
+| Activity log (who / when), notifications, camera logs, reports & CSV export | IMPLEMENTED (2026-10-23); actor is "Current user" until accounts exist |
 | Authentication / multi-tenant UI | PLANNED (the API serves one tenant for now) |
 
 ## 2. Technology
@@ -84,7 +85,9 @@ Page pattern: `PageHeader` (title, description, actions) followed by content or 
 | `/live` | Live View | Monitor |
 | `/events` | Fall Events | Monitor |
 | `/analytics` | Analytics | Monitor |
+| `/reports` | Reports & Export | Monitor |
 | `/cameras` | Cameras | Manage |
+| `/camera-logs` | Camera Logs | Manage |
 | `/detection` | Detection Settings | Manage |
 | `/settings` | Settings | System |
 | `*` | Not Found | |
@@ -92,7 +95,7 @@ Page pattern: `PageHeader` (title, description, actions) followed by content or 
 - All pages are children of `AppLayout`, so the shell renders once and persists across navigation.
 - Each page is code split through `lazy` and shown inside `Suspense`.
 - Routes are generated from `NAV_ITEMS`, so adding a page means adding one entry there.
-- Planned: `/events/:eventId`, `/cameras/:cameraId`, `/login`, and an auth guard layout route once Module 2 provides authentication.
+- Detail page: `/events/:id` (incident). Planned: `/login` and an auth guard layout route once Module 2 provides authentication.
 
 ## 6. State management strategy
 

@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { StatusBadge } from '../../components/ui/StatusBadge';
@@ -6,9 +7,10 @@ import { Icon } from '../../components/ui/Icon';
 import { api, type CameraInput } from '../../services/api/fallguard';
 import { usePolling } from '../../services/api/usePolling';
 import type { Camera } from '../../types/domain';
+import { formatTime } from '../../lib/format';
 import './cameras.css';
 
-const EMPTY: CameraInput = { name: '', rtsp_url: '', username: '', password: '', location: '', zone: '' };
+const EMPTY: CameraInput = { name: '', rtsp_url: '', username: '', password: '', location: '', zone: '', alert_offline: true };
 
 function AddCameraForm({ onDone }: { onDone: () => void }) {
   const [form, setForm] = useState<CameraInput>(EMPTY);
@@ -48,6 +50,11 @@ function AddCameraForm({ onDone }: { onDone: () => void }) {
         <label className="field">Zone<input value={form.zone} onChange={set('zone')} list="zone-options" placeholder="Optional" />
           <small>Cameras in one zone see the same area: a fall seen by several is one alert</small></label>
       </div>
+      <label className="switch cams-form__switch">
+        <input type="checkbox" checked={form.alert_offline}
+          onChange={(e) => setForm({ ...form, alert_offline: e.target.checked })} />
+        Alert me if this camera stops working
+      </label>
       <div className="row cams-form__actions">
         <button className="btn btn--primary" disabled={saving}>{saving ? 'Adding…' : 'Add camera'}</button>
         <button type="button" className="btn" onClick={onDone}>Cancel</button>
@@ -82,10 +89,8 @@ function CameraRow({ cam, onChange }: { cam: Camera; onChange: () => void }) {
       <div className="cams-row__main">
         <div className="cams-row__title">
           <strong>{cam.name}</strong>
-          <StatusBadge value={cam.status} />
-          {cam.on_gateway && !paused && (cam.live
-            ? <StatusBadge value="online" label="Receiving video" />
-            : <StatusBadge value="offline" label="No video yet" />)}
+          <StatusBadge value={cam.health} />
+          <span className="muted cams-row__since">since {formatTime(cam.health_since)}</span>
           {cam.active_incidents > 0 && <StatusBadge value="active" label={`${cam.active_incidents} active incident(s)`} />}
         </div>
         {editing ? (
@@ -99,9 +104,19 @@ function CameraRow({ cam, onChange }: { cam: Camera; onChange: () => void }) {
             <br /><span className="mono">{cam.rtsp_url || 'Registered in the database only'}</span>
           </p>
         )}
+        {cam.on_gateway && (
+          <label className="switch">
+            <input type="checkbox" checked={cam.alert_offline} disabled={busy}
+              onChange={(e) => run(() => api.updateCamera(cam.id, { alert_offline: e.target.checked }))} />
+            Alert me if it stops working
+          </label>
+        )}
         {error && <p className="notice notice--error">{error}</p>}
       </div>
       <div className="row cams-row__actions">
+        <Link className="btn btn--sm" to={`/camera-logs?camera=${encodeURIComponent(cam.id)}`}>
+          <Icon name="log" size={14} /> Log
+        </Link>
         {editing ? (
           <>
             <button className="btn btn--primary btn--sm" disabled={busy}
