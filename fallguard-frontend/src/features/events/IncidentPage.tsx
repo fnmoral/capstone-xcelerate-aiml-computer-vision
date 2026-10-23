@@ -120,11 +120,11 @@ export default function IncidentPage() {
                 {alert.acknowledged_at && (
                   <p className="muted ev-sub">Acknowledged by {alertBy(alert.acknowledged_by, alert.acknowledged_at)}</p>
                 )}
-                {alert.status === 'resolved' && alert.closed_at && (
+                {alert.status === 'resolved' && (
                   <p className="muted ev-sub">Resolved by {alertBy(alert.closed_by, alert.closed_at)}</p>
                 )}
                 {alert.status === 'false_positive' && (
-                  <p className="muted ev-sub">Marked as a false alarm: see the bottom of the page.</p>
+                  <p className="muted ev-sub">Marked as a false alarm by {alertBy(alert.closed_by, alert.closed_at)}</p>
                 )}
                 <div className="row">
                   {alert.status === 'open' && (
@@ -135,9 +135,10 @@ export default function IncidentPage() {
                   {(alert.status === 'open' || alert.status === 'acknowledged') && (
                     <button className="btn" disabled={busy} onClick={() => run(() => api.alertAction(alert.id, 'resolve'))}>Resolve</button>
                   )}
-                  {alert.status === 'resolved' && (
-                    <button className="btn" disabled={busy} title="Resolved by mistake? Put the alert back to how it was"
-                      onClick={() => run(() => api.alertAction(alert.id, 'reopen'))}>Unresolve</button>
+                  {(alert.status === 'open' || alert.status === 'acknowledged') && (
+                    <button className="btn btn--danger" disabled={busy}
+                      onClick={() => confirm('Mark this as a false alarm? It is left out of the statistics. You can undo this.') &&
+                        run(() => api.alertAction(alert.id, 'false-positive'))}>False alarm</button>
                   )}
                 </div>
               </>
@@ -163,25 +164,20 @@ export default function IncidentPage() {
                 ))}
             </ul>
           </section>
-          {alert && (
-            <section className="card ev-section ev-false">
-              <h2 className="section-title">False alarm?</h2>
-              {alert.status === 'false_positive' ? (
+          {alert && (alert.status === 'resolved' || alert.status === 'false_positive') && (
+            <section className="card ev-section ev-undo">
+              <h2 className="section-title">Undo</h2>
+              {alert.status === 'resolved' ? (
                 <>
-                  <p className="muted">
-                    Marked as a false alarm by {alertBy(alert.closed_by, alert.closed_at)}. It is left out of the statistics.
-                  </p>
-                  <button className="btn" disabled={busy} title="Marked by mistake? Count it as a real fall again"
-                    onClick={() => run(() => api.alertAction(alert.id, 'reopen'))}>Not a false alarm (undo)</button>
+                  <p className="muted">Resolved by mistake? The alert goes back to how it was before.</p>
+                  <button className="btn" disabled={busy} onClick={() => run(() => api.alertAction(alert.id, 'reopen'))}>Unresolve</button>
                 </>
               ) : (
                 <>
-                  <p className="muted">
-                    Nobody fell (an object, or someone lying down on purpose)? Mark it so it is left out of the statistics.
-                  </p>
-                  <button className="btn btn--danger" disabled={busy}
-                    onClick={() => confirm('Mark this as a false alarm? It is left out of the statistics. You can undo this.') &&
-                      run(() => api.alertAction(alert.id, 'false-positive'))}>Mark as false alarm</button>
+                  <p className="muted">Marked as a false alarm by mistake? It counts as a real fall again, in the statistics too.</p>
+                  <button className="btn" disabled={busy} onClick={() => run(() => api.alertAction(alert.id, 'reopen'))}>
+                    Not a false alarm (undo)
+                  </button>
                 </>
               )}
             </section>
