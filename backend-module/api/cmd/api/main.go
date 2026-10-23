@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 	_ "time/tzdata" // CSV exports convert times to the browser's zone; Alpine has no zoneinfo
 
@@ -52,9 +53,14 @@ func main() {
 	server := api.New(cfg, db)
 	server.Register(r)
 	go server.WatchCameras(context.Background()) // camera status + "not working" log
+	devMode := strings.ToLower(env("PROD_MODE", "true")) == "false"
+	if devMode {
+		go server.DevWebcam(context.Background())
+	}
 
 	srv := &http.Server{Addr: cfg.Addr, Handler: r, ReadHeaderTimeout: 10 * time.Second}
-	log.Printf("backend API on %s (tenant %s, gateway %s, ml %s)", cfg.Addr, cfg.Tenant, cfg.GatewayURL, cfg.MLURL)
+	log.Printf("backend API on %s (%s mode, tenant %s, gateway %s, ml %s)", cfg.Addr,
+		map[bool]string{true: "dev", false: "prod"}[devMode], cfg.Tenant, cfg.GatewayURL, cfg.MLURL)
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("server: %v", err)
 	}

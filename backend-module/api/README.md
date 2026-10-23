@@ -63,6 +63,13 @@ At start the API brings an existing database up to date (idempotent statements i
 `internal/store/settings.go`), e.g. `incident_cameras.clip_key`. New databases get the same
 from `db/schema.sql`.
 
+## Dev mode
+
+With `PROD_MODE=false` (root `.env`) the API adds this PC's webcam to the gateway at start,
+as "Windows webcam" (`rtsp://test-camera:8554/webcam`), when the gateway has no cameras at
+all. Its video comes from `ml-service/tools/publish_webcam.py` on the PC, through the
+test-camera relay (which dev starts with the stack). Prod never does this.
+
 ## Camera monitor
 
 Every 5 s the API compares gateway-back (is the camera paused?) with ml-service (is its

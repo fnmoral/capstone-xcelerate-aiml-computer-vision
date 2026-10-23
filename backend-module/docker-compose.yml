@@ -66,6 +66,7 @@ services:
       # Table owner for now; switch to a restricted role once user accounts exist.
       DATABASE_URL: postgresql://${POSTGRES_USER:-fallguard_admin}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-fallguard}
       TENANT: ${TENANT:-demo-facility}
+      PROD_MODE: ${PROD_MODE:-true}            # dev (false): adds the PC's webcam to an empty gateway
       GATEWAY_URL: ${GATEWAY_URL:-http://gateway-back:8080}
       ML_URL: ${ML_URL:-http://ml-service:8000}
       STREAM_HUB_URL: ${STREAM_HUB_URL:-http://stream-hub:9000}

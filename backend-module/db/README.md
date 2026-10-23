@@ -5,7 +5,7 @@ PostgreSQL 15+ schema for the platform, plus dev seed data.
 | File | What it is |
 |---|---|
 | `schema.sql` | All tables: DB1 (tenants, users, cameras, zones, rules), DB2 (frames, events, alerts, incidents, model predictions, logs; partitioned by month), vector embeddings, row-level security |
-| `seed.sql` | Dev data with fixed UUIDs: tenant `demo-facility`, 3 cameras, 4 sample incidents. Not for production |
+| `seed.sql` | Dev data (PROD_MODE=false) with fixed UUIDs: tenant `demo-facility`, 3 sample cameras, a sample week of 10 incidents with alerts, label timelines, who handled them and notes. All timestamps are relative to when it runs (always the 7 days before), in one transaction. Not for production |
 | `fall_detection_db_mockup.html` | Visual mock-up of the fall-detection tables |
 
 ## Run it with Docker (recommended)
@@ -22,7 +22,7 @@ docker compose logs -f db     # wait for "database system is ready to accept con
 
 | Service | What it does |
 |---|---|
-| `db` | The database. On first start (empty volume) it runs, in order: `schema.sql`, `init/02-seed.sh` (loads the demo data `seed.sql` when `PROD_MODE=false`; in prod, or with `PROD_MODE` unset, only the tenant and its fall rule; `SEED_DEMO_DATA=true/false` overrides), `init/03-roles.sh` (creates the restricted `ml_service` login) |
+| `db` | The database. On first start (empty volume) it runs, in order: `schema.sql`, `init/02-seed.sh` (loads the sample data `seed.sql` when `PROD_MODE=false` in the root `.env`; in prod, or with `PROD_MODE` unset, only the tenant and its fall rule; `SEED_DEMO_DATA=true/false` overrides), `init/03-roles.sh` (creates the restricted `ml_service` login) |
 | `partitions` | Runs `create_monthly_partitions()` as the table owner at start and then daily, keeping `PARTITION_MONTHS_AHEAD` (3) months ready |
 
 **Connecting from other containers.** The file creates a Docker network named
