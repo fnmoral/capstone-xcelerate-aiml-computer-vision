@@ -76,16 +76,20 @@ class Resolver:
         return tid
 
     def camera(self, cur, tenant_id: uuid.UUID, camera: str) -> tuple[uuid.UUID, str | None]:
-        """(camera UUID, cameras.location or None). Needs app.tenant_id set for RLS."""
+        """(camera UUID, where to say a fall happened: cameras.location, or the camera's name
+        when it has no location; None if the camera isn't in the database). Needs
+        app.tenant_id set for RLS."""
         key = (tenant_id, camera)
         if (cached := self._cameras.get(key)) is not None and time.monotonic() < cached[0]:
             return cached[1]
         cid = as_uuid(camera)
         if cid is not None:
-            row = cur.execute("SELECT location FROM cameras WHERE id = %s", (cid,)).fetchone()
+            row = cur.execute("SELECT coalesce(nullif(trim(location), ''), name) FROM cameras WHERE id = %s",
+                              (cid,)).fetchone()
             result = (cid, row[0] if row else None)
         else:
-            row = cur.execute("SELECT id, location FROM cameras WHERE tenant_id = %s AND name = %s",
+            row = cur.execute("SELECT id, coalesce(nullif(trim(location), ''), name) FROM cameras "
+                              "WHERE tenant_id = %s AND name = %s",
                               (tenant_id, camera)).fetchone()
             result = (row[0], row[1]) if row else (derived_camera_id(tenant_id, camera), None)
         self._cameras[key] = (time.monotonic() + CAMERA_CACHE_SECONDS, result)
@@ -149,6 +153,9 @@ class PostgresSink:
     def incident(self, record: dict) -> None:
         self._queue.put(("incident", record))
 
+    def clip(self, record: dict) -> None:
+        self._queue.put(("clip", record))
+
     def flush(self, timeout: float = 10.0) -> bool:
         """Wait until everything queued so far is written. False if it timed out."""
         deadline = time.monotonic() + timeout
@@ -184,6 +191,22 @@ class PostgresSink:
                 for zone, cam_id, cam_name in rows:
                     zones.setdefault(zone, []).extend([str(cam_id), cam_name])
         return zones
+
+    def load_overrides(self) -> dict[str, dict]:
+        """Detection settings changed in the frontend, per tenant (keyed by slug and by UUID):
+        the fall rule's parsed_config.detection, e.g. {"person_confidence": 0.6}."""
+        out: dict[str, dict] = {}
+        with psycopg.connect(self.url, connect_timeout=self.connect_timeout_s, autocommit=True) as conn:
+            tenants = conn.execute("SELECT id, slug FROM tenants WHERE status = 'active'").fetchall()
+            for tid, slug in tenants:
+                with conn.transaction():
+                    conn.execute("SELECT set_config('app.tenant_id', %s, true)", (str(tid),))
+                    row = conn.execute(
+                        "SELECT parsed_config->'detection' FROM rules WHERE tenant_id = %s AND is_enabled "
+                        "AND parsed_config->>'event_type' = 'fall' ORDER BY created_at LIMIT 1", (tid,)).fetchone()
+                settings = row[0] if row and isinstance(row[0], dict) else {}
+                out[str(tid)] = out[slug] = settings
+        return out
 
     # ---------- background writer ----------
 
@@ -264,6 +287,8 @@ class PostgresSink:
                 cur.execute("SELECT set_config('app.tenant_id', %s, true)", (str(tenant),))
                 if kind == "prediction":
                     self._write_prediction(cur, tenant, rec)
+                elif kind == "clip":
+                    self._write_clip(cur, tenant, rec)
                 else:
                     self._write_incident(cur, tenant, rec)
 
@@ -275,6 +300,21 @@ class PostgresSink:
             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (tenant, camera, rec["incident_id"], rec["predicted_at"], rec["model_name"], rec["model_version"],
              rec["label"], rec["confidence"], Jsonb(rec["output"]), rec["inference_ms"]))
+
+    def _write_clip(self, cur, tenant: uuid.UUID, rec: dict) -> None:
+        camera, _ = self.resolver.camera(cur, tenant, rec["camera_id"])
+        cur.execute("SAVEPOINT clip")
+        try:
+            cur.execute("UPDATE incident_cameras SET clip_key = %s WHERE incident_id = %s AND camera_id = %s",
+                        (rec["clip_key"], rec["incident_id"], camera))
+        except psycopg.errors.UndefinedColumn:
+            cur.execute("ROLLBACK TO SAVEPOINT clip")
+            self.resolver.warn_once("clip_key", "incident_cameras.clip_key is missing: start the backend API "
+                                    "(it adds the column) or update the schema; clips are saved but not linked")
+        # The incident's main clip: its first camera's, else the first one saved.
+        cur.execute("UPDATE incidents SET clip_key = CASE WHEN camera_id = %s OR clip_key IS NULL "
+                    "THEN %s ELSE clip_key END WHERE id = %s",
+                    (camera, rec["clip_key"], rec["incident_id"]))
 
     def _write_incident(self, cur, tenant: uuid.UUID, rec: dict) -> None:
         camera, location = self.resolver.camera(cur, tenant, rec["camera_id"])

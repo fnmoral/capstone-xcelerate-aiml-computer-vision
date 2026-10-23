@@ -10,6 +10,7 @@ from pathlib import Path
 
 import yaml
 
+from clips import ClipConfig
 from fall.rules import RuleThresholds
 from fall.state_machine import MonitorConfig
 
@@ -28,7 +29,7 @@ class InferenceConfig:
 SOURCE_TYPES = ("tcp", "webcam", "rtsp", "file")
 PROD_SOURCE_TYPES = ("tcp", "rtsp")  # production watches IP cameras only
 MODE_KEYS = {"sources", "source", "preview", "server", "handshake", "inference", "output", "fall", "zones",
-             "database", "viewer"}
+             "database", "viewer", "clips"}
 SINK_TYPES = ("jsonl", "postgres")
 
 
@@ -70,6 +71,7 @@ class Config:
     viewer_port: int = 8000
     viewer_fps: float = 5.0
     viewer_jpeg_quality: int = 70
+    clips: ClipConfig = field(default_factory=ClipConfig)
     show: bool = False
 
     @property
@@ -253,6 +255,13 @@ def load(path: str | Path, prod_mode: bool | None = None) -> Config:
     cfg.viewer_port = int(viewer.get("port", 8000))
     cfg.viewer_fps = float(viewer.get("fps", 5.0))
     cfg.viewer_jpeg_quality = int(viewer.get("jpeg_quality", 70))
+    clips = dict(raw.get("clips") or {})
+    unknown = set(clips) - set(ClipConfig.__dataclass_fields__)
+    if unknown:
+        raise ValueError(f"unknown keys under clips: {sorted(unknown)}")
+    if "enabled" in clips:
+        clips["enabled"] = parse_bool(clips["enabled"])
+    cfg.clips = ClipConfig(**clips)
 
     if "postgres" in cfg.sinks and not cfg.database_url:
         raise ValueError("output.sinks includes postgres but no database URL is set "

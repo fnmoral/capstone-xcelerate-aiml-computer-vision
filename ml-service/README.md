@@ -75,6 +75,10 @@ All the timings above can be changed in the settings.
 - An **alert** is created for it in the database, ready for the web app to show and for
   staff to acknowledge.
 - A **photo** of the moment is saved from each camera that saw it.
+- A **video clip** is saved from each camera that saw it, like a car dashcam: from 15
+  seconds before the fall until 10 seconds after the person is back up (or out of view).
+  Each camera only keeps the last few seconds in memory, so nothing is stored while nothing
+  happens; a clip is a few MB.
 - On a screen with the live view, the person's box turns **red**.
 
 Everything is also kept in local files, so nothing is lost if the database is unreachable
@@ -112,8 +116,8 @@ prototyping and in a Linux container on the GPU server for production
 ## Architecture
 
 ```
-stream-hub (H.264) ─► decode (PyAV) ─┐
-webcam / RTSP / file (OpenCV) ───────┴─► newest frame ─► YOLO26-pose + ByteTrack (≤ 10 fps)
+stream-hub (H.264 / H.265) ─► decode (PyAV) ─┐
+webcam / RTSP / file (OpenCV) ───────────────┴─► newest frame ─► YOLO26-pose + ByteTrack (≤ 10 fps)
    ─► pose features ─► fall rules ─► incident state machine ─┐
                                         (one per camera)      ├─► zone merge ─► data/*.jsonl
                               other cameras' state machines ──┘
@@ -126,7 +130,7 @@ through exactly the same steps as an IP camera, so prototyping results carry ove
 |---|---|---|
 | Entry point | `main.py` | Starts the sources, runs the model for every camera on the main thread, preview window |
 | Protocol | `ingest/protocol.py` | Length-prefixed handshake and NALUs, read without partial-read bugs |
-| Decode | `ingest/decoder.py` | One H.264 decoder per camera, frame-rate sampler |
+| Decode | `ingest/decoder.py` | One decoder per camera; H.264 or H.265, detected from the stream; frame-rate sampler |
 | Pipeline | `pipeline.py` | Per-camera chain: newest frame → pose → features → rules → incidents → sink |
 | Pose | `vision/pose.py` | People, 17 COCO keypoints, stable track IDs; picks GPU or CPU |
 | Features | `fall/features.py` | Torso angle, box aspect ratio, hip height, head below hips |
@@ -137,6 +141,7 @@ through exactly the same steps as an IP camera, so prototyping results carry ove
 | Config | `config.py`, `config.yaml` | Typed settings with a dev and a prod section; documented in [CONFIG.md](CONFIG.md) |
 | Test sender | `tools/send_video.py` | Plays the part of stream-hub from a webcam or video file |
 | Webcam as IP camera | `tools/publish_webcam.py` | Publishes this PC's webcam to an RTSP server (the `test-camera` service), so it goes through the real gateway → hub → ML path |
+| Clips | `clips.py` | Dashcam-style incident clips: per-camera in-memory loop of compressed video, recordings, H.264 MP4 encoding and retention on a background thread |
 | Viewer | `viewer.py` | Browser view at :8000: annotated MJPEG video per camera, recent incidents, detection settings (used by the frontend through the backend API) |
 
 ## Detection logic in detail
@@ -393,7 +398,7 @@ Port 9999 has no authentication, so keep it on the internal network.
 
 ### Capacity and performance
 
-There is no camera limit in ml-service. (gateway-back allows 3 cameras *per gateway*;
+There is no camera limit in ml-service. (gateway-back streams up to 5 cameras *per gateway* at once;
 stream-hub accepts several gateways.) The cameras share a fixed number of analysed frames
 per second: each camera gets up to `inference.target_fps` (10), always on its newest frame,
 and the share shrinks evenly when the machine is saturated.

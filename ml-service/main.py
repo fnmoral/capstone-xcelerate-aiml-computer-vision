@@ -28,10 +28,11 @@ import cv2
 import numpy as np
 
 import config
+from clips import ClipRecorder, ClipWriter
 from fall.zones import IncidentAggregator
 from ingest.protocol import MAX_NALU_LEN, ProtocolError, read_handshake, read_message
 from pipeline import CameraPipeline
-from sinks import FanoutSink, SnapshotStore
+from sinks import FanoutSink, SnapshotStore, clip_record
 from sinks.jsonl import JsonlSink
 from viewer import Viewer, ViewerSink
 from vision.pose import PoseTracker, describe_device
@@ -46,10 +47,19 @@ pipelines_lock = threading.Lock()
 # Shared by all cameras so overlapping cameras raise one incident; set in main().
 aggregator = IncidentAggregator({}, 0.0)
 snapshots: SnapshotStore | None = None
+clip_writer: ClipWriter | None = None
+device_in_use = ""  # what inference.device resolved to, e.g. "GPU 0 (NVIDIA ...)"; set by warm_up
+# Detection settings changed in the frontend, per tenant (slug and UUID); see refresh_from_db.
+overrides: dict[str, dict] = {}
+
+
+def tenant_overrides(tenant_id: str) -> dict:
+    return overrides.get(tenant_id, {})
 
 
 def new_pipeline(tenant_id: str, camera_id: str, cfg: config.Config, sink: FanoutSink) -> CameraPipeline:
-    return CameraPipeline(tenant_id, camera_id, cfg, sink, aggregator, snapshots)
+    clips = ClipRecorder(camera_id, tenant_id, cfg.clips, clip_writer) if clip_writer is not None else None
+    return CameraPipeline(tenant_id, camera_id, cfg, sink, aggregator, snapshots, clips, tenant_overrides)
 
 
 def build_sink(cfg: config.Config):
@@ -75,10 +85,28 @@ def load_db_zones(pg) -> dict[str, list[str]] | None:
         return None
 
 
-def refresh_zones(cfg: config.Config, pg, stop: threading.Event, every_s: float = 60.0) -> None:
-    """Zones are edited in the frontend's Cameras page; pick up changes without a restart."""
+def load_overrides(pg) -> None:
+    global overrides
+    try:
+        new = pg.load_overrides()
+    except Exception as e:
+        log.warning("could not load detection settings from the database (%s)", str(e).strip().splitlines()[0])
+        return
+    if new != overrides:
+        changed = {k: v for k, v in new.items() if v and overrides.get(k) != v}
+        overrides = new
+        for tenant, settings in changed.items():
+            log.info("detection settings for tenant [%s] changed in the frontend: %s", tenant, settings)
+
+
+def refresh_from_db(cfg: config.Config, pg, stop: threading.Event, every_s: float = 15.0) -> None:
+    """Zones (Cameras page) and detection settings (Detection Settings page) are edited in
+    the frontend; pick up changes without a restart."""
     current = None
     while not stop.wait(every_s):
+        load_overrides(pg)
+        if not cfg.zones_from_db:
+            continue
         db_zones = load_db_zones(pg)
         if db_zones is None:
             continue
@@ -254,6 +282,8 @@ def warm_up(cfg: config.Config) -> None:
     start = time.perf_counter()
     tracker = PoseTracker(inf.weights, inf.device, inf.conf, inf.imgsz, inf.tracker, inf.half)
     tracker(np.zeros((inf.imgsz, inf.imgsz, 3), dtype=np.uint8))
+    global device_in_use
+    device_in_use = describe_device(tracker.device) + (" FP16" if tracker.half else "")
     log.info("model %s ready on %s%s in %.1fs", Path(inf.weights).name, describe_device(tracker.device),
              " (FP16)" if tracker.half else "", time.perf_counter() - start)
 
@@ -332,12 +362,27 @@ def main_loop(stop: threading.Event, show: bool, capture_threads: list[threading
 def detection_settings(cfg: config.Config) -> dict:
     """Read-only summary of the detection settings, shown by the frontend."""
     r, m = cfg.rules, cfg.monitor
+    with pipelines_lock:
+        active = list(pipelines.items())
+    cameras = []
+    for camera_id, p in active:
+        received, analysed = p.rates()
+        cameras.append({"camera_id": camera_id, "received_fps": round(received, 1), "analysed_fps": round(analysed, 1)})
+    live = [c["analysed_fps"] for c in cameras if c["received_fps"] > 0]
     return {
         "mode": "prod" if cfg.prod_mode else "dev",
         "model": Path(cfg.inference.weights).name,
-        "device": str(cfg.inference.device),
+        "device": str(cfg.inference.device),  # as configured ("auto", 0, "cpu")
+        "device_in_use": device_in_use or None,
+        "analysis": {  # measured over the last 30 s
+            "average_fps": round(sum(live) / len(live), 1) if live else None,
+            "cameras": cameras,
+        },
         "target_fps": cfg.inference.target_fps,
-        "person_confidence": cfg.inference.conf,
+        "person_confidence": tenant_overrides(cfg.default_tenant_id).get("person_confidence", cfg.inference.conf),
+        "person_confidence_default": cfg.inference.conf,  # config.yaml; the frontend can override it
+        "clips": {k: getattr(cfg.clips, k) for k in ("enabled", "pre_roll_s", "post_roll_s", "max_s",
+                                                       "max_width", "retention_days", "max_total_gb")},
         "rules": {
             "lying_torso_angle_deg": r.lying_torso_angle_deg,
             "falling_torso_angle_deg": r.falling_torso_angle_deg,
@@ -402,18 +447,25 @@ def main() -> None:
         log.warning("no display found; preview turned off")
         cfg.show = False
 
-    global aggregator, snapshots
+    global aggregator, snapshots, clip_writer
     sink, pg = build_sink(cfg)
     db_zones = (load_db_zones(pg) or {}) if pg is not None and cfg.zones_from_db else {}
     zones = merge_zones(cfg.zones, db_zones)
     aggregator = IncidentAggregator(zones, cfg.merge_window_s)
     snapshots = SnapshotStore(cfg.output_dir)
+    if cfg.clips.enabled:
+        clip_writer = ClipWriter(cfg.output_dir, cfg.clips, on_saved=lambda job, key, seconds: sink.clip(
+            clip_record(job.tenant_id, job.incident_id, job.camera_id, key, seconds)))
+        log.info("incident clips: %.0f s before to %.0f s after, saved under %s/clips", cfg.clips.pre_roll_s,
+                 cfg.clips.post_roll_s, cfg.output_dir)
+    if pg is not None:
+        load_overrides(pg)
     for name, cams in zones.items():
         log.info("zone [%s]: %s (falls seen by several of these cameras count once)", name, ", ".join(cams))
 
     stop = threading.Event()
-    if pg is not None and cfg.zones_from_db:
-        threading.Thread(target=refresh_zones, args=(cfg, pg, stop), name="zone-refresh", daemon=True).start()
+    if pg is not None:
+        threading.Thread(target=refresh_from_db, args=(cfg, pg, stop), name="db-refresh", daemon=True).start()
     if cfg.viewer_enabled:
         viewer_sink = ViewerSink()
         sink.sinks.append(viewer_sink)
@@ -445,6 +497,8 @@ def main() -> None:
             server.close()
         if cfg.show:
             cv2.destroyAllWindows()
+        if clip_writer is not None:
+            clip_writer.close()  # finishes clips being encoded
         sink.close()  # lets the database writer finish what is queued
         log.info("stopped")
 

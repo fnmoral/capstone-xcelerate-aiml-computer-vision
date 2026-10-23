@@ -66,6 +66,20 @@ viewer:
   fps: 5                     # frames per second sent to each browser
   jpeg_quality: 70
 
+# Dashcam-style video clip of every incident (cameras from stream-hub only). Each camera
+# keeps a short loop of compressed video in memory (~1-2 MB); on a fall the loop is saved
+# together with the rest of the incident as an H.264 MP4 under <output dir>/clips.
+clips:
+  enabled: true
+  pre_roll_s: 15             # video kept from before the fall
+  post_roll_s: 10            # and after the person is back up / out of view
+  max_s: 120                 # longest clip
+  max_width: 1280            # scaled down to this width for smaller files
+  crf: 28                    # H.264 quality: lower = better and bigger (18-32)
+  buffer_mb: 64              # cap on each camera's in-memory loop
+  retention_days: 30         # delete clips older than this (0 = keep)
+  max_total_gb: 10           # then the oldest while the clips folder is bigger (0 = no cap)
+
 # backend-module PostgreSQL (used when output.sinks includes postgres).
 database:
   # Leave empty and set the ML_DATABASE_URL environment variable instead; the URL holds a

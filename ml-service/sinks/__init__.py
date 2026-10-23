@@ -2,6 +2,7 @@
 
 - prediction records: one per person per `prediction_interval_s` (model_predictions table)
 - incident records: one per zone-level incident event (incidents, incident_cameras, alerts)
+- clip records: one per saved incident video clip, per camera (clips.py)
 
 Field names follow backend-module/db/schema.sql. Timestamps are timezone-aware datetimes;
 each sink serialises them as it needs. Snapshots are saved once by SnapshotStore, and the
@@ -24,6 +25,7 @@ log = logging.getLogger(__name__)
 class Sink(Protocol):
     def prediction(self, record: dict) -> None: ...
     def incident(self, record: dict) -> None: ...
+    def clip(self, record: dict) -> None: ...
     def close(self) -> None: ...
 
 
@@ -70,6 +72,11 @@ def incident_record(kind: str, inc: ZoneIncident, at: float, snapshot_key: str |
     }
 
 
+def clip_record(tenant_id: str, incident_id: str, camera_id: str, key: str, seconds: float) -> dict:
+    return {"tenant_id": tenant_id, "incident_id": incident_id, "camera_id": camera_id,
+            "clip_key": key, "seconds": seconds}
+
+
 class SnapshotStore:
     """Saves incident images under <output dir>/snapshots and returns their keys."""
 
@@ -102,6 +109,14 @@ class FanoutSink:
 
     def incident(self, record: dict) -> None:
         self._each("incident", record)
+
+    def clip(self, record: dict) -> None:
+        for sink in self.sinks:
+            if hasattr(sink, "clip"):
+                try:
+                    sink.clip(record)
+                except Exception:
+                    log.exception("%s.clip failed", type(sink).__name__)
 
     def close(self) -> None:
         self._each("close")

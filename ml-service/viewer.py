@@ -6,6 +6,7 @@
     /api/state                         cameras, people and incidents as JSON
     /api/config                        the detection settings in use (read-only)
     /snapshots/<file>.jpg              incident photos
+    /clips/<file>.mp4                  incident video clips (supports Range, for seeking)
 
 Runs on its own threads and never touches PyTorch: it only JPEG-encodes frames the main
 thread has already annotated, and reads incident records kept in memory by ViewerSink.
@@ -28,6 +29,8 @@ import cv2
 log = logging.getLogger(__name__)
 
 SNAPSHOT_NAME = re.compile(r"^[\w.-]+\.jpg$")
+CLIP_NAME = re.compile(r"^[\w.-]+\.mp4$")
+RANGE = re.compile(r"^bytes=(\d*)-(\d*)$")
 
 
 def _jsonable(value):
@@ -121,8 +124,51 @@ class Viewer:
                 self._send(req, 200, "image/jpeg", file.read_bytes())
             else:
                 self._send(req, 404, "text/plain", b"not found")
+        elif path.startswith("/clips/"):
+            name = unquote(path[len("/clips/"):])
+            file = self.snapshot_dir / "clips" / name
+            if CLIP_NAME.match(name) and file.is_file():
+                self._send_file(req, file, "video/mp4")
+            else:
+                self._send(req, 404, "text/plain", b"not found")
         else:
             self._send(req, 404, "text/plain", b"not found")
+
+    @staticmethod
+    def _send_file(req, file: Path, ctype: str) -> None:
+        """A file, or the byte range the browser asks for (video players seek with Range)."""
+        size = file.stat().st_size
+        start, end = 0, size - 1
+        m = RANGE.match(req.headers.get("Range", "").strip())
+        if m and (m.group(1) or m.group(2)):
+            if m.group(1):
+                start = int(m.group(1))
+                end = min(int(m.group(2)), size - 1) if m.group(2) else size - 1
+            else:  # "bytes=-500": the last 500 bytes
+                start = max(size - int(m.group(2)), 0)
+            if start > end or start >= size:
+                req.send_response(416)
+                req.send_header("Content-Range", f"bytes */{size}")
+                req.end_headers()
+                return
+            req.send_response(206)
+            req.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        else:
+            req.send_response(200)
+        req.send_header("Content-Type", ctype)
+        req.send_header("Accept-Ranges", "bytes")
+        req.send_header("Content-Length", str(end - start + 1))
+        req.send_header("Cache-Control", "max-age=86400")
+        req.end_headers()
+        with open(file, "rb") as f:
+            f.seek(start)
+            left = end - start + 1
+            while left > 0:
+                chunk = f.read(min(left, 256 * 1024))
+                if not chunk:
+                    break
+                req.wfile.write(chunk)
+                left -= len(chunk)
 
     @staticmethod
     def _send(req, status: int, ctype: str, body: bytes, cache: bool = True) -> None:

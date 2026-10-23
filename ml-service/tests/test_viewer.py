@@ -27,6 +27,8 @@ def viewer(tmp_path):
     (tmp_path / "snapshots").mkdir()
     cv2.imwrite(str(tmp_path / "snapshots" / "abc.jpg"), frame)
     (tmp_path / "secret.txt").write_text("no")
+    (tmp_path / "clips").mkdir()
+    (tmp_path / "clips" / "inc_cam.mp4").write_bytes(bytes(range(256)) * 4)  # 1024 bytes
     port = free_port()
     Viewer("127.0.0.1", port, 10, 70, lambda: {"cam 1": cam}, sink, str(tmp_path),
            lambda: {"model": "yolo26n-pose.pt"}).start()
@@ -76,3 +78,27 @@ def test_sink_keeps_only_recent_incidents():
     for i in range(3):
         sink.incident({"id": f"i{i}", "snapshot_key": None})
     assert [r["id"] for r in sink.recent()] == ["i2", "i1"]
+
+
+def get_range(url, value):
+    req = urllib.request.Request(url, headers={"Range": value})
+    with urllib.request.urlopen(req, timeout=5) as r:
+        return r.status, r.headers.get("Content-Range"), r.read()
+
+
+def test_clips_support_range_requests(viewer):
+    """Browsers' video players fetch byte ranges to seek."""
+    base, _ = viewer
+    url = base + "/clips/inc_cam.mp4"
+    status, ctype, body = get(url)
+    assert status == 200 and ctype == "video/mp4" and len(body) == 1024
+    assert get_range(url, "bytes=0-9") == (206, "bytes 0-9/1024", bytes(range(10)))
+    assert get_range(url, "bytes=1020-") == (206, "bytes 1020-1023/1024", bytes([252, 253, 254, 255]))
+    assert get_range(url, "bytes=-2") == (206, "bytes 1022-1023/1024", bytes([254, 255]))
+    with pytest.raises(urllib.error.HTTPError) as e:
+        get_range(url, "bytes=5000-")
+    assert e.value.code == 416
+    for path in ("/clips/../secret.txt", "/clips/nope.mp4", "/clips/inc_cam.txt"):
+        with pytest.raises(urllib.error.HTTPError) as e:
+            get(base + path)
+        assert e.value.code == 404

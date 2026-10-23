@@ -192,7 +192,7 @@ The person and pose detection model.
 | `inference.weights` | `yolo26n-pose.pt` | Model file. Sizes from fastest to most accurate: `yolo26n-pose.pt`, `yolo26s-pose.pt`, `yolo26m-pose.pt`, `yolo26l-pose.pt`, `yolo26x-pose.pt`. Downloads automatically on a PC; baked into the container image |
 | `inference.device` | `auto` | `auto` = GPU 0 if CUDA is available, otherwise CPU. Or a GPU number (`0`, `1`), or `cpu`. A GPU number on a machine without CUDA falls back to CPU with a warning |
 | `inference.half` | `false` | FP16 on GPU. Can be faster on data-center GPUs, but was slower on an RTX 3060 laptop with the nano model, so measure first. Ignored on CPU |
-| `inference.conf` | `0.4` | Minimum confidence for a person detection, 0–1. Lower finds more people but more false detections |
+| `inference.conf` | `0.4` | Minimum confidence for a person detection, 0–1. Lower finds more people but more false detections (e.g. plush toys or pillows taken for a person). **Can be changed in the frontend** (Detection Settings), which wins over this value; ml-service picks it up within 15 s |
 | `inference.imgsz` | `640` | Size the image is resized to for the model. Larger sees small/distant people better but is slower |
 | `inference.target_fps` | `10` | Most frames per second analysed, per camera. Lower it to handle more cameras; 5 is still enough to see a fall |
 | `inference.tracker` | `bytetrack.yaml` | Tracker that follows each person between frames. Ultralytics ships others (`botsort.yaml`, `ocsort.yaml`, ...), but only `bytetrack.yaml` has been tested with this service |
@@ -278,11 +278,40 @@ the backend API (`/api/cameras/<id>/stream`).
 | `viewer.jpeg_quality` | `70` | JPEG quality of the video frames, 1–100 |
 
 Routes: `/` (page), `/stream/<camera>` (MJPEG), `/frame/<camera>.jpg`, `/api/state`,
-`/api/config` (detection settings, read-only), `/snapshots/<file>.jpg`. There is **no login**,
+`/api/config` (detection settings, read-only), `/snapshots/<file>.jpg`, `/clips/<file>.mp4`
+(supports Range requests, for seeking). There is **no login**,
 so never expose the port beyond localhost or the internal network. The viewer runs on its
 own threads and never touches PyTorch (see the README's *Threading* section).
 
 ---
+
+### clips
+
+Dashcam-style video of every incident, from each camera that saw it. Each camera keeps a
+short loop of its **compressed** video in memory (the H.264 / H.265 packets from
+stream-hub: about 1–2 MB for 15 s). When a fall is confirmed, the loop becomes the start of
+a recording that runs until `post_roll_s` after the person is back up or out of view. It is
+then encoded as an **H.264 MP4** (plays in every browser, also when the camera sends H.265)
+on a background thread, saved as `<output dir>/clips/<incident>_<camera>.mp4`, and linked
+in the database (`incident_cameras.clip_key`; `incidents.clip_key` = the main camera's).
+
+Only cameras that come through stream-hub (gateway → hub → `tcp` source) are recorded:
+webcam, RTSP and file sources are read by OpenCV, which gives decoded frames, not packets.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `clips.enabled` | `true` | Record clips |
+| `clips.pre_roll_s` | `15` | Seconds kept from before the fall (from the keyframe before it) |
+| `clips.post_roll_s` | `10` | Seconds after the person is back up / out of view |
+| `clips.max_s` | `120` | Longest clip |
+| `clips.max_width` | `1280` | Scaled down to this width (never up). 720p H.264 at `crf` 28 is ~0.7 MB per 10 s |
+| `clips.crf` | `28` | H.264 quality: lower = better and bigger (18–32) |
+| `clips.buffer_mb` | `64` | Cap on each camera's in-memory loop (a high-bitrate camera keeps less than `pre_roll_s`) |
+| `clips.retention_days` | `30` | Delete clips older than this. `0` = keep |
+| `clips.max_total_gb` | `10` | Then delete the oldest while the folder is bigger. `0` = no cap |
+
+Encoding a 30 s clip takes a few seconds of CPU on the writer thread; detection is not
+affected (it never touches PyTorch).
 
 ## Command-line flags
 

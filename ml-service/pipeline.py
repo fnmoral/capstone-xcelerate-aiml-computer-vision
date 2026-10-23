@@ -8,40 +8,49 @@ crashes the process when any tensor is created off the main thread.
 import logging
 import threading
 import time
+from collections import deque
 from pathlib import Path
 
 import cv2
 import numpy as np
 
+from clips import ClipRecorder
 from config import Config
 from fall.features import extract
 from fall.rules import LYING, FALLING, RuleClassifier
-from fall.state_machine import STARTED, FallMonitor, IncidentEvent
+from fall.state_machine import RECOVERED, STARTED, UNRESOLVED, FallMonitor, IncidentEvent
 from fall.zones import IncidentAggregator
-from ingest.decoder import FrameSampler, H264Decoder
+from ingest.decoder import FrameSampler, VideoDecoder
 from sinks import Sink, SnapshotStore, incident_record, prediction_record
 from vision.pose import Person, PoseTracker
 
 log = logging.getLogger(__name__)
 
 LABEL_COLORS = {LYING: (0, 0, 255), FALLING: (0, 165, 255)}
+RATE_WINDOW_S = 30.0  # rates() averages over this long
 
 
 class CameraPipeline:
     def __init__(self, tenant_id: str, camera_id: str, cfg: Config, sink: Sink,
-                 aggregator: IncidentAggregator, snapshots: SnapshotStore):
+                 aggregator: IncidentAggregator, snapshots: SnapshotStore,
+                 clips: ClipRecorder | None = None, overrides=None):
         self.tenant_id = tenant_id
         self.camera_id = camera_id
         self.cfg = cfg
         self.sink = sink
         self.aggregator = aggregator
         self.snapshots = snapshots
+        self.clips = clips              # dashcam-style clip recorder (stream-hub cameras only)
+        self.overrides = overrides or (lambda tenant: {})  # tenant -> settings changed in the frontend
         # Counters for the periodic stats log line; read and reset by take_stats().
         self.frames_in = 0
         self.frames_analysed = 0
         self.model_ms = 0.0
         self._stats_since = time.monotonic()
-        self.decoder = H264Decoder(camera_id)
+        self._connected_at = self._stats_since
+        self._received_times: deque[float] = deque()  # monotonic times, last RATE_WINDOW_S
+        self._analysed_times: deque[float] = deque()
+        self.decoder = VideoDecoder(camera_id)
         self.sampler = FrameSampler(cfg.inference.target_fps)
         target = cfg.inference.target_fps
         self._convert_interval = 1.0 / (2 * target) if target > 0 else 0.0
@@ -60,22 +69,38 @@ class CameraPipeline:
         self.latest_at: float | None = None
 
     def handle_nalu(self, nalu: bytes) -> None:
-        for frame in self.decoder.decode(nalu):
+        frames = self.decoder.decode(nalu)
+        if self.clips is not None:
+            self.clips.feed(nalu, self.decoder.codec)
+        for frame in frames:
             now = time.monotonic()
             # Convert at most twice the analysis rate, so a fresh frame is always waiting
             # without paying the BGR conversion for frames that would be thrown away.
             if now >= self._next_convert:
                 self._next_convert = now + self._convert_interval
-                self.submit(H264Decoder.to_bgr(frame))
+                self.submit(VideoDecoder.to_bgr(frame))
             else:
                 with self._pending_lock:
                     self.frames_in += 1
+                    self._received_times.append(time.monotonic())
 
     def submit(self, frame: np.ndarray) -> None:
         """Hand over a decoded BGR frame. Only the newest one is kept, so a slow model never falls behind."""
         with self._pending_lock:
             self._pending = frame
             self.frames_in += 1
+            self._received_times.append(time.monotonic())
+
+    def rates(self) -> tuple[float, float]:
+        """(frames received, frames analysed) per second, averaged over the last RATE_WINDOW_S
+        (or since the camera connected, if that is shorter). Safe from any thread."""
+        now = time.monotonic()
+        window = max(min(RATE_WINDOW_S, now - self._connected_at), 1.0)
+        with self._pending_lock:
+            for times in (self._received_times, self._analysed_times):
+                while times and times[0] < now - window:
+                    times.popleft()
+            return len(self._received_times) / window, len(self._analysed_times) / window
 
     def take_stats(self) -> tuple[int, int, float, float]:
         """(frames received, frames analysed, total model ms, seconds covered) since the last call.
@@ -96,9 +121,21 @@ class CameraPipeline:
         with self._monitor_lock:
             for event in self.monitor.close_all(time.time()):
                 self._report(event, None)
+        if self.clips is not None:
+            self.clips.close()
 
     def _report(self, event: IncidentEvent, frame: np.ndarray | None) -> None:
-        for kind, zone_incident in self.aggregator.handle(self.tenant_id, self.camera_id, event):
+        # Asked before handle(): once a member closes, the aggregator forgets it.
+        incident_id = self.aggregator.incident_id_for(event.incident)
+        reports = self.aggregator.handle(self.tenant_id, self.camera_id, event)
+        if self.clips is not None:
+            # Every camera that confirmed the fall records its own clip of it.
+            if event.kind == STARTED:
+                if zone_id := self.aggregator.incident_id_for(event.incident):
+                    self.clips.start(zone_id)
+            elif event.kind in (RECOVERED, UNRESOLVED) and incident_id:
+                self.clips.stop(incident_id)
+        for kind, zone_incident in reports:
             # Each camera that confirms the fall contributes its own snapshot.
             key = None
             if frame is not None and event.kind == STARTED:
@@ -117,6 +154,8 @@ class CameraPipeline:
         if self.pose is None:
             inf = self.cfg.inference
             self.pose = PoseTracker(inf.weights, inf.device, inf.conf, inf.imgsz, inf.tracker, inf.half)
+        # Minimum person confidence can be changed in the frontend (Detection Settings).
+        self.pose.conf = self.overrides(self.tenant_id).get("person_confidence", self.cfg.inference.conf)
         with self._monitor_lock:
             self._process(frame, now)
         return True
@@ -128,6 +167,7 @@ class CameraPipeline:
         inference_ms = int(elapsed_ms)
         with self._pending_lock:
             self.frames_analysed += 1
+            self._analysed_times.append(time.monotonic())
             self.model_ms += elapsed_ms
 
         labels: dict[int, tuple[str, float]] = {}

@@ -5,7 +5,9 @@ Handshake, sent once per connection:
     [u32 big-endian length][camera_id utf-8]
 
 Then repeated until the connection closes:
-    [u32 big-endian length][H.264 NALU, with or without an Annex-B start code]
+    [u32 big-endian length][H.264 or H.265 NALU, with or without an Annex-B start code]
+
+The codec is not signalled; ingest.decoder.detect_codec reads it from the parameter sets.
 """
 
 import socket

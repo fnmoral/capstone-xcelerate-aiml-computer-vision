@@ -29,5 +29,8 @@ class JsonlSink:
     def incident(self, record: dict) -> None:
         self._append("incidents.jsonl", record)
 
+    def clip(self, record: dict) -> None:
+        self._append("clips.jsonl", record)
+
     def close(self) -> None:
         pass
