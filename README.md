@@ -4,6 +4,9 @@ A multi-tenant, real-time computer vision platform that ingests video through a
 gateway, processes it with GPU-accelerated AI modules, and lets users query 
 video content through a natural-language prompt interface.
 
+**New to the project? Follow [GETTING_STARTED.md](GETTING_STARTED.md)** to run it on
+Windows or Mac.
+
 ---
 
 ## Architecture Overview
