@@ -80,3 +80,10 @@
 .history { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; font-size: 14px; }
 .history li { display: grid; gap: 2px; padding-left: 14px; border-left: 2px solid var(--border); }
 .history__by { font-size: 12px; color: var(--text-muted); }
+
+/* Settings tables (Detection Settings): fixed columns, so stacked tables line up */
+.table--settings { table-layout: fixed; min-width: 560px; }
+.table--settings .col-setting { width: 30%; }
+.table--settings .col-value { width: 22%; }
+.table--settings td, .table--settings th { overflow-wrap: anywhere; }
+.table--settings .num { padding-right: 24px; }

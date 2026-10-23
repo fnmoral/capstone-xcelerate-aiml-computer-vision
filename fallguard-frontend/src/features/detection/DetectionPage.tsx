@@ -22,6 +22,11 @@ const TIMINGS: { key: string; label: string; help: string }[] = [
   { key: 'merge_window_seconds', label: 'Zone merge window', help: 'Falls seen by several cameras of a zone within this time are one alert' },
 ];
 
+/** Same column widths in the Labels and Incidents tables, so their columns line up. */
+function SettingsCols() {
+  return <colgroup><col className="col-setting" /><col className="col-value" /><col /></colgroup>;
+}
+
 export default function DetectionPage() {
   const { data: d, error, reload } = usePolling(() => api.detection(), 5000);
   const { data: cams } = usePolling(() => api.cameras(), 15000);
@@ -78,7 +83,8 @@ export default function DetectionPage() {
             <h2 className="section-title">Labels</h2>
             <p className="row"><StatusBadge value="upright" /> standing, walking or sitting
               <StatusBadge value="falling" /> going down fast <StatusBadge value="lying" /> on the floor</p>
-            <div className="table-wrap"><table className="table">
+            <div className="table-wrap"><table className="table table--settings">
+              <SettingsCols />
               <thead><tr><th>Rule</th><th className="num">Value</th><th>Meaning</th></tr></thead>
               <tbody>{RULES.map((r) => (
                 <tr key={r.key}><td>{r.label}</td><td className="num">{d.rules[r.key]} {r.unit}</td><td className="muted">{r.help}</td></tr>
@@ -88,7 +94,8 @@ export default function DetectionPage() {
 
           <section className="card" style={{ padding: 16 }}>
             <h2 className="section-title">Incidents and alerts</h2>
-            <div className="table-wrap"><table className="table">
+            <div className="table-wrap"><table className="table table--settings">
+              <SettingsCols />
               <thead><tr><th>Setting</th><th className="num">Value</th><th>Meaning</th></tr></thead>
               <tbody>{TIMINGS.map((t) => (
                 <tr key={t.key}><td>{t.label}</td><td className="num">{formatDuration(d.incidents[t.key])}</td><td className="muted">{t.help}</td></tr>
