@@ -24,6 +24,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       ML_SERVICE_PASSWORD: ${ML_SERVICE_PASSWORD:?set ML_SERVICE_PASSWORD in .env}
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}                   # load seed.sql on first start
+      TENANT_SLUG: ${TENANT:-demo-facility}                     # without demo data: the tenant created (= the API's TENANT)
       TZ: UTC
     volumes:
       - db-data:/var/lib/postgresql/data
