@@ -1,0 +1,9 @@
+.cams-form { padding: 16px; margin-bottom: 20px; }
+.cams-form__actions { margin-top: 14px; }
+.cams-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.cams-row { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-start; padding: 14px 16px; }
+.cams-row__main { flex: 1 1 320px; min-width: 0; display: grid; gap: 6px; }
+.cams-row__title { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.cams-row__info { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.cams-row__edit { max-width: 560px; }
+.cams-row__actions { flex: 0 0 auto; }

@@ -1,0 +1,167 @@
+import { useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { PageHeader } from '../../components/ui/PageHeader';
+import { StatusBadge } from '../../components/ui/StatusBadge';
+import { Icon } from '../../components/ui/Icon';
+import { api, snapshotUrl } from '../../services/api/fallguard';
+import { usePolling } from '../../services/api/usePolling';
+import { formatDuration, formatTime, LABEL_TEXT, secondsSince, shortId } from '../../lib/format';
+import type { Prediction } from '../../types/domain';
+import { Snapshot } from './Snapshot';
+import './events.css';
+
+/** What the detector saw, second by second: one colored step per prediction. */
+function Timeline({ predictions }: { predictions: Prediction[] }) {
+  if (predictions.length === 0) return <p className="muted">No per-second data stored for this incident.</p>;
+  return (
+    <>
+      <ol className="timeline" aria-label="Detector labels over time">
+        {predictions.map((p, i) => (
+          <li key={i} className={`timeline__step timeline__step--${p.label}`}
+            title={`${formatTime(p.at)} · ${LABEL_TEXT[p.label] ?? p.label} (${p.confidence.toFixed(2)})`} />
+        ))}
+      </ol>
+      <div className="row muted ev-sub">
+        <span>{formatTime(predictions[0].at)}</span>
+        <span style={{ flex: 1 }} />
+        <span>{formatTime(predictions[predictions.length - 1].at)}</span>
+      </div>
+      <div className="row ev-legend">
+        <StatusBadge value="upright" /> <StatusBadge value="falling" /> <StatusBadge value="lying" />
+      </div>
+    </>
+  );
+}
+
+export default function IncidentPage() {
+  const { id = '' } = useParams();
+  const { data, error, reload } = usePolling(() => api.incident(id), 3000, [id]);
+  const [busy, setBusy] = useState(false);
+  const [notes, setNotes] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const run = async (fn: () => Promise<unknown>) => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      await fn();
+      await reload();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (error && !data) return <p className="notice notice--error">{error}</p>;
+  if (!data) return <p className="muted">Loading…</p>;
+  const { incident: inc, predictions } = data;
+  const alert = inc.alert;
+  const down = inc.status === 'active' ? secondsSince(inc.started_at) : inc.duration_seconds;
+  const photos = inc.cameras.filter((c) => c.snapshot_key);
+  if (photos.length === 0 && inc.snapshot_key) {
+    photos.push({ camera_id: inc.camera_id, camera_name: inc.camera_name, track_id: 0, joined_at: inc.started_at, snapshot_key: inc.snapshot_key });
+  }
+
+  return (
+    <>
+      <Link to="/events" className="row muted ev-back"><Icon name="back" size={16} /> All fall events</Link>
+      <PageHeader title={`Fall in ${inc.location_label ?? inc.camera_name ?? 'unknown camera'}`}
+        description={`Started ${formatTime(inc.started_at)} · incident ${shortId(inc.id)}`}
+        actions={<><StatusBadge value={inc.status} /><StatusBadge value={inc.severity} label={`Severity: ${inc.severity}`} /></>} />
+      {actionError && <p className="notice notice--error">{actionError}</p>}
+
+      <div className="tiles">
+        <div className="tile card"><div className="tile__label">{inc.status === 'active' ? 'Down for (still down)' : 'Down for'}</div>
+          <div className="tile__value">{inc.status === 'unresolved' && down === null ? 'Unknown' : formatDuration(down)}</div>
+          {inc.status === 'unresolved' && <div className="tile__hint">went out of view while down</div>}</div>
+        <div className="tile card"><div className="tile__label">Recovered</div>
+          <div className="tile__value" style={{ fontSize: 20 }}>
+            {inc.recovered_at ? formatTime(inc.recovered_at) : inc.status === 'active' ? 'Not yet' : '—'}</div></div>
+        <div className="tile card"><div className="tile__label">Peak confidence</div>
+          <div className="tile__value">{inc.peak_confidence !== null ? inc.peak_confidence.toFixed(2) : '—'}</div></div>
+        <div className="tile card"><div className="tile__label">Cameras</div>
+          <div className="tile__value">{Math.max(1, inc.cameras.length)}</div>
+          <div className="tile__hint">{inc.zone ? `Zone: ${inc.zone}` : 'No zone'}</div></div>
+      </div>
+
+      <div className="ev-layout">
+        <div className="stack">
+          <section className="card ev-section">
+            <h2 className="section-title">Photos</h2>
+            {photos.length === 0 ? <p className="muted">No photo stored.</p> : (
+              <div className="ev-photos">
+                {photos.map((p) => (
+                  <figure key={p.camera_id + p.track_id}>
+                    <a href={snapshotUrl(p.snapshot_key!)} target="_blank" rel="noreferrer">
+                      <Snapshot snapshotKey={p.snapshot_key} className="ev-photo"
+                        alt={`Moment the fall was confirmed on ${p.camera_name ?? 'camera'}`} />
+                    </a>
+                    <figcaption className="muted">{p.camera_name ?? shortId(p.camera_id)} · person #{p.track_id} · {formatTime(p.joined_at)}</figcaption>
+                  </figure>
+                ))}
+              </div>
+            )}
+          </section>
+          <section className="card ev-section">
+            <h2 className="section-title">What the detector saw</h2>
+            <Timeline predictions={predictions} />
+          </section>
+        </div>
+
+        <aside className="stack">
+          <section className="card ev-section">
+            <h2 className="section-title">Alert</h2>
+            {!alert ? <p className="muted">No alert for this incident.</p> : (
+              <>
+                <p className="row"><StatusBadge value={alert.status} />
+                  <span className="muted">triggered {formatTime(alert.triggered_at)}</span></p>
+                {alert.summary && <p>{alert.summary}</p>}
+                {alert.acknowledged_at && <p className="muted ev-sub">Acknowledged {formatTime(alert.acknowledged_at)}</p>}
+                <div className="row">
+                  {alert.status === 'open' && (
+                    <button className="btn btn--primary" disabled={busy} onClick={() => run(() => api.alertAction(alert.id, 'acknowledge'))}>
+                      <Icon name="check" size={16} /> Acknowledge
+                    </button>
+                  )}
+                  {(alert.status === 'open' || alert.status === 'acknowledged') && (
+                    <button className="btn" disabled={busy} onClick={() => run(() => api.alertAction(alert.id, 'resolve'))}>Resolve</button>
+                  )}
+                  {alert.status !== 'false_positive' && (
+                    <button className="btn btn--danger" disabled={busy}
+                      onClick={() => confirm('Mark this as a false alarm? The incident is excluded from the statistics.') &&
+                        run(() => api.alertAction(alert.id, 'false-positive'))}>False alarm</button>
+                  )}
+                </div>
+              </>
+            )}
+          </section>
+          <section className="card ev-section">
+            <h2 className="section-title">Notes</h2>
+            <label className="field">
+              <span className="visually-hidden">Notes</span>
+              <textarea value={notes ?? inc.notes ?? ''} onChange={(e) => setNotes(e.target.value)}
+                placeholder="What happened, who responded…" />
+            </label>
+            <div className="row" style={{ marginTop: 8 }}>
+              <button className="btn" disabled={busy || notes === null}
+                onClick={() => run(async () => { await api.updateIncident(inc.id, { notes: notes ?? '' }); setNotes(null); })}>Save notes</button>
+            </div>
+          </section>
+          <section className="card ev-section">
+            <h2 className="section-title">Cameras that saw it</h2>
+            <ul className="ev-list">
+              {(inc.cameras.length ? inc.cameras : [{ camera_id: inc.camera_id, camera_name: inc.camera_name, track_id: 0, joined_at: inc.started_at, snapshot_key: null }])
+                .map((c) => (
+                  <li key={c.camera_id + c.track_id}>
+                    <strong>{c.camera_name ?? shortId(c.camera_id)}</strong>
+                    <span className="muted ev-sub"> · person #{c.track_id} · from {formatTime(c.joined_at)}</span>
+                  </li>
+                ))}
+            </ul>
+          </section>
+        </aside>
+      </div>
+    </>
+  );
+}

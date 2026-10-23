@@ -20,6 +20,11 @@ export const router = createRouter([
         path: item.path.slice(1),
         lazy: async () => ({ Component: (await item.load()).default }),
       })),
+      // Detail pages (not in the navigation)
+      {
+        path: 'events/:id',
+        lazy: async () => ({ Component: (await import('../features/events/IncidentPage')).default }),
+      },
       { path: '*', element: <NotFoundPage /> },
     ],
   },

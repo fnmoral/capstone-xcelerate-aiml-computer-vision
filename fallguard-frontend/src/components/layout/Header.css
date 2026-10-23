@@ -11,5 +11,9 @@
 .header__spacer { flex: 1; }
 .header__actions { display: flex; gap: 4px; }
 .header__icon-btn { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 8px; color: var(--text-muted); }
+.header__bell { position: relative; }
+.header__count { position: absolute; top: 4px; right: 2px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; background: var(--danger); color: #fff; font-size: 11px; font-weight: 700; display: grid; place-items: center; }
+.header__alert { padding: 6px 12px; border-radius: 99px; background: var(--danger); color: #fff; font-size: 13px; font-weight: 600; animation: header-pulse 1.6s ease-in-out infinite; }
+@keyframes header-pulse { 50% { opacity: .75; } }
 @media (min-width: 1024px) { .header__menu { display: none; } }
 @media (max-width: 380px) { .header__name { display: none; } }

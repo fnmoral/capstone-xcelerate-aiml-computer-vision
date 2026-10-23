@@ -1,0 +1,22 @@
+.ev-thumb { display: block; width: 72px; height: 40px; object-fit: cover; border-radius: 6px; background: var(--surface-2); }
+.ev-sub { font-size: 12px; }
+.ev-back { display: inline-flex; margin-bottom: 12px; font-size: 14px; }
+.ev-back:hover { color: var(--text); }
+.ev-layout { display: grid; gap: 20px; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); align-items: start; }
+@media (max-width: 960px) { .ev-layout { grid-template-columns: 1fr; } }
+.ev-section { padding: 16px; }
+.ev-section p { margin: 0 0 10px; }
+.ev-photos { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); }
+.ev-photos figure { margin: 0; display: grid; gap: 6px; font-size: 12px; }
+.ev-photos img, .ev-photo { width: 100%; border-radius: 8px; display: block; background: #000; }
+.ev-nophoto { display: grid; place-items: center; color: var(--text-muted); font-size: 11px; background: var(--surface-2); border-radius: 6px; }
+.ev-photos .ev-nophoto { aspect-ratio: 16 / 9; font-size: 13px; }
+.ev-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: 14px; }
+.ev-legend { margin-top: 8px; }
+
+/* Label timeline: one step per prediction, 2px surface gap between steps. */
+.timeline { list-style: none; margin: 0 0 6px; padding: 0; display: flex; gap: 2px; height: 28px; }
+.timeline__step { flex: 1; min-width: 3px; border-radius: 4px; background: var(--surface-2); }
+.timeline__step--upright { background: var(--ok); }
+.timeline__step--falling { background: var(--warn); }
+.timeline__step--lying { background: var(--danger); }

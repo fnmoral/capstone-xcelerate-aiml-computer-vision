@@ -12,6 +12,12 @@ const PATHS: Record<string, string> = {
   shield: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',
   bell: 'M6 16V11a6 6 0 1112 0v5l2 2H4zM10 21h4',
   user: 'M12 12a4 4 0 100-8 4 4 0 000 8zM4 21c0-4 4-6 8-6s8 2 8 6',
+  pause: 'M8 5v14M16 5v14',
+  play: 'M7 5l12 7-12 7z',
+  trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13',
+  plus: 'M12 5v14M5 12h14',
+  back: 'M15 6l-6 6 6 6',
+  check: 'M5 12l5 5 9-10',
 };
 
 export function Icon({ name, size = 20 }: { name: string; size?: number }) {

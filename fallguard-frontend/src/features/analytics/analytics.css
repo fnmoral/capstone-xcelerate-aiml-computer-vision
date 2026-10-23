@@ -1,0 +1,30 @@
+.an-section { padding: 16px; margin-bottom: 20px; }
+.an-grid { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+.an-grid .an-section { margin-bottom: 0; }
+.an-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.an-list li { display: flex; justify-content: space-between; align-items: center; }
+.an-count { font-variant-numeric: tabular-nums; font-weight: 600; }
+.an-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.an-bars li { display: grid; grid-template-columns: minmax(80px, 1fr) 2fr auto; gap: 10px; align-items: center; font-size: 14px; }
+.an-bars__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.an-bars__track { height: 10px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.an-bars__fill { display: block; height: 100%; border-radius: 4px; background: var(--chart-1); }
+
+/* Bar chart */
+:root { --chart-1: #c2410c; --chart-grid: #e6e8ec; --chart-axis: #6b7280; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) { --chart-1: #fb923c; --chart-grid: #2a3039; --chart-axis: #9aa3ae; } }
+:root[data-theme='dark'] { --chart-1: #fb923c; --chart-grid: #2a3039; --chart-axis: #9aa3ae; }
+.chart { margin: 0; }
+.chart__plot { position: relative; }
+.chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+.chart__grid { stroke: var(--chart-grid); stroke-width: 1; }
+.chart__baseline { stroke: var(--chart-axis); stroke-width: 1; }
+.chart__axis { fill: var(--chart-axis); font-size: 11px; }
+.chart__bar { fill: var(--chart-1); }
+.chart__bar--hover { filter: brightness(1.15); }
+.chart g:focus { outline: none; }
+.chart g:focus-visible .chart__bar { stroke: var(--focus); stroke-width: 2; }
+.chart__tip { position: absolute; top: 0; transform: translate(-50%, -100%); padding: 6px 10px; border-radius: 8px; background: var(--text); color: var(--bg); font-size: 12px; pointer-events: none; white-space: nowrap; display: grid; text-align: center; }
+.chart__tip span { opacity: .8; }
+.chart__table { margin-top: 10px; font-size: 14px; }
+.chart__table summary { cursor: pointer; color: var(--text-muted); }

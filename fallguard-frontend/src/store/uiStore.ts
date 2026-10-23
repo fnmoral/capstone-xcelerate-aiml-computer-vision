@@ -28,7 +28,7 @@ export const useUiStore = create<UiState>()(
       setTheme: (theme) => set({ theme }),
     }),
     {
-      name: 'failguard-ui',
+      name: 'fallguard-ui',
       partialize: (s) => ({ navCollapsed: s.navCollapsed, theme: s.theme }),
     },
   ),

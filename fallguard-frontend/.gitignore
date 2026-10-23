@@ -1,3 +1,6 @@
 node_modules
 dist
 *.local
+
+# The root .gitignore (Python template) ignores every lib/ folder; this one is source code.
+!src/lib/

@@ -1,11 +1,11 @@
-# FailGuard Vision: Module 1 Frontend Architecture
+# FallGuard Vision: Module 1 Frontend Architecture
 
 Jira: CAP-27 (architecture) and CAP-29 (basic components). Parent: CAP-21 Module 1 - Front-end.
 Status: Draft for team review. Owner: Berkin Öztürk. Last updated: 2026-10-12.
 
 ## 1. Scope
 
-Module 1 is the web interface of FailGuard Vision. Per the Project Vision Document it lets users watch camera streams, manage cameras, review detected fall events, view analytics, configure detection behaviour, and manage settings. It talks only to the Core Backend (Module 2) over REST and WebSocket. It never connects to cameras, the message broker, or GPU workers directly.
+Module 1 is the web interface of FallGuard Vision. Per the Project Vision Document it lets users watch camera streams, manage cameras, review detected fall events, view analytics, configure detection behaviour, and manage settings. It talks only to the Core Backend (Module 2) over REST and WebSocket. It never connects to cameras, the message broker, or GPU workers directly.
 
 | Item | Status |
 |---|---|
@@ -13,10 +13,11 @@ Module 1 is the web interface of FailGuard Vision. Per the Project Vision Docume
 | Routing for all six sections, lazy loaded | IMPLEMENTED |
 | Responsive layout (mobile drawer, desktop sidebar, collapsible rail) | IMPLEMENTED |
 | Light / dark / system theme | IMPLEMENTED |
-| REST client and WebSocket client | IMPLEMENTED as stubs, not connected to a backend |
-| Live video playback | OPEN DESIGN DECISION (depends on Module 3 output format) |
-| Camera CRUD, events, analytics, detection settings | PLANNED (pages exist as empty states) |
-| Authentication / multi-tenant UI | PLANNED |
+| REST client | IMPLEMENTED: `services/api/fallguard.ts` against the core backend API (`backend-module/api`); pages poll it |
+| WebSocket client | Stub, unused (pages poll; a push channel can replace polling later) |
+| Live video playback | IMPLEMENTED as MJPEG: annotated video from ml-service, through `/api/cameras/:id/stream` |
+| Camera CRUD, events, analytics, detection settings | IMPLEMENTED (2026-10-23) |
+| Authentication / multi-tenant UI | PLANNED (the API serves one tenant for now) |
 
 ## 2. Technology
 

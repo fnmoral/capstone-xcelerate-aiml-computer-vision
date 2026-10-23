@@ -1,0 +1,20 @@
+# FallGuard frontend on its own (the whole stack: ../docker-compose.yml).
+#   docker compose up -d --build      ->  http://localhost:3000
+# Needs the backend API (backend-module, service "api") on the shared fallguard network.
+name: fallguard-frontend
+
+services:
+  frontend:
+    build: .
+    image: capstone/fallguard-frontend:latest
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    networks: [fallguard]
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+networks:
+  fallguard:
+    name: fallguard               # shared by every module; whichever starts first creates it
