@@ -59,7 +59,7 @@ class CameraPipeline:
             frame, self._pending = self._pending, None
         if self.pose is None:
             inf = self.cfg.inference
-            self.pose = PoseTracker(inf.weights, inf.device, inf.conf, inf.imgsz, inf.tracker)
+            self.pose = PoseTracker(inf.weights, inf.device, inf.conf, inf.imgsz, inf.tracker, inf.half)
         self._process(frame, now)
         return True
 

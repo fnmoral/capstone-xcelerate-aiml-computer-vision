@@ -1,0 +1,30 @@
+# Run ml-service on the GPU server, in prod mode (IP cameras only):
+#   cd ml-service/deploy
+#   docker compose up -d --build
+#   docker compose logs -f ml-service
+services:
+  ml-service:
+    build:
+      context: ..
+      args:
+        YOLO_WEIGHTS: yolo26n-pose.pt   # must match prod: inference: weights in config.yaml
+    image: capstone/ml-service:latest
+    restart: unless-stopped
+    environment:
+      ML_PROD_MODE: "true"
+    ports:
+      - "9999:9999"          # stream-hub connects here; keep it on the internal network only
+    volumes:
+      - ml-data:/app/data
+      # Edit sources or thresholds without rebuilding:
+      # - ../config.yaml:/app/config.yaml:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  ml-data:

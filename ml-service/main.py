@@ -1,16 +1,23 @@
 """ML service entry point: detects falls in camera video.
 
-The video source is set in config.yaml (source.type), or overridden here:
+config.yaml has a dev and a prod section; `prod_mode` picks one (see CONFIG.md). In dev,
+stream-hub (tcp), webcams, RTSP cameras and video files all go through the same pipeline.
+Prod accepts IP cameras only (tcp, rtsp). Flags override the file for a quick test:
 
-    python main.py                       # use config.yaml
-    python main.py --webcam 0            # this PC's first webcam
-    python main.py --video fall.mp4      # a local video file
-    python main.py --tcp                 # streams from stream-hub
-    python main.py --show / --no-show    # force the preview window on or off
+    python main.py                                  # use config.yaml
+    python main.py --prod / --dev                   # force a mode
+    python main.py --webcam 0                       # this PC's first webcam
+    python main.py --webcam 0 --tcp                 # a webcam next to the stream-hub cameras
+    python main.py --rtsp rtsp://user:pw@cam/stream # an IP camera, without the Go services
+    python main.py --video fall.mp4                 # a local video file
+    python main.py --show / --no-show               # force the preview window on or off
+
+Environment: ML_CONFIG picks the config file, ML_PROD_MODE=true forces prod (the container sets both).
 """
 
 import argparse
 import logging
+import os
 import socket
 import sys
 import threading
@@ -24,31 +31,51 @@ import config
 from ingest.protocol import MAX_NALU_LEN, ProtocolError, read_handshake, read_message
 from pipeline import CameraPipeline
 from sinks.jsonl import JsonlSink
-from vision.pose import PoseTracker
+from vision.pose import PoseTracker, describe_device
 
 log = logging.getLogger("ml-service")
+
+RECONNECT_SECONDS = 3.0
+RTSP_TIMEOUT_MS = 5000  # OpenCV's default is ~30 s, too slow to notice a dead camera
 
 pipelines: dict[str, CameraPipeline] = {}
 pipelines_lock = threading.Lock()
 
 
+def register(pipeline: CameraPipeline) -> bool:
+    with pipelines_lock:
+        if pipeline.camera_id in pipelines:
+            log.error("camera [%s] is already connected; ignoring the second one", pipeline.camera_id)
+            return False
+        pipelines[pipeline.camera_id] = pipeline
+        return True
+
+
+def unregister(pipeline: CameraPipeline) -> None:
+    with pipelines_lock:
+        if pipelines.get(pipeline.camera_id) is pipeline:
+            del pipelines[pipeline.camera_id]
+
+
+# ---------- tcp: cameras streamed by stream-hub ----------
+
 def handle_connection(conn: socket.socket, addr, cfg: config.Config, sink: JsonlSink) -> None:
     camera_id = "?"
+    pipeline = None
     try:
         tenant_id, camera_id = read_handshake(conn, cfg.tenant_in_handshake, cfg.default_tenant_id)
         log.info("camera [%s] tenant [%s] connected from %s", camera_id, tenant_id, addr)
         pipeline = CameraPipeline(tenant_id, camera_id, cfg, sink)
-        with pipelines_lock:
-            pipelines[camera_id] = pipeline
-
+        if not register(pipeline):
+            return
         while (nalu := read_message(conn, MAX_NALU_LEN)) is not None:
             pipeline.handle_nalu(nalu)
     except (ProtocolError, ConnectionError, UnicodeDecodeError) as e:
         log.warning("camera [%s] connection error: %s", camera_id, e)
     finally:
         conn.close()
-        with pipelines_lock:
-            pipelines.pop(camera_id, None)
+        if pipeline is not None:
+            unregister(pipeline)
         log.info("camera [%s] disconnected", camera_id)
 
 
@@ -57,7 +84,7 @@ def serve(cfg: config.Config, sink: JsonlSink) -> socket.socket:
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind((cfg.host, cfg.port))
     server.listen()
-    log.info("listening on %s:%d", cfg.host, cfg.port)
+    log.info("listening for stream-hub on %s:%d", cfg.host, cfg.port)
 
     def accept_loop():
         while True:
@@ -71,60 +98,102 @@ def serve(cfg: config.Config, sink: JsonlSink) -> socket.socket:
     return server
 
 
-def run_local_source(cfg: config.Config, sink: JsonlSink, stop: threading.Event) -> None:
-    """Reads a webcam or video file on this PC and feeds frames straight into the pipeline."""
-    src = cfg.source
-    is_webcam = src.type == "webcam"
-    if is_webcam:
-        # DirectShow opens Windows webcams much faster than the default backend.
-        backend = cv2.CAP_DSHOW if sys.platform == "win32" else cv2.CAP_ANY
-        cap = cv2.VideoCapture(src.webcam_index, backend)
+# ---------- webcam / rtsp / file: read directly ----------
+
+def open_capture(src: config.SourceConfig) -> cv2.VideoCapture:
+    match src.type:
+        case "webcam":
+            # DirectShow opens Windows webcams much faster than the default backend.
+            backend = cv2.CAP_DSHOW if sys.platform == "win32" else cv2.CAP_ANY
+            cap = cv2.VideoCapture(src.index, backend)
+        case "rtsp":
+            cap = cv2.VideoCapture(src.url, cv2.CAP_FFMPEG, [
+                cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, RTSP_TIMEOUT_MS,
+                cv2.CAP_PROP_READ_TIMEOUT_MSEC, RTSP_TIMEOUT_MS,
+            ])
+        case _:
+            cap = cv2.VideoCapture(src.path)
+    if src.type != "file":
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # always process the newest frame
-        label = f"webcam {src.webcam_index}"
-    else:
-        cap = cv2.VideoCapture(src.path)
-        label = src.path
-    if not cap.isOpened():
-        log.error("cannot open %s", label)
-        stop.set()
+    return cap
+
+
+def describe_source(src: config.SourceConfig) -> str:
+    match src.type:
+        case "webcam":
+            return f"webcam {src.index}"
+        case "rtsp":
+            return src.url.split("@")[-1]  # hide credentials in logs
+        case _:
+            return src.path
+
+
+def run_capture(src: config.SourceConfig, cfg: config.Config, sink: JsonlSink, stop: threading.Event) -> None:
+    """Feeds one webcam, RTSP camera or video file into its pipeline.
+
+    Webcams and RTSP cameras behave like stream-hub cameras: if they drop out, the camera
+    disappears and is retried every few seconds. A file plays once, or loops.
+    """
+    label = describe_source(src)
+    pipeline = CameraPipeline(src.tenant_id, src.camera_id, cfg, sink)
+    if not register(pipeline):
         return
 
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    if fps <= 0:  # some webcam drivers report -1
-        fps = 30.0
-    log.info("reading %s as camera [%s]", label, src.camera_id)
-    pipeline = CameraPipeline(cfg.default_tenant_id, src.camera_id, cfg, sink)
-    with pipelines_lock:
-        pipelines[src.camera_id] = pipeline
-
-    next_frame = time.monotonic()
+    looped = False
     try:
         while not stop.is_set():
-            ok, frame = cap.read()
-            if not ok:
-                if not is_webcam and src.loop:
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                    continue
-                log.info("%s ended", label)
-                break
-            pipeline.submit(frame)
-            if not is_webcam:  # play files at real speed; webcams pace themselves
-                next_frame += 1 / fps
-                time.sleep(max(0.0, next_frame - time.monotonic()))
-    finally:
-        cap.release()
-        with pipelines_lock:
-            pipelines.pop(src.camera_id, None)
-        stop.set()
+            cap = open_capture(src)
+            if not cap.isOpened():
+                cap.release()
+                if src.type == "file":
+                    log.error("cannot open %s", label)
+                    return
+                log.warning("camera [%s] cannot open %s; retrying in %.0fs", src.camera_id, label, RECONNECT_SECONDS)
+                stop.wait(RECONNECT_SECONDS)
+                continue
 
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            if fps <= 0:  # some webcam drivers report -1
+                fps = 30.0
+            if not looped:
+                log.info("camera [%s] reading %s", src.camera_id, label)
+            next_frame = time.monotonic()
+            try:
+                while not stop.is_set():
+                    ok, frame = cap.read()
+                    if not ok:
+                        break
+                    pipeline.submit(frame)
+                    if src.type == "file":  # play files at real speed; live sources pace themselves
+                        next_frame += 1 / fps
+                        time.sleep(max(0.0, next_frame - time.monotonic()))
+            finally:
+                cap.release()
+
+            if stop.is_set():
+                return
+            if src.type == "file":
+                if not src.loop:
+                    log.info("camera [%s] %s ended", src.camera_id, label)
+                    return
+                looped = True
+                continue
+            log.warning("camera [%s] lost %s; reconnecting in %.0fs", src.camera_id, label, RECONNECT_SECONDS)
+            stop.wait(RECONNECT_SECONDS)
+    finally:
+        unregister(pipeline)
+
+
+# ---------- model and main loop ----------
 
 def warm_up(cfg: config.Config) -> None:
     """Load the model and run it once, so CUDA start-up (several seconds) happens before cameras open."""
     inf = cfg.inference
     start = time.perf_counter()
-    PoseTracker(inf.weights, inf.device, inf.conf, inf.imgsz, inf.tracker)(
-        np.zeros((inf.imgsz, inf.imgsz, 3), dtype=np.uint8))
-    log.info("model %s ready in %.1fs", Path(inf.weights).name, time.perf_counter() - start)
+    tracker = PoseTracker(inf.weights, inf.device, inf.conf, inf.imgsz, inf.tracker, inf.half)
+    tracker(np.zeros((inf.imgsz, inf.imgsz, 3), dtype=np.uint8))
+    log.info("model %s ready on %s%s in %.1fs", Path(inf.weights).name, describe_device(tracker.device),
+             " (FP16)" if tracker.half else "", time.perf_counter() - start)
 
 
 def render_grid(active: list[CameraPipeline]) -> np.ndarray:
@@ -141,10 +210,14 @@ def render_grid(active: list[CameraPipeline]) -> np.ndarray:
     return np.vstack([np.hstack(frames[i:i + cols]) for i in range(0, len(frames), cols)])
 
 
-def main_loop(stop: threading.Event, show: bool) -> None:
+def main_loop(stop: threading.Event, show: bool, capture_threads: list[threading.Thread], uses_tcp: bool) -> None:
     """Runs the model for every camera, and the preview window. Both must stay on the main thread."""
     last_render = 0.0
     while not stop.is_set():
+        if not uses_tcp and not any(t.is_alive() for t in capture_threads):
+            log.info("all sources have ended")
+            return
+
         with pipelines_lock:
             active = list(pipelines.values())
 
@@ -165,45 +238,73 @@ def main_loop(stop: threading.Event, show: bool) -> None:
             time.sleep(0.005)
 
 
+def has_display() -> bool:
+    if sys.platform != "linux":
+        return True
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
+
 def main() -> None:
+    default_config = os.environ.get("ML_CONFIG") or str(Path(__file__).resolve().parent / "config.yaml")
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--config", default=str(Path(__file__).resolve().parent / "config.yaml"))
-    source = parser.add_mutually_exclusive_group()
-    source.add_argument("--webcam", type=int, metavar="INDEX", help="read this PC's webcam")
-    source.add_argument("--video", metavar="PATH", help="read a local video file")
-    source.add_argument("--tcp", action="store_true", help="receive streams from stream-hub")
+    parser.add_argument("--config", default=default_config)
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--prod", dest="prod_mode", action="store_true", default=None,
+                      help="production mode: IP cameras only")
+    mode.add_argument("--dev", dest="prod_mode", action="store_false", help="dev / prototyping mode")
+    parser.add_argument("--webcam", type=int, action="append", metavar="INDEX", help="add a webcam on this PC")
+    parser.add_argument("--rtsp", action="append", metavar="URL", help="add an RTSP camera")
+    parser.add_argument("--video", action="append", metavar="PATH", help="add a local video file")
+    parser.add_argument("--tcp", action="store_true", help="add the stream-hub listener")
     parser.add_argument("--show", action=argparse.BooleanOptionalAction, help="preview window on/off")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    cfg = config.load(args.config)
-    if args.webcam is not None:
-        cfg.source.type, cfg.source.webcam_index = "webcam", args.webcam
-    elif args.video:
-        cfg.source.type, cfg.source.path = "file", str(Path(args.video).resolve())
-    elif args.tcp:
-        cfg.source.type = "tcp"
+    # Prefer TCP for RTSP: UDP drops packets on busy networks, which corrupts frames.
+    os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp")
+    try:
+        cfg = config.load(args.config, args.prod_mode)
+        cli_sources = ([{"type": "webcam", "index": i} for i in args.webcam or []]
+                       + [{"type": "rtsp", "url": u} for u in args.rtsp or []]
+                       + [{"type": "file", "path": str(Path(p).resolve())} for p in args.video or []]
+                       + ([{"type": "tcp"}] if args.tcp else []))
+        if cli_sources:
+            cfg.sources = config.parse_sources(cli_sources, Path.cwd(), cfg.default_tenant_id)
+            cfg.check_mode()
+    except ValueError as e:
+        log.error("config error: %s", e)
+        sys.exit(2)
+
+    log.info("mode: %s, sources: %s", "PROD (IP cameras only)" if cfg.prod_mode else "DEV",
+             ", ".join(s.type if s.type == "tcp" else f"{s.type}:{s.camera_id}" for s in cfg.sources))
     if args.show is not None:
         cfg.show = args.show
+    if cfg.show and not has_display():
+        log.warning("no display found; preview turned off")
+        cfg.show = False
 
     warm_up(cfg)
     sink = JsonlSink(cfg.output_dir)
     stop = threading.Event()
-    server = None
-    if cfg.source.type == "tcp":
-        server = serve(cfg, sink)
-    else:
-        threading.Thread(target=run_local_source, args=(cfg, sink, stop), daemon=True).start()
+    server = serve(cfg, sink) if cfg.uses_tcp else None
+    capture_threads = []
+    for src in cfg.sources:
+        if src.type != "tcp":
+            thread = threading.Thread(target=run_capture, args=(src, cfg, sink, stop), daemon=True,
+                                      name=f"capture-{src.camera_id}")
+            thread.start()
+            capture_threads.append(thread)
 
     try:
-        main_loop(stop, cfg.show)
+        main_loop(stop, cfg.show, capture_threads, cfg.uses_tcp)
     except KeyboardInterrupt:
         pass
     finally:
         stop.set()
         if server is not None:
             server.close()
-        cv2.destroyAllWindows()
+        if cfg.show:
+            cv2.destroyAllWindows()
         log.info("stopped")
 
 

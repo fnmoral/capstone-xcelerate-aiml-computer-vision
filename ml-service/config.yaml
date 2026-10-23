@@ -1,19 +1,48 @@
-# Where video comes from:
-#   tcp    = cameras streamed by stream-hub (the real pipeline)
-#   webcam = a camera plugged into this PC, for testing without the Go services
-#   file   = a local video file, e.g. a recorded fall
-source:
-  type: webcam
-  webcam_index: 0            # 0 = first camera, 1 = second, ... (try the other if the image is black)
-  path: ""                   # for type: file, relative to this folder
-  camera_id: local-webcam
-  loop: true
+# ml-service settings. Every option is explained in CONFIG.md.
 
-preview: true                # open a window with the annotated video (press q to quit)
+# ---------------------------------------------------------------------------
+# Mode switch
+#   false = dev / prototyping: webcams, video files and IP cameras (the dev: section)
+#   true  = production: IP cameras only (the prod: section)
+# The container sets ML_PROD_MODE=true, which overrides this line.
+# ---------------------------------------------------------------------------
+prod_mode: false
+
+# Used when prod_mode is false.
+dev:
+  sources:
+    - type: webcam
+      index: 0               # 0 = first camera, 1 = second, ... (try the other if the image is black)
+      camera_id: local-webcam
+    # - type: tcp            # also take the stream-hub cameras
+    # - type: rtsp
+    #   url: rtsp://user:password@192.168.1.50:554/stream1
+    #   camera_id: hallway
+    # - type: file
+    #   path: videos/test-fall.mp4
+    #   camera_id: replay-1
+    #   loop: true
+  preview: true              # window with the annotated video (press q to quit)
+  server:
+    host: 127.0.0.1          # only this PC can connect
+
+# Used when prod_mode is true. Only IP camera sources are allowed here: tcp and rtsp.
+prod:
+  sources:
+    - type: tcp              # every camera stream-hub sends
+    # - type: rtsp           # an IP camera read directly, e.g. while stream-hub is down
+    #   url: rtsp://user:password@10.0.0.21:554/stream1
+    #   camera_id: ward-a-hallway
+  preview: false             # no display on a server
+  server:
+    host: 0.0.0.0            # accept stream-hub from other machines
+
+# ---------------------------------------------------------------------------
+# Shared by both modes. A dev: or prod: section can override any of these.
+# ---------------------------------------------------------------------------
 
 # tcp source only. Must match ai_server_addr in stream-hub/config.json
 server:
-  host: 127.0.0.1
   port: 9999
 
 handshake:
@@ -24,7 +53,8 @@ handshake:
 
 inference:
   weights: yolo26n-pose.pt   # n = fastest; s/m are more accurate but slower
-  device: 0                  # GPU index, or "cpu"
+  device: auto               # auto = GPU 0 if CUDA is available, else CPU; or a GPU index, or cpu
+  half: false                # FP16 on GPU; measure first, it was slower on an RTX 3060 laptop
   conf: 0.4
   imgsz: 640
   target_fps: 10             # frames per second sent to the model, per camera
@@ -40,7 +70,7 @@ fall:
   recover_seconds: 3         # must stay up this long to close it
   lost_track_seconds: 10
   high_after_seconds: 60
-  critical_after_seconds: 300
+  critical_after_seconds: 300   # 5min=300 Seconds; if the person is still down after this long, mark the incident as critical
 
 output:
   dir: data
