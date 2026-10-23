@@ -31,6 +31,7 @@ import config
 from fall.zones import IncidentAggregator
 from ingest.protocol import MAX_NALU_LEN, ProtocolError, read_handshake, read_message
 from pipeline import CameraPipeline
+from sinks import FanoutSink, SnapshotStore
 from sinks.jsonl import JsonlSink
 from vision.pose import PoseTracker, describe_device
 
@@ -43,10 +44,45 @@ pipelines: dict[str, CameraPipeline] = {}
 pipelines_lock = threading.Lock()
 # Shared by all cameras so overlapping cameras raise one incident; set in main().
 aggregator = IncidentAggregator({}, 0.0)
+snapshots: SnapshotStore | None = None
 
 
-def new_pipeline(tenant_id: str, camera_id: str, cfg: config.Config, sink: JsonlSink) -> CameraPipeline:
-    return CameraPipeline(tenant_id, camera_id, cfg, sink, aggregator)
+def new_pipeline(tenant_id: str, camera_id: str, cfg: config.Config, sink: FanoutSink) -> CameraPipeline:
+    return CameraPipeline(tenant_id, camera_id, cfg, sink, aggregator, snapshots)
+
+
+def build_sink(cfg: config.Config) -> tuple[FanoutSink, dict[str, list[str]]]:
+    """The output sinks from output.sinks, plus any zones defined in the database."""
+    sinks = []
+    db_zones: dict[str, list[str]] = {}
+    if "jsonl" in cfg.sinks:
+        sinks.append(JsonlSink(cfg.output_dir))
+    if "postgres" in cfg.sinks:
+        from sinks.postgres import PostgresSink  # psycopg only needed when the database is used
+
+        pg = PostgresSink(cfg.database_url, cfg.database_connect_timeout_s)
+        sinks.append(pg)
+        log.info("writing results to PostgreSQL at %s", cfg.database_url.split("@")[-1])
+        if cfg.zones_from_db:
+            try:
+                db_zones = pg.load_zones()
+            except Exception as e:
+                log.warning("could not load zones from the database (%s); using config.yaml zones only",
+                            str(e).strip().splitlines()[0])
+    return FanoutSink(sinks), db_zones
+
+
+def merge_zones(file_zones: dict[str, list[str]], db_zones: dict[str, list[str]]) -> dict[str, list[str]]:
+    """config.yaml zones win; a database zone keeps only cameras not already zoned in the file."""
+    zones = {name: list(cams) for name, cams in file_zones.items()}
+    taken = {cam for cams in file_zones.values() for cam in cams}
+    for name, cams in db_zones.items():
+        free = [c for c in cams if c not in taken]
+        if len(free) < len(cams):
+            log.warning("zone [%s] from the database: cameras also zoned in config.yaml keep their file zone", name)
+        if free:
+            zones.setdefault(name, []).extend(free)
+    return zones
 
 
 def register(pipeline: CameraPipeline) -> bool:
@@ -319,13 +355,15 @@ def main() -> None:
         log.warning("no display found; preview turned off")
         cfg.show = False
 
-    global aggregator
-    aggregator = IncidentAggregator(cfg.zones, cfg.merge_window_s)
-    for name, cams in cfg.zones.items():
+    global aggregator, snapshots
+    sink, db_zones = build_sink(cfg)
+    zones = merge_zones(cfg.zones, db_zones)
+    aggregator = IncidentAggregator(zones, cfg.merge_window_s)
+    snapshots = SnapshotStore(cfg.output_dir)
+    for name, cams in zones.items():
         log.info("zone [%s]: %s (falls seen by several of these cameras count once)", name, ", ".join(cams))
 
     warm_up(cfg)
-    sink = JsonlSink(cfg.output_dir)
     stop = threading.Event()
     server = serve(cfg, sink) if cfg.uses_tcp else None
     capture_threads = []
@@ -346,6 +384,7 @@ def main() -> None:
             server.close()
         if cfg.show:
             cv2.destroyAllWindows()
+        sink.close()  # lets the database writer finish what is queued
         log.info("stopped")
 
 

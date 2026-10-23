@@ -133,11 +133,29 @@ def test_unknown_key_in_mode_section(tmp_path):
         write(tmp_path, "dev:\n  sourcez: []\n")
 
 
-def test_shipped_config_both_modes():
+def test_shipped_config_both_modes(monkeypatch):
+    monkeypatch.delenv("ML_DATABASE_URL", raising=False)
     dev = config.load(ROOT / "config.yaml", prod_mode=False)
     assert not dev.prod_mode and dev.sources and dev.host == "127.0.0.1"
+    assert dev.sinks == ["jsonl"]
 
+    with pytest.raises(ValueError, match="no database URL"):
+        config.load(ROOT / "config.yaml", prod_mode=True)  # prod writes to the database
+
+    monkeypatch.setenv("ML_DATABASE_URL", "postgresql://ml_service:pw@db/fallguard")
     prod = config.load(ROOT / "config.yaml", prod_mode=True)
     assert prod.prod_mode and not prod.show and prod.host == "0.0.0.0"
     assert all(s.type in config.PROD_SOURCE_TYPES for s in prod.sources)
     assert prod.inference.weights == dev.inference.weights
+    assert prod.sinks == ["jsonl", "postgres"] and prod.database_url.endswith("/fallguard")
+
+
+def test_sink_validation_and_env_url(tmp_path, monkeypatch):
+    monkeypatch.delenv("ML_DATABASE_URL", raising=False)
+    with pytest.raises(ValueError, match="output.sinks"):
+        write(tmp_path, "output: {sinks: [kafka]}\n")
+    cfg = write(tmp_path, "output: {sinks: postgres}\ndatabase: {url: postgresql://file/db}\n")
+    assert cfg.sinks == ["postgres"] and cfg.database_url == "postgresql://file/db"
+    monkeypatch.setenv("ML_DATABASE_URL", "postgresql://env/db")
+    assert write(tmp_path, "output: {sinks: [postgres]}\ndatabase: {url: postgresql://file/db}\n").database_url \
+        == "postgresql://env/db"  # the environment wins: it's where the password should live

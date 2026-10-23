@@ -25,6 +25,8 @@ dev:
   preview: true              # window with the annotated video (press q to quit)
   server:
     host: 127.0.0.1          # only this PC can connect
+  output:
+    sinks: [jsonl]           # add postgres to also write to the database (needs ML_DATABASE_URL)
 
 # Used when prod_mode is true. Only IP camera sources are allowed here: tcp and rtsp.
 prod:
@@ -41,6 +43,9 @@ prod:
   zones: {}
   #   ward-a: [3f2c8e1a-...-camera-1, 9b77d0c4-...-camera-2]
   #   lobby:  [5d1e...-camera-3, 0a9f...-camera-4, 77c2...-camera-5]
+  # (zones set up in the database's zones table are loaded too; see database: below)
+  output:
+    sinks: [jsonl, postgres] # backend-module database; the URL comes from ML_DATABASE_URL
 
 # ---------------------------------------------------------------------------
 # Shared by both modes. A dev: or prod: section can override any of these.
@@ -50,11 +55,20 @@ prod:
 server:
   port: 9999
 
+# backend-module PostgreSQL (used when output.sinks includes postgres).
+database:
+  # Leave empty and set the ML_DATABASE_URL environment variable instead; the URL holds a
+  # password. Format: postgresql://ml_service:<password>@<host>:5432/<database>
+  url: ""
+  connect_timeout_s: 5
+  zones_from_db: true        # also use zones from the zones table + cameras.zone_id
+
 handshake:
   # stream-hub's ai_worker.go currently sends only camera_id. Set to true once
   # it also sends tenant_id first, like gateway-back's frame_sender.go does.
   tenant_in_handshake: false
-  default_tenant_id: tenant_example
+  # A tenants.slug or tenants.id from the database (demo-facility = seed.sql's tenant).
+  default_tenant_id: demo-facility
 
 inference:
   weights: yolo26n-pose.pt   # n = fastest; s/m are more accurate but slower

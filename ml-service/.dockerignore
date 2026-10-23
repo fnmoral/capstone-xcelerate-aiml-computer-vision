@@ -9,3 +9,6 @@ runs/
 tests/
 Dockerfile
 .dockerignore
+.env
+**/.env
+deploy/

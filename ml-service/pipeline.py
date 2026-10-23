@@ -8,6 +8,7 @@ crashes the process when any tensor is created off the main thread.
 import logging
 import threading
 import time
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -18,7 +19,7 @@ from fall.rules import LYING, FALLING, RuleClassifier
 from fall.state_machine import STARTED, FallMonitor, IncidentEvent
 from fall.zones import IncidentAggregator
 from ingest.decoder import FrameSampler, H264Decoder
-from sinks.jsonl import JsonlSink
+from sinks import Sink, SnapshotStore, incident_record, prediction_record
 from vision.pose import Person, PoseTracker
 
 log = logging.getLogger(__name__)
@@ -27,13 +28,14 @@ LABEL_COLORS = {LYING: (0, 0, 255), FALLING: (0, 165, 255)}
 
 
 class CameraPipeline:
-    def __init__(self, tenant_id: str, camera_id: str, cfg: Config, sink: JsonlSink,
-                 aggregator: IncidentAggregator):
+    def __init__(self, tenant_id: str, camera_id: str, cfg: Config, sink: Sink,
+                 aggregator: IncidentAggregator, snapshots: SnapshotStore):
         self.tenant_id = tenant_id
         self.camera_id = camera_id
         self.cfg = cfg
         self.sink = sink
         self.aggregator = aggregator
+        self.snapshots = snapshots
         # Counters for the periodic stats log line; read and reset by take_stats().
         self.frames_in = 0
         self.frames_analysed = 0
@@ -45,6 +47,7 @@ class CameraPipeline:
         self._next_convert = 0.0
         self.pose: PoseTracker | None = None  # created by step(), on the main thread
         self.classifier = RuleClassifier(cfg.rules)
+        self.model_name = f"{Path(cfg.inference.weights).name}+{self.classifier.name}"  # e.g. yolo26n-pose.pt+rules
         self.monitor = FallMonitor(cfg.monitor)
         self._last_prediction: dict[int, float] = {}
         self._pending: np.ndarray | None = None
@@ -87,8 +90,10 @@ class CameraPipeline:
     def _report(self, event: IncidentEvent, frame: np.ndarray | None) -> None:
         for kind, zone_incident in self.aggregator.handle(self.tenant_id, self.camera_id, event):
             # Each camera that confirms the fall contributes its own snapshot.
-            snapshot = frame if event.kind == STARTED else None
-            self.sink.incident(kind, zone_incident, snapshot, self.camera_id)
+            key = None
+            if frame is not None and event.kind == STARTED:
+                key = self.snapshots.save(zone_incident, self.camera_id, frame)
+            self.sink.incident(incident_record(kind, zone_incident, event.at, key, self.camera_id if key else None))
             log.info("[%s] %s zone=%s cameras=%s severity=%s", self.camera_id, kind, zone_incident.zone,
                      ",".join(zone_incident.cameras), zone_incident.severity)
 
@@ -127,9 +132,8 @@ class CameraPipeline:
 
             if now - self._last_prediction.get(person.track_id, 0.0) >= self.cfg.prediction_interval_s:
                 self._last_prediction[person.track_id] = now
-                self.sink.prediction(
-                    self.tenant_id, self.camera_id, now,
-                    f"{self.cfg.inference.weights}+{self.classifier.name}", self.classifier.version,
+                self.sink.prediction(prediction_record(
+                    self.tenant_id, self.camera_id, now, self.model_name, self.classifier.version,
                     label, confidence,
                     {
                         "track_id": person.track_id,
@@ -140,7 +144,8 @@ class CameraPipeline:
                         "hip_velocity": velocity,
                     },
                     inference_ms,
-                )
+                    self.aggregator.incident_id_for(self.monitor.incident_of(person.track_id)),
+                ))
 
         for event in self.monitor.expire(now):
             self._report(event, None)

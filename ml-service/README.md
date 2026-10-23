@@ -70,13 +70,15 @@ All the timings above can be changed in the settings.
 
 ## What happens after a fall (today)
 
-- The incident is **saved to a file** with its start time, severity, how sure the system
-  was, and when the person recovered.
-- A **photo** of the moment is saved.
+- The incident is **saved to the project database**: when it started, how serious it is,
+  how sure the system was, which cameras saw it, and when the person recovered.
+- An **alert** is created for it in the database, ready for the web app to show and for
+  staff to acknowledge.
+- A **photo** of the moment is saved from each camera that saw it.
 - On a screen with the live view, the person's box turns **red**.
 
-The field names match the project's database design, so connecting it to the main system
-later is straightforward.
+Everything is also kept in local files, so nothing is lost if the database is unreachable
+for a while; the service keeps detecting and catches up when it's back.
 
 ## Try it yourself
 
@@ -90,8 +92,8 @@ later is straightforward.
 
 ## Not done yet
 
-- **No alerts.** Nothing sends a message, email or notification yet, and incidents don't
-  appear in the web app yet. They are saved to files.
+- **No notifications.** Alerts are stored in the database, but nothing sends an email or
+  message yet, and the web app doesn't display them yet.
 - **Rules, not a trained model.** The decision is made by hand-tuned rules, so expect some
   false alarms or misses until they are tuned on real footage. A trained model is planned.
 - **Overlapping cameras need setting up.** Cameras only merge their alerts once they are
@@ -131,7 +133,7 @@ through exactly the same steps as an IP camera, so prototyping results carry ove
 | Rules | `fall/rules.py` | Labels each pose `upright`, `falling` or `lying` (Stage A, no training needed) |
 | Incidents | `fall/state_machine.py` | Down for `confirm_seconds` opens an incident; up for `recover_seconds` closes it |
 | Zones | `fall/zones.py` | Merges incidents from cameras of the same zone, so one fall gives one alert |
-| Output | `sinks/jsonl.py` | `model_predictions.jsonl`, `incidents.jsonl`, snapshots; fields match `backend-module/db/schema.sql` |
+| Output | `sinks/` | Shared record format and snapshots (`__init__.py`), JSONL files (`jsonl.py`), backend-module PostgreSQL on a background thread (`postgres.py`) |
 | Config | `config.py`, `config.yaml` | Typed settings with a dev and a prod section; documented in [CONFIG.md](CONFIG.md) |
 | Test sender | `tools/send_video.py` | Plays the part of stream-hub from a webcam or video file |
 
@@ -227,17 +229,30 @@ people falling within the window, each on a different camera of one zone, become
 
 ### 6. Outputs
 
-All output goes to `data/` (git-ignored), using the field names of
-`backend-module/db/schema.sql` so the backend can store records unchanged.
+Every result goes to each sink in `output.sinks` as the same record
+([CONFIG.md → output](CONFIG.md#output)). Snapshots are saved once, under `data/snapshots/`.
+
+**PostgreSQL** (`postgres` sink, the backend-module database; schema changes and details in
+[backend-module/db/README.md](../backend-module/db/README.md)):
+
+| Table | Written when |
+|---|---|
+| `incidents` | A fall is confirmed (insert); severity rises, a camera joins, or it closes (update) |
+| `incident_cameras` | Each camera and tracked person that saw the incident, with its snapshot key |
+| `alerts` | One per incident, `open`, linked to the tenant's fall rule; severity and summary kept current, status left to staff |
+| `model_predictions` | At most once per second per person; `incident_id` set while the person is part of an incident |
+
+Writes run on a background thread and never slow detection; if the database is down they
+are retried, and `tenant`/`camera` names are mapped to the schema's UUIDs
+([CONFIG.md → database](CONFIG.md#database)).
+
+**JSONL files** (`jsonl` sink, `data/`, git-ignored) hold the same records:
 
 | File | Written when | Contents |
 |---|---|---|
-| `model_predictions.jsonl` | At most once per second per person (`prediction_interval_s`) | Label, confidence, box, keypoints, torso angle, aspect ratio, hip speed, inference time |
-| `incidents.jsonl` | On every zone-level incident event above | Incident ID, event, status (`active` / `recovered` / `unresolved`), severity, start and recovery times, peak confidence, snapshot path, `camera_id` (first camera), `camera_ids` (all), `zone`, `tracks` |
+| `model_predictions.jsonl` | At most once per second per person (`prediction_interval_s`) | Label, confidence, box, keypoints, torso angle, aspect ratio, hip speed, inference time, `incident_id` |
+| `incidents.jsonl` | On every zone-level incident event above | Incident ID, event, status (`active` / `recovered` / `unresolved`), severity, start and recovery times, peak confidence, snapshot key, `camera_id` (first camera), `camera_ids` (all), `zone`, `tracks` |
 | `snapshots/<incident id>.jpg` | When a camera confirms the fall | The frame at that moment; extra cameras of a zone incident add `<incident id>_<camera>.jpg` |
-
-The `incidents` table in the schema has one `camera_id`; storing `camera_ids` will need an
-extra table (e.g. `incident_cameras`) when the backend is connected.
 
 Each event is also logged, e.g. `incident_started track=1 severity=medium`, and the preview
 window draws every person's box with `#<track> <label> <confidence>`.
@@ -337,12 +352,21 @@ listening on `0.0.0.0:9999`.
 Check with `docker run --rm --gpus all ubuntu nvidia-smi`.
 
 ```bash
-cd ml-service/deploy
+# 1. The database (creates the shared "fallguard" Docker network)
+cd backend-module
+cp .env.example .env                   # set POSTGRES_PASSWORD, ML_SERVICE_PASSWORD
+docker compose up -d
+
+# 2. ml-service (joins the network, reaches the database as db:5432)
+cd ../ml-service/deploy
+cp .env.example .env                   # ML_DATABASE_URL with the ML_SERVICE_PASSWORD
 docker compose up -d --build
 docker compose logs -f ml-service      # look for: model ... ready on GPU 0 (<server GPU>)
+                                       #           database connected
 ```
 
 Then point stream-hub at it: `ai_server_addr` in `stream-hub/config.json` = `<server>:9999`.
+Details of the database setup: [backend-module/db/README.md](../backend-module/db/README.md).
 
 How the image differs from the Windows setup:
 
@@ -425,7 +449,13 @@ python -m pytest
 
 - The Docker image has not been built yet: there is no Docker on the development PC.
   Build it on the server (or any Linux machine with Docker) before relying on it.
-- Results are written to local files. Sending them to `backend-module` is the next step.
+- Snapshots are stored on the ml-service disk; `snapshot_key` in the database is a path
+  relative to `output.dir`, not yet an object-storage key the web app can fetch.
+- gateway-back cameras live in gateway-back's own SQLite database and aren't registered in
+  the backend `cameras` table, so their incidents have no camera name, location or DB zone
+  until they are.
+- Monthly partitions need a scheduled `create_monthly_partitions()` job run by the table
+  owner (see [backend-module/db/README.md](../backend-module/db/README.md)).
 - Stage B (a learned classifier over keypoint sequences, trained on public fall datasets)
   should replace `RuleClassifier` behind the same `classify()` interface.
 - Cross-camera identity: zones stop duplicate alerts, but track IDs are still per camera.

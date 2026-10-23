@@ -55,6 +55,14 @@ class IncidentAggregator:
         self._by_member: dict[int, ZoneIncident] = {}
         self._lock = threading.Lock()  # main thread, plus reader threads closing a lost camera
 
+    def incident_id_for(self, inc: Incident | None) -> str | None:
+        """ID of the zone incident a camera-level incident belongs to, if it is still open."""
+        if inc is None:
+            return None
+        with self._lock:
+            group = self._by_member.get(id(inc))
+            return group.id if group is not None else None
+
     def zone_of(self, camera_id: str) -> str:
         # A camera without a zone is its own zone, so nothing is merged into it.
         return self._zone_of.get(camera_id, f"camera:{camera_id}")

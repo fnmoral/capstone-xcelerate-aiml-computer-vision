@@ -53,10 +53,15 @@ USER app
 # prod: inference: weights in config.yaml.
 ARG YOLO_WEIGHTS=yolo26n-pose.pt
 RUN python - <<EOF
+import os
+
 import numpy as np
 from ultralytics import YOLO, settings
 
 import config
+
+# The real database URL is only given at runtime; the check below just needs one present.
+os.environ.setdefault("ML_DATABASE_URL", "postgresql://build-check@localhost/none")
 
 settings.update({"sync": False})  # no usage analytics from an on-prem install
 model = YOLO("/app/${YOLO_WEIGHTS}")

@@ -27,7 +27,9 @@ class InferenceConfig:
 
 SOURCE_TYPES = ("tcp", "webcam", "rtsp", "file")
 PROD_SOURCE_TYPES = ("tcp", "rtsp")  # production watches IP cameras only
-MODE_KEYS = {"sources", "source", "preview", "server", "handshake", "inference", "output", "fall", "zones"}
+MODE_KEYS = {"sources", "source", "preview", "server", "handshake", "inference", "output", "fall", "zones",
+             "database"}
+SINK_TYPES = ("jsonl", "postgres")
 
 
 @dataclass(slots=True)
@@ -59,6 +61,10 @@ class Config:
     output_dir: str = "data"
     prediction_interval_s: float = 1.0
     stats_interval_s: float = 30.0
+    sinks: list[str] = field(default_factory=lambda: ["jsonl"])
+    database_url: str = ""
+    database_connect_timeout_s: float = 5.0
+    zones_from_db: bool = True
     show: bool = False
 
     @property
@@ -224,5 +230,21 @@ def load(path: str | Path, prod_mode: bool | None = None) -> Config:
         prediction_interval_s=float(output.get("prediction_interval_s", 1.0)),
         stats_interval_s=float(output.get("stats_interval_s", 30.0)),
     )
+    database = raw.get("database") or {}
+    sinks = output.get("sinks", ["jsonl"])
+    if isinstance(sinks, str):
+        sinks = [sinks]
+    bad = [s for s in sinks if s not in SINK_TYPES]
+    if bad or not sinks:
+        raise ValueError(f"output.sinks must list some of {SINK_TYPES}, got {sinks}")
+    cfg.sinks = list(sinks)
+    # The URL usually holds a password, so the environment variable wins over the file.
+    cfg.database_url = os.environ.get("ML_DATABASE_URL") or database.get("url") or ""
+    cfg.database_connect_timeout_s = float(database.get("connect_timeout_s", 5.0))
+    cfg.zones_from_db = parse_bool(database.get("zones_from_db", True))
+    if "postgres" in cfg.sinks and not cfg.database_url:
+        raise ValueError("output.sinks includes postgres but no database URL is set "
+                         "(ML_DATABASE_URL or database.url)")
+
     cfg.check_mode()
     return cfg

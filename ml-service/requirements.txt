@@ -5,6 +5,7 @@
 ultralytics>=8.4.184
 opencv-python>=5.0
 av>=19.0
+psycopg[binary]>=3.3       # PostgreSQL sink (backend-module database)
 numpy
 pyyaml
 pytest

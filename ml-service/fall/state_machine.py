@@ -111,6 +111,10 @@ class FallMonitor:
             del self._tracks[track_id]
         return events
 
+    def incident_of(self, track_id: int) -> Incident | None:
+        track = self._tracks.get(track_id)
+        return track.incident if track is not None else None
+
     def close_all(self, t: float) -> list[IncidentEvent]:
         """The camera went away: every open incident becomes unresolved and all tracks are dropped."""
         events = [IncidentEvent(UNRESOLVED, track.incident, t)

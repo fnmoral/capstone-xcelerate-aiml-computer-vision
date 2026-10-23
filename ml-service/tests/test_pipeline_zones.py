@@ -12,6 +12,7 @@ import pytest
 import pipeline as pipeline_module
 from config import Config
 from fall.zones import IncidentAggregator
+from sinks import SnapshotStore
 from sinks.jsonl import JsonlSink
 from vision.pose import Person
 
@@ -49,7 +50,7 @@ def run(tmp_path, clock, zones):
     pose = StubPose()
     cams = []
     for cam_id in ("cam-1", "cam-2"):
-        p = pipeline_module.CameraPipeline("t", cam_id, cfg, sink, agg)
+        p = pipeline_module.CameraPipeline("t", cam_id, cfg, sink, agg, SnapshotStore(str(tmp_path)))
         p.pose = pose
         cams.append(p)
 
@@ -87,7 +88,7 @@ def test_unzoned_cameras_raise_two_incidents(tmp_path, clock):
 def test_camera_disconnect_marks_open_incident_unresolved(tmp_path, clock):
     cfg = Config()
     sink = JsonlSink(str(tmp_path))
-    p = pipeline_module.CameraPipeline("t", "cam-1", cfg, sink, IncidentAggregator({}, 10))
+    p = pipeline_module.CameraPipeline("t", "cam-1", cfg, sink, IncidentAggregator({}, 10), SnapshotStore(str(tmp_path)))
     p.pose = StubPose()
     for _ in range(50):
         clock[0] += 0.1
