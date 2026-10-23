@@ -81,20 +81,25 @@ If GitHub asks you to sign in, sign in with your GitHub account (you need access
 
 ## Step 3. Create the settings files (one time)
 
-The database passwords live in two files that are never uploaded to GitHub. Copy the
-examples:
+The mode and the database passwords live in three files that are never uploaded to
+GitHub. Copy the examples:
 
 ### Windows (PowerShell)
 ```powershell
+Copy-Item .env.example .env
 Copy-Item backend-module\.env.example backend-module\.env
 Copy-Item ml-service\deploy\.env.example ml-service\deploy\.env
 ```
 
 ### Mac (Terminal)
 ```bash
+cp .env.example .env
 cp backend-module/.env.example backend-module/.env
 cp ml-service/deploy/.env.example ml-service/deploy/.env
 ```
+
+The first one (`.env` in the project folder) sets **dev mode**, which is what you want on
+your own computer: sample data to look around, and your webcam works as a camera (step 6).
 
 **Set the passwords.** The examples (`change-me`) work, but it's better to pick your own.
 Open the two files in any text editor (VS Code, Notepad, TextEdit) and change these lines:
@@ -121,10 +126,15 @@ Rules:
 - Never upload or share the `.env` files. Git already ignores them; don't paste them in chat.
   Each teammate picks their own passwords for their own computer.
 
-**Demo data or a clean start?** `PROD_MODE=false` (dev, in `backend-module/.env`) fills the
-app with 3 sample cameras and 4 sample falls, handy to look around. `PROD_MODE=true` (prod)
-starts empty and you add your own cameras. Like the passwords, it only counts on the very
-first start; to change it later, wipe the data with `docker compose down -v`.
+**Dev or prod?** In the project folder's `.env`:
+
+| | Dev: `PROD_MODE=false` + `COMPOSE_PROFILES=test-camera` | Prod: `PROD_MODE=true`, no `COMPOSE_PROFILES` |
+|---|---|---|
+| A new database | a sample week: 3 sample cameras, 10 falls from the last 7 days, notes, who handled them | empty: add your own cameras |
+| Webcam | the webcam relay starts, and "Windows webcam" is added as a camera | not set up |
+
+Like the passwords, the sample data only counts on the very first start; to change it
+later, wipe the data with `docker compose --profile test-camera down -v`.
 
 ---
 
@@ -159,7 +169,7 @@ Open these in your browser:
 
 1. **FallGuard app**: http://localhost:3000
    Go to **Settings**: every service should say **Running**.
-   You will see some demo cameras and sample fall events already.
+   In dev you see sample cameras and a week of sample fall events already.
 2. **Gateway**: http://localhost:8080
 3. **Detector viewer**: http://localhost:8000 (shows video once a camera is added; step 6)
 
@@ -167,12 +177,10 @@ Open these in your browser:
 
 ## Step 6. Test with your webcam (optional)
 
-This sends your laptop's webcam into the system like a real security camera.
-
-**a. Start the test camera server:**
-```
-docker compose --profile test-camera up -d test-camera
-```
+This sends your laptop's webcam into the system like a real security camera. In **dev**
+mode the relay (test camera) is already running and the camera "Windows webcam" is already
+added: you only need steps b–d and f. (In prod, start the relay with
+`docker compose --profile test-camera up -d test-camera` and add the camera yourself, step e.)
 
 **b. Install Python** (one time), any version 3.10 or newer:
 - Windows: `winget install Python.Python.3.13`, then **close and reopen PowerShell**.
@@ -204,7 +212,7 @@ Mac:
 On a Mac, allow **Terminal** to use the camera if asked (or System Settings → Privacy &
 Security → Camera → turn on Terminal, then run it again).
 
-**e. Add it as a camera:** in the FallGuard app (http://localhost:3000) → **Cameras** →
+**e. Add it as a camera** (prod only; dev adds it for you): in the FallGuard app (http://localhost:3000) → **Cameras** →
 **Add camera**:
 - Name: `My webcam`
 - RTSP URL: `rtsp://test-camera:8554/webcam`

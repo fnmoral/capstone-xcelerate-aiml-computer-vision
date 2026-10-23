@@ -17,7 +17,7 @@ analytics, cameras, detection settings, system status.
 | `ml-service` | `ml-service/deploy/` | `9999`, `127.0.0.1:8000` (viewer) | Needs an NVIDIA GPU; prod mode (IP cameras only) |
 | `stream-hub` | `stream-hub/` | `9000` (HTTP/WS), `8090` (gateways) | Forwards every camera to `ml-service:9999` |
 | `gateway-back` | `gateway-back/` | `8080` (web UI + API) | Cameras and settings kept in the `gateway-data` volume |
-| `test-camera` (optional) | root | `8554` | RTSP server: plays `test-media/test.mp4` as `rtsp://test-camera:8554/test`, and accepts published streams (e.g. a webcam) |
+| `test-camera` (dev; profile `test-camera`) | root | `8554` | RTSP relay: accepts published streams (this PC's webcam as `rtsp://test-camera:8554/webcam`), and plays `test-media/test.mp4` as `/test` while something watches it. Starts with the stack in dev (`COMPOSE_PROFILES=test-camera` in the root `.env`) |
 
 The root [`docker-compose.yml`](docker-compose.yml) runs everything; each folder's own
 compose file runs that module alone. All of them declare the same fixed-name Docker network
@@ -60,11 +60,12 @@ clone the repo inside Ubuntu and work there directly.)
 ## 2. Secrets
 
 ```bash
+cp .env.example .env                                         # mode: PROD_MODE, COMPOSE_PROFILES (dev / prod)
 cp backend-module/.env.example backend-module/.env           # POSTGRES_PASSWORD, ML_SERVICE_PASSWORD
 cp ml-service/deploy/.env.example ml-service/deploy/.env     # ML_DATABASE_URL with the same ML_SERVICE_PASSWORD
 ```
 
-Both are git-ignored. Use letters and digits only, or URL-encode the password in `ML_DATABASE_URL`.
+All three are git-ignored. Use letters and digits only, or URL-encode the password in `ML_DATABASE_URL`.
 
 ## 3. Run
 
@@ -94,19 +95,17 @@ What to look for:
 
 ## 4. Test the whole chain
 
-**With your webcam (Windows):** stream it into the test camera, then add it as a camera.
-
-```bash
-docker compose --profile test-camera up -d test-camera
-```
+**With your webcam (Windows):** stream it into the test camera. In dev (root `.env`) the
+relay is already running and the API has added the camera "Windows webcam"; in prod, start
+the relay with `docker compose --profile test-camera up -d test-camera` and add the camera.
 
 ```powershell
 # On Windows, in the repo folder (uses ml-service's venv; Ctrl+C to stop)
 ml-service\.venv\Scripts\python.exe ml-service\tools\publish_webcam.py --index 0
 ```
 
-Then in http://localhost:3000 → **Cameras → Add camera**: RTSP URL
-`rtsp://test-camera:8554/webcam`. Within seconds **Live View** shows the video with a box
+(Prod: then in http://localhost:3000 → **Cameras → Add camera**, RTSP URL
+`rtsp://test-camera:8554/webcam`.) Within seconds **Live View** shows the video with a box
 and label on each person. Lie down in view for 3 seconds: an incident and an alert appear
 under **Fall Events** (with the photo), and the header shows "1 person down".
 

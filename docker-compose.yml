@@ -1,7 +1,10 @@
 # The whole platform in Docker: database, ML service, stream hub and gateway.
 #
+# Mode (dev / prod): .env next to this file, see .env.example. In dev it also starts the
+# test camera (COMPOSE_PROFILES=test-camera).
+#
 #   docker compose up -d --build                         # everything
-#   docker compose --profile test-camera up -d --build   # + a looping test camera (see DOCKER.md)
+#   docker compose --profile test-camera up -d --build   # + the test camera, in prod too (see DOCKER.md)
 #   docker compose ps
 #   docker compose logs -f ml-service
 #
@@ -21,18 +24,19 @@ include:
   - fallguard-frontend/docker-compose.yml # http://localhost:3000
 
 services:
-  # An RTSP "camera" that plays test-media/test.mp4 on a loop, for testing the full chain
-  # without real hardware. Add it in gateway-back as rtsp://test-camera:8554/test
+  # An RTSP relay for testing without real cameras: this PC's webcam is published to it
+  # as /webcam (ml-service/tools/publish_webcam.py), and /test plays test-media/test.mp4 on
+  # a loop while something watches it. Add them as rtsp://test-camera:8554/webcam or /test.
   test-camera:
     image: bluenviron/mediamtx:1.21.2-ffmpeg
     profiles: [test-camera]
     restart: unless-stopped
     environment:
-      MTX_PATHS_TEST_RUNONINIT: >-
+      MTX_PATHS_TEST_RUNONDEMAND: >-
         ffmpeg -re -stream_loop -1 -i /media/test.mp4 -an
         -c:v libx264 -preset ultrafast -tune zerolatency -g 50 -pix_fmt yuv420p
         -f rtsp -rtsp_transport tcp rtsp://localhost:$$RTSP_PORT/$$MTX_PATH
-      MTX_PATHS_TEST_RUNONINITRESTART: "yes"
+      MTX_PATHS_TEST_RUNONDEMANDRESTART: "yes"
     volumes:
       - ./test-media:/media:ro
     ports:
