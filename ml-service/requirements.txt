@@ -1,0 +1,10 @@
+# Python 3.15. Install PyTorch first from the CUDA index (it is not on PyPI for 3.15):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
+# then:
+#   pip install -r requirements.txt
+ultralytics>=8.4.184
+opencv-python>=5.0
+av>=19.0
+numpy
+pyyaml
+pytest

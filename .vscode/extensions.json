@@ -1,0 +1,26 @@
+{
+  "recommendations": [
+    "golang.go",
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "ms-python.debugpy",
+    "dbaeumer.vscode-eslint",
+    "oxc.oxc-vscode",
+    "bradlc.vscode-tailwindcss",
+    "esbenp.prettier-vscode",
+    "usernamehw.errorlens",
+    "mtxr.sqltools",
+    "mtxr.sqltools-driver-pg",
+    "qwtel.sqlite-viewer",
+    "humao.rest-client",
+    "ms-azuretools.vscode-containers",
+    "github.vscode-pull-request-github",
+    "eamodio.gitlens",
+    "bierner.markdown-mermaid"
+  ],
+  "unwantedRecommendations": [
+    "ritwickdey.liveserver",
+    "hbenl.vscode-test-explorer",
+    "donjayamanne.python-environment-manager"
+  ]
+}

@@ -1,0 +1,34 @@
+# Must match ai_server_addr in stream-hub/config.json
+server:
+  host: 127.0.0.1
+  port: 9999
+
+handshake:
+  # stream-hub's ai_worker.go currently sends only camera_id. Set to true once
+  # it also sends tenant_id first, like gateway-back's frame_sender.go does.
+  tenant_in_handshake: false
+  default_tenant_id: tenant_example
+
+inference:
+  weights: yolo26n-pose.pt   # n = fastest; s/m are more accurate but slower
+  device: 0                  # GPU index, or "cpu"
+  conf: 0.4
+  imgsz: 640
+  target_fps: 10             # frames per second sent to the model, per camera
+  tracker: bytetrack.yaml
+
+fall:
+  min_keypoint_conf: 0.3
+  lying_torso_angle_deg: 60
+  falling_torso_angle_deg: 35
+  lying_aspect_ratio: 1.3
+  fall_velocity: 0.6         # hip drop, frame heights per second
+  confirm_seconds: 3         # must stay down this long to open an incident
+  recover_seconds: 3         # must stay up this long to close it
+  lost_track_seconds: 10
+  high_after_seconds: 60
+  critical_after_seconds: 300
+
+output:
+  dir: data
+  prediction_interval_s: 1.0 # at most one model_predictions row per person per second
