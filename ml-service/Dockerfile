@@ -19,8 +19,11 @@ RUN apt-get update \
 RUN python -m venv /opt/venv
 ENV PATH=/opt/venv/bin:$PATH
 
+# CUDA build by default; ../docker-compose.cpu.yml passes the CPU index for machines
+# without an NVIDIA GPU (Macs, laptops).
+ARG TORCH_INDEX=https://download.pytorch.org/whl/cu130
 RUN pip install --no-cache-dir --upgrade pip \
- && pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu130
+ && pip install --no-cache-dir torch torchvision --index-url ${TORCH_INDEX}
 
 COPY requirements.txt .
 # PyYAML and lap build from source here (with the compiler), so the image uses the

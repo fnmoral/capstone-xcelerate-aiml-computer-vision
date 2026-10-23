@@ -73,6 +73,11 @@ docker compose up -d --build            # first build ~10–20 min (ml-service p
 docker compose ps                       # all "running"; db and stream-hub "healthy"
 ```
 
+No NVIDIA GPU (Mac, laptop): add the CPU override, which installs CPU PyTorch and drops
+the GPU reservation:
+`docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d --build`.
+Step-by-step for teammates on Windows / Mac (Docker Desktop): [GETTING_STARTED.md](GETTING_STARTED.md).
+
 What to look for:
 
 | Command | Expected |

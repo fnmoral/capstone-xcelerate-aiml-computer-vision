@@ -1,0 +1,11 @@
+# For machines without an NVIDIA GPU (Macs, most laptops): ml-service runs on the CPU.
+# Slower (fewer frames analysed per second) but every feature works.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d --build
+services:
+  ml-service:
+    image: capstone/ml-service:cpu
+    build:
+      args:
+        TORCH_INDEX: https://download.pytorch.org/whl/cpu
+    deploy: !reset {}
