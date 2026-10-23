@@ -33,6 +33,7 @@ from ingest.protocol import MAX_NALU_LEN, ProtocolError, read_handshake, read_me
 from pipeline import CameraPipeline
 from sinks import FanoutSink, SnapshotStore
 from sinks.jsonl import JsonlSink
+from viewer import Viewer, ViewerSink
 from vision.pose import PoseTracker, describe_device
 
 log = logging.getLogger("ml-service")
@@ -51,10 +52,10 @@ def new_pipeline(tenant_id: str, camera_id: str, cfg: config.Config, sink: Fanou
     return CameraPipeline(tenant_id, camera_id, cfg, sink, aggregator, snapshots)
 
 
-def build_sink(cfg: config.Config) -> tuple[FanoutSink, dict[str, list[str]]]:
-    """The output sinks from output.sinks, plus any zones defined in the database."""
+def build_sink(cfg: config.Config):
+    """The output sinks from output.sinks. Returns (fanout, postgres sink or None)."""
     sinks = []
-    db_zones: dict[str, list[str]] = {}
+    pg = None
     if "jsonl" in cfg.sinks:
         sinks.append(JsonlSink(cfg.output_dir))
     if "postgres" in cfg.sinks:
@@ -63,13 +64,29 @@ def build_sink(cfg: config.Config) -> tuple[FanoutSink, dict[str, list[str]]]:
         pg = PostgresSink(cfg.database_url, cfg.database_connect_timeout_s)
         sinks.append(pg)
         log.info("writing results to PostgreSQL at %s", cfg.database_url.split("@")[-1])
-        if cfg.zones_from_db:
-            try:
-                db_zones = pg.load_zones()
-            except Exception as e:
-                log.warning("could not load zones from the database (%s); using config.yaml zones only",
-                            str(e).strip().splitlines()[0])
-    return FanoutSink(sinks), db_zones
+    return FanoutSink(sinks), pg
+
+
+def load_db_zones(pg) -> dict[str, list[str]] | None:
+    try:
+        return pg.load_zones()
+    except Exception as e:
+        log.warning("could not load zones from the database (%s)", str(e).strip().splitlines()[0])
+        return None
+
+
+def refresh_zones(cfg: config.Config, pg, stop: threading.Event, every_s: float = 60.0) -> None:
+    """Zones are edited in the frontend's Cameras page; pick up changes without a restart."""
+    current = None
+    while not stop.wait(every_s):
+        db_zones = load_db_zones(pg)
+        if db_zones is None:
+            continue
+        zones = merge_zones(cfg.zones, db_zones)
+        if zones != current:
+            current = zones
+            aggregator.set_zones(zones)
+            log.info("zones reloaded from the database: %s", ", ".join(zones) or "none")
 
 
 def merge_zones(file_zones: dict[str, list[str]], db_zones: dict[str, list[str]]) -> dict[str, list[str]]:
@@ -255,17 +272,20 @@ def render_grid(active: list[CameraPipeline]) -> np.ndarray:
     return np.vstack([np.hstack(frames[i:i + cols]) for i in range(0, len(frames), cols)])
 
 
-def log_stats(active: list[CameraPipeline], seconds: float, target_fps: float) -> None:
+MIN_STATS_WINDOW_S = 10.0  # don't judge a camera on its first few seconds (model start-up)
+
+
+def log_stats(active: list[CameraPipeline], target_fps: float) -> None:
     """One line per camera: frames received and analysed per second, and average model time."""
     parts = []
     behind = []
     for p in active:
-        frames_in, analysed, model_ms = p.take_stats()
+        frames_in, analysed, model_ms, seconds = p.take_stats()
         fps = analysed / seconds
         avg_ms = model_ms / analysed if analysed else 0.0
         parts.append(f"{p.camera_id} in={frames_in / seconds:.1f}fps analysed={fps:.1f}fps model={avg_ms:.0f}ms")
         # Sources slower than target_fps can't reach it; only flag cameras that have frames to spare.
-        if frames_in / seconds >= target_fps and fps < 0.8 * target_fps:
+        if seconds >= MIN_STATS_WINDOW_S and frames_in / seconds >= target_fps and fps < 0.8 * target_fps:
             behind.append(p.camera_id)
     log.info("stats: %d camera(s) | %s", len(active), " | ".join(parts) or "none connected")
     if behind:
@@ -282,9 +302,8 @@ def main_loop(stop: threading.Event, show: bool, capture_threads: list[threading
         if stats_interval_s > 0 and time.monotonic() - last_stats >= stats_interval_s:
             with pipelines_lock:
                 active = list(pipelines.values())
-            elapsed = time.monotonic() - last_stats
             last_stats = time.monotonic()
-            log_stats(active, elapsed, target_fps)
+            log_stats(active, target_fps)
 
         if not uses_tcp and not any(t.is_alive() for t in capture_threads):
             log.info("all sources have ended")
@@ -308,6 +327,34 @@ def main_loop(stop: threading.Event, show: bool, capture_threads: list[threading
                 stop.set()
         elif not ran:
             time.sleep(0.005)
+
+
+def detection_settings(cfg: config.Config) -> dict:
+    """Read-only summary of the detection settings, shown by the frontend."""
+    r, m = cfg.rules, cfg.monitor
+    return {
+        "mode": "prod" if cfg.prod_mode else "dev",
+        "model": Path(cfg.inference.weights).name,
+        "device": str(cfg.inference.device),
+        "target_fps": cfg.inference.target_fps,
+        "person_confidence": cfg.inference.conf,
+        "rules": {
+            "lying_torso_angle_deg": r.lying_torso_angle_deg,
+            "falling_torso_angle_deg": r.falling_torso_angle_deg,
+            "lying_aspect_ratio": r.lying_aspect_ratio,
+            "fall_velocity": r.fall_velocity,
+            "min_keypoint_conf": cfg.rules_min_kpt_conf,
+        },
+        "incidents": {
+            "confirm_seconds": m.confirm_seconds,
+            "recover_seconds": m.recover_seconds,
+            "lost_track_seconds": m.lost_track_seconds,
+            "high_after_seconds": m.high_after_seconds,
+            "critical_after_seconds": m.critical_after_seconds,
+            "merge_window_seconds": cfg.merge_window_s,
+        },
+        "zones": {name: cams for name, cams in aggregator.zones().items()},
+    }
 
 
 def has_display() -> bool:
@@ -356,15 +403,29 @@ def main() -> None:
         cfg.show = False
 
     global aggregator, snapshots
-    sink, db_zones = build_sink(cfg)
+    sink, pg = build_sink(cfg)
+    db_zones = (load_db_zones(pg) or {}) if pg is not None and cfg.zones_from_db else {}
     zones = merge_zones(cfg.zones, db_zones)
     aggregator = IncidentAggregator(zones, cfg.merge_window_s)
     snapshots = SnapshotStore(cfg.output_dir)
     for name, cams in zones.items():
         log.info("zone [%s]: %s (falls seen by several of these cameras count once)", name, ", ".join(cams))
 
-    warm_up(cfg)
     stop = threading.Event()
+    if pg is not None and cfg.zones_from_db:
+        threading.Thread(target=refresh_zones, args=(cfg, pg, stop), name="zone-refresh", daemon=True).start()
+    if cfg.viewer_enabled:
+        viewer_sink = ViewerSink()
+        sink.sinks.append(viewer_sink)
+
+        def current_pipelines() -> dict[str, CameraPipeline]:
+            with pipelines_lock:
+                return dict(pipelines)
+
+        Viewer(cfg.viewer_host, cfg.viewer_port, cfg.viewer_fps, cfg.viewer_jpeg_quality, current_pipelines,
+               viewer_sink, cfg.output_dir, lambda: detection_settings(cfg)).start()
+
+    warm_up(cfg)
     server = serve(cfg, sink) if cfg.uses_tcp else None
     capture_threads = []
     for src in cfg.sources:

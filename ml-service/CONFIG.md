@@ -7,7 +7,7 @@ developer PC and on the production server; a single switch decides which mode ru
 - [How the file is organised](#how-the-file-is-organised)
 - [All options](#all-options): [sources](#sources) · [zones](#zones) · [preview](#preview) ·
   [server](#server) · [handshake](#handshake) · [inference](#inference) · [fall](#fall) · [output](#output) ·
-  [database](#database)
+  [database](#database) · [viewer](#viewer)
 - [Command-line flags](#command-line-flags) · [Environment variables](#environment-variables)
 - [Recipes](#recipes) · [Errors you may see](#errors-you-may-see)
 
@@ -262,6 +262,25 @@ How it behaves:
 - **Monthly partitions:** at connect it tries `create_monthly_partitions()`. A restricted
   role isn't allowed to (only the table owner is), which is logged once; schedule it as an
   admin job instead.
+
+### viewer
+
+A small web server for watching the detector: each camera's video with boxes and labels
+drawn on, and the recent incidents. The FallGuard frontend shows the same video through
+the backend API (`/api/cameras/<id>/stream`).
+
+| Option | Default | Meaning |
+|---|---|---|
+| `viewer.enabled` | `true` (shipped config) | Turn the viewer on |
+| `viewer.host` | `127.0.0.1` | Listen address. The prod section uses `0.0.0.0` inside the container; compose publishes it on `127.0.0.1:8000` only |
+| `viewer.port` | `8000` | http://localhost:8000 |
+| `viewer.fps` | `5` | Video frames per second sent to each browser |
+| `viewer.jpeg_quality` | `70` | JPEG quality of the video frames, 1–100 |
+
+Routes: `/` (page), `/stream/<camera>` (MJPEG), `/frame/<camera>.jpg`, `/api/state`,
+`/api/config` (detection settings, read-only), `/snapshots/<file>.jpg`. There is **no login**,
+so never expose the port beyond localhost or the internal network. The viewer runs on its
+own threads and never touches PyTorch (see the README's *Threading* section).
 
 ---
 

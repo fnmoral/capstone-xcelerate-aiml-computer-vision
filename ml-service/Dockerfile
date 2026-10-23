@@ -78,5 +78,5 @@ print("image check OK:", "${YOLO_WEIGHTS}", [s.type for s in cfg.sources])
 EOF
 
 VOLUME /app/data
-EXPOSE 9999
+EXPOSE 9999 8000
 CMD ["python", "main.py"]

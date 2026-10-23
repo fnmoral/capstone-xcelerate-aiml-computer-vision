@@ -32,6 +32,7 @@ CAMERA_NAMESPACE = uuid.UUID("6b9f6b1e-2d1c-4a8e-9d3e-7f2a51c0e001")
 ALERT_NAMESPACE = uuid.UUID("6b9f6b1e-2d1c-4a8e-9d3e-7f2a51c0e002")
 RETRY_SECONDS = 5.0
 BATCH_SIZE = 200
+CAMERA_CACHE_SECONDS = 60.0  # cameras get registered/renamed in the frontend while running
 
 
 class UnknownTenant(Exception):
@@ -58,7 +59,7 @@ class Resolver:
 
     def __init__(self):
         self._tenants: dict[str, uuid.UUID] = {}
-        self._cameras: dict[tuple[uuid.UUID, str], tuple[uuid.UUID, str | None]] = {}
+        self._cameras: dict[tuple[uuid.UUID, str], tuple[float, tuple[uuid.UUID, str | None]]] = {}
         self._rules: dict[uuid.UUID, uuid.UUID | None] = {}
         self._warned: set[str] = set()
 
@@ -77,8 +78,8 @@ class Resolver:
     def camera(self, cur, tenant_id: uuid.UUID, camera: str) -> tuple[uuid.UUID, str | None]:
         """(camera UUID, cameras.location or None). Needs app.tenant_id set for RLS."""
         key = (tenant_id, camera)
-        if (cached := self._cameras.get(key)) is not None:
-            return cached
+        if (cached := self._cameras.get(key)) is not None and time.monotonic() < cached[0]:
+            return cached[1]
         cid = as_uuid(camera)
         if cid is not None:
             row = cur.execute("SELECT location FROM cameras WHERE id = %s", (cid,)).fetchone()
@@ -87,7 +88,7 @@ class Resolver:
             row = cur.execute("SELECT id, location FROM cameras WHERE tenant_id = %s AND name = %s",
                               (tenant_id, camera)).fetchone()
             result = (row[0], row[1]) if row else (derived_camera_id(tenant_id, camera), None)
-        self._cameras[key] = result
+        self._cameras[key] = (time.monotonic() + CAMERA_CACHE_SECONDS, result)
         return result
 
     def fall_rule(self, cur, tenant_id: uuid.UUID) -> uuid.UUID | None:

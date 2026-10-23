@@ -28,7 +28,7 @@ class InferenceConfig:
 SOURCE_TYPES = ("tcp", "webcam", "rtsp", "file")
 PROD_SOURCE_TYPES = ("tcp", "rtsp")  # production watches IP cameras only
 MODE_KEYS = {"sources", "source", "preview", "server", "handshake", "inference", "output", "fall", "zones",
-             "database"}
+             "database", "viewer"}
 SINK_TYPES = ("jsonl", "postgres")
 
 
@@ -65,6 +65,11 @@ class Config:
     database_url: str = ""
     database_connect_timeout_s: float = 5.0
     zones_from_db: bool = True
+    viewer_enabled: bool = False
+    viewer_host: str = "127.0.0.1"
+    viewer_port: int = 8000
+    viewer_fps: float = 5.0
+    viewer_jpeg_quality: int = 70
     show: bool = False
 
     @property
@@ -242,6 +247,13 @@ def load(path: str | Path, prod_mode: bool | None = None) -> Config:
     cfg.database_url = os.environ.get("ML_DATABASE_URL") or database.get("url") or ""
     cfg.database_connect_timeout_s = float(database.get("connect_timeout_s", 5.0))
     cfg.zones_from_db = parse_bool(database.get("zones_from_db", True))
+    viewer = raw.get("viewer") or {}
+    cfg.viewer_enabled = parse_bool(viewer.get("enabled", False))
+    cfg.viewer_host = str(viewer.get("host", "127.0.0.1"))
+    cfg.viewer_port = int(viewer.get("port", 8000))
+    cfg.viewer_fps = float(viewer.get("fps", 5.0))
+    cfg.viewer_jpeg_quality = int(viewer.get("jpeg_quality", 70))
+
     if "postgres" in cfg.sinks and not cfg.database_url:
         raise ValueError("output.sinks includes postgres but no database URL is set "
                          "(ML_DATABASE_URL or database.url)")

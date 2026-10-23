@@ -136,6 +136,8 @@ through exactly the same steps as an IP camera, so prototyping results carry ove
 | Output | `sinks/` | Shared record format and snapshots (`__init__.py`), JSONL files (`jsonl.py`), backend-module PostgreSQL on a background thread (`postgres.py`) |
 | Config | `config.py`, `config.yaml` | Typed settings with a dev and a prod section; documented in [CONFIG.md](CONFIG.md) |
 | Test sender | `tools/send_video.py` | Plays the part of stream-hub from a webcam or video file |
+| Webcam as IP camera | `tools/publish_webcam.py` | Publishes this PC's webcam to an RTSP server (the `test-camera` service), so it goes through the real gateway → hub → ML path |
+| Viewer | `viewer.py` | Browser view at :8000: annotated MJPEG video per camera, recent incidents, detection settings (used by the frontend through the backend API) |
 
 ## Detection logic in detail
 
@@ -320,6 +322,9 @@ python main.py --no-show                            # no preview window
 
 Wait for `model ... ready` in the log (about 5–15 s), then step into view.
 Results go to `data/` (git-ignored). Press `q` in the window to quit.
+
+With `viewer.enabled` (on in the shipped config), http://localhost:8000 shows each camera's
+annotated video and the recent incidents; see [CONFIG.md → viewer](CONFIG.md#viewer).
 
 To test the TCP path without the Go services, `tools/send_video.py --source 0` plays the
 part of stream-hub.

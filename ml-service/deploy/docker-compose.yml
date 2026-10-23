@@ -22,11 +22,15 @@ services:
       ML_DATABASE_URL: ${ML_DATABASE_URL:?set ML_DATABASE_URL in .env}
     ports:
       - "9999:9999"          # stream-hub connects here; keep it on the internal network only
+      - "127.0.0.1:8000:8000"  # live viewer (no login): this machine only. The backend API uses ml-service:8000
     volumes:
       - ml-data:/app/data
       # Edit sources or thresholds without rebuilding:
       # - ../config.yaml:/app/config.yaml:ro
     networks: [fallguard]
+    logging:                           # cap Docker's log files (stream-hub logs every video chunk)
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
     deploy:
       resources:
         reservations:

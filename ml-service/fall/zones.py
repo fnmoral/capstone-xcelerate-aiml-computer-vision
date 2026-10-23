@@ -55,6 +55,21 @@ class IncidentAggregator:
         self._by_member: dict[int, ZoneIncident] = {}
         self._lock = threading.Lock()  # main thread, plus reader threads closing a lost camera
 
+    def set_zones(self, zones: dict[str, list[str]]) -> None:
+        """Replace the zone map (e.g. after zones were edited in the database).
+
+        Open incidents keep their zone; only new falls use the new map.
+        """
+        with self._lock:
+            self._zone_of = {cam: name for name, cams in zones.items() for cam in cams}
+
+    def zones(self) -> dict[str, list[str]]:
+        with self._lock:
+            out: dict[str, list[str]] = {}
+            for cam, name in self._zone_of.items():
+                out.setdefault(name, []).append(cam)
+            return out
+
     def incident_id_for(self, inc: Incident | None) -> str | None:
         """ID of the zone incident a camera-level incident belongs to, if it is still open."""
         if inc is None:
@@ -65,6 +80,7 @@ class IncidentAggregator:
 
     def zone_of(self, camera_id: str) -> str:
         # A camera without a zone is its own zone, so nothing is merged into it.
+        # (Called with self._lock held, from _start.)
         return self._zone_of.get(camera_id, f"camera:{camera_id}")
 
     def handle(self, tenant_id: str, camera_id: str, event: IncidentEvent) -> list[tuple[str, ZoneIncident]]:

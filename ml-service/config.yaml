@@ -46,6 +46,8 @@ prod:
   # (zones set up in the database's zones table are loaded too; see database: below)
   output:
     sinks: [jsonl, postgres] # backend-module database; the URL comes from ML_DATABASE_URL
+  viewer:
+    host: 0.0.0.0            # inside the container; compose publishes it on 127.0.0.1 only
 
 # ---------------------------------------------------------------------------
 # Shared by both modes. A dev: or prod: section can override any of these.
@@ -54,6 +56,15 @@ prod:
 # tcp source only. Must match ai_server_addr in stream-hub/config.json
 server:
   port: 9999
+
+# Live viewer in the browser: annotated video + recent incidents (no login: localhost only).
+# The fallguard frontend shows the same video through the backend API.
+viewer:
+  enabled: true
+  host: 127.0.0.1            # http://localhost:8000
+  port: 8000
+  fps: 5                     # frames per second sent to each browser
+  jpeg_quality: 70
 
 # backend-module PostgreSQL (used when output.sinks includes postgres).
 database:

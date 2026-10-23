@@ -40,6 +40,7 @@ class CameraPipeline:
         self.frames_in = 0
         self.frames_analysed = 0
         self.model_ms = 0.0
+        self._stats_since = time.monotonic()
         self.decoder = H264Decoder(camera_id)
         self.sampler = FrameSampler(cfg.inference.target_fps)
         target = cfg.inference.target_fps
@@ -53,7 +54,10 @@ class CameraPipeline:
         self._pending: np.ndarray | None = None
         self._pending_lock = threading.Lock()
         self._monitor_lock = threading.Lock()  # step() on the main thread vs close() from a reader thread
+        # For the preview window and the viewer: newest annotated frame and who is in it.
         self.latest_annotated: np.ndarray | None = None
+        self.latest_people: list[dict] = []
+        self.latest_at: float | None = None
 
     def handle_nalu(self, nalu: bytes) -> None:
         for frame in self.decoder.decode(nalu):
@@ -73,12 +77,18 @@ class CameraPipeline:
             self._pending = frame
             self.frames_in += 1
 
-    def take_stats(self) -> tuple[int, int, float]:
-        """(frames received, frames analysed, total model ms) since the last call."""
+    def take_stats(self) -> tuple[int, int, float, float]:
+        """(frames received, frames analysed, total model ms, seconds covered) since the last call.
+
+        The first window starts when the camera connected, not at the previous stats line,
+        so a camera that joins mid-window isn't reported as slow.
+        """
+        now = time.monotonic()
         with self._pending_lock:
-            stats = (self.frames_in, self.frames_analysed, self.model_ms)
+            stats = (self.frames_in, self.frames_analysed, self.model_ms, max(now - self._stats_since, 1e-6))
             self.frames_in = self.frames_analysed = 0
             self.model_ms = 0.0
+            self._stats_since = now
         return stats
 
     def close(self) -> None:
@@ -150,7 +160,10 @@ class CameraPipeline:
         for event in self.monitor.expire(now):
             self._report(event, None)
 
-        if self.cfg.show:
+        self.latest_people = [{"track": t, "label": label, "confidence": round(conf, 2)}
+                              for t, (label, conf) in sorted(labels.items())]
+        self.latest_at = now
+        if self.cfg.show or self.cfg.viewer_enabled:
             self.latest_annotated = self._annotate(frame, people, labels)
 
     def _annotate(self, frame: np.ndarray, people: list[Person],
