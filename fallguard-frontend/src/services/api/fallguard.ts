@@ -50,7 +50,8 @@ export interface CameraInput {
 /** Every call the frontend makes to the core backend (backend-module/api). */
 export const api = {
   health: () => apiRequest<Health>('/health'),
-  stats: () => apiRequest<Stats>('/stats'),
+  /** "Today" and the days are counted in the browser's time zone. */
+  stats: () => apiRequest<Stats>('/stats?tz=' + enc(tz())),
 
   cameras: () => apiRequest<{ cameras: Camera[]; gateway_error?: string; limits?: GatewayLimits }>('/cameras'),
   /** status "paused" = saved on standby (the gateway is at its streaming limit). */

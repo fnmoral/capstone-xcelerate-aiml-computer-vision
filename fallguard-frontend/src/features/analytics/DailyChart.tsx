@@ -19,7 +19,8 @@ export function DailyChart({ days }: { days: Day[] }) {
   const slot = plotW / Math.max(1, days.length);
   const barW = Math.max(2, slot - 2); // 2px gap between bars
   const y = (v: number) => PAD.top + plotH - (v / top) * plotH;
-  const label = (iso: string) => new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  // day is a local date (YYYY-MM-DD) from the API; format it as that date, not as a moment.
+  const label = (day: string) => new Date(day + 'T00:00:00Z').toLocaleDateString([], { month: 'short', day: 'numeric', timeZone: 'UTC' });
 
   return (
     <figure className="chart">
