@@ -22,7 +22,7 @@ docker compose logs -f db     # wait for "database system is ready to accept con
 
 | Service | What it does |
 |---|---|
-| `db` | The database. On first start (empty volume) it runs, in order: `schema.sql`, `init/02-seed.sh` (loads `seed.sql` unless `SEED_DEMO_DATA=false`), `init/03-roles.sh` (creates the restricted `ml_service` login) |
+| `db` | The database. On first start (empty volume) it runs, in order: `schema.sql`, `init/02-seed.sh` (loads the demo data `seed.sql` when `PROD_MODE=false`; in prod, or with `PROD_MODE` unset, only the tenant and its fall rule; `SEED_DEMO_DATA=true/false` overrides), `init/03-roles.sh` (creates the restricted `ml_service` login) |
 | `partitions` | Runs `create_monthly_partitions()` as the table owner at start and then daily, keeping `PARTITION_MONTHS_AHEAD` (3) months ready |
 
 **Connecting from other containers.** The file creates a Docker network named

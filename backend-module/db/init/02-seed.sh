@@ -1,17 +1,27 @@
 #!/bin/bash
-# First start only: load the dev seed data unless SEED_DEMO_DATA=false.
+# First start only. Demo data (seed.sql) is loaded when not in prod: PROD_MODE=false. In
+# prod (PROD_MODE=true, also when unset) it isn't. SEED_DEMO_DATA=true/false overrides.
 #
 # Without the demo data, a clean database still gets what the services need to run: the
 # tenant they serve (TENANT_SLUG, default demo-facility, as the API's TENANT and
 # ml-service's default_tenant_id) and its fall-detection rule. Add cameras in the app.
 set -euo pipefail
 
-if [[ "${SEED_DEMO_DATA:-true}" =~ ^(1|true|yes)$ ]]; then
-    echo "02-seed: loading /seed/seed.sql (demo data; set SEED_DEMO_DATA=false to skip)"
+is_true() { [[ "${1,,}" =~ ^(1|true|yes|on)$ ]]; }
+if [[ -n "${SEED_DEMO_DATA:-}" ]]; then
+    is_true "$SEED_DEMO_DATA" && demo=1 || demo=0
+    why="SEED_DEMO_DATA=${SEED_DEMO_DATA}"
+else
+    is_true "${PROD_MODE:-true}" && demo=0 || demo=1
+    why="PROD_MODE=${PROD_MODE:-true (unset)}"
+fi
+
+if (( demo )); then
+    echo "02-seed: ${why}: loading /seed/seed.sql (demo data)"
     psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" -f /seed/seed.sql
 else
     slug="${TENANT_SLUG:-demo-facility}"
-    echo "02-seed: SEED_DEMO_DATA=${SEED_DEMO_DATA}; no demo data, creating tenant '${slug}' only"
+    echo "02-seed: ${why}: no demo data, creating tenant '${slug}' only"
     psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
         -v slug="$slug" -v name="${TENANT_NAME:-FallGuard}" <<'SQL'
 INSERT INTO tenants (name, slug, plan, max_cameras)
