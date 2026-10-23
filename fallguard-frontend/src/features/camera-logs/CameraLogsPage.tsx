@@ -7,7 +7,7 @@ import { Icon } from '../../components/ui/Icon';
 import { DEFAULT_WINDOW, resolveWindow, TimeWindow, type TimeWindowValue } from '../../components/ui/TimeWindow';
 import { api, exportUrl } from '../../services/api/fallguard';
 import { usePolling } from '../../services/api/usePolling';
-import { formatDuration, formatTime, secondsSince } from '../../lib/format';
+import { formatDateTime, formatDuration, formatTime, secondsSince } from '../../lib/format';
 import type { LogEntry } from '../../types/domain';
 import './camera-logs.css';
 
@@ -29,7 +29,7 @@ function LogRow({ e }: { e: LogEntry }) {
   const badge = ACTION_BADGE[e.action] ?? { value: 'muted', label: e.action.replace('camera.', '') };
   return (
     <tr>
-      <td className="cl-time">{new Date(e.at).toLocaleString()}</td>
+      <td className="cl-time">{formatDateTime(e.at)}</td>
       <td>{e.camera_name ?? <span className="muted">Removed camera</span>}</td>
       <td><StatusBadge value={badge.value} label={badge.label} /></td>
       <td>{e.message}</td>

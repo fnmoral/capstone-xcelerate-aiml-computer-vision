@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { useUiStore, type LiveLayout, type Theme } from '../../store/uiStore';
+import { TimeZoneSettings } from './TimeZoneSettings';
 import { api } from '../../services/api/fallguard';
 import { usePolling } from '../../services/api/usePolling';
 import type { GatewayConfig } from '../../types/domain';
@@ -84,6 +85,8 @@ export default function SettingsPage() {
             </table>
           )}
         </section>
+
+        <TimeZoneSettings />
 
         <GatewaySettings />
 

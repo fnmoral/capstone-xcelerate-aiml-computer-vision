@@ -1,8 +1,9 @@
+import { zonedToIso } from '../../lib/format';
 import './ui.css';
 
 export type WindowPreset = '24h' | '7d' | '30d' | 'all' | 'custom';
 
-/** A time window: a preset, or custom from/to as datetime-local strings (browser time). */
+/** A time window: a preset, or custom from/to as datetime-local strings (in the app's time zone). */
 export interface TimeWindowValue {
   preset: WindowPreset;
   from: string;
@@ -22,7 +23,7 @@ const PRESETS: { value: WindowPreset; label: string; hours?: number }[] = [
 /** ISO from/to for the API. Call it when fetching, so "last 24 h" always ends now. */
 export function resolveWindow(w: TimeWindowValue): { from?: string; to?: string } {
   if (w.preset === 'custom') {
-    const iso = (v: string) => (v ? new Date(v).toISOString() : undefined);
+    const iso = (v: string) => (v ? zonedToIso(v) : undefined);
     return { from: iso(w.from), to: iso(w.to) };
   }
   const hours = PRESETS.find((p) => p.value === w.preset)?.hours;

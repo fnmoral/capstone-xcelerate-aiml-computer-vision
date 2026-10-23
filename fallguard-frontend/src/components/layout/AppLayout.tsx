@@ -1,6 +1,8 @@
 import { Suspense, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { useUiStore } from '../../store/uiStore';
+import { api } from '../../services/api/fallguard';
+import { usePolling } from '../../services/api/usePolling';
 import { Header } from './Header';
 import { Navigation } from './Navigation';
 import { MainContainer } from './MainContainer';
@@ -9,7 +11,10 @@ import './AppLayout.css';
 
 /** App shell: Header + Navigation + MainContainer(page, Footer). */
 export function AppLayout() {
-  const { navCollapsed, theme, closeNav } = useUiStore();
+  const { navCollapsed, theme, closeNav, setTimeZone } = useUiStore();
+  // Facility settings (time zone): picked up by every page, re-checked every minute.
+  const { data: settings } = usePolling(() => api.settings(), 60000);
+  useEffect(() => { if (settings) setTimeZone(settings.timezone); }, [settings, setTimeZone]);
   const { pathname } = useLocation();
 
   useEffect(() => closeNav(), [pathname, closeNav]);

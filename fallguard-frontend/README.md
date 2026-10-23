@@ -12,7 +12,7 @@ backend API (`backend-module/api`) under `/api`.
 | Cameras | Add IP cameras (through the gateway): **5 stream at once, up to 50 saved**; the rest wait paused (standby) and **Switch to this** swaps one in for a streaming camera, no remove / re-add, set location and zone, pause / resume, remove, "alert me if it stops working" toggle (default on). **Camera order**: drag the names (or use the arrows) to set the order in Live View and fall-event videos; saved for everyone |
 | Camera Logs | Each camera's status right now (online, paused, not working, not connected) and since when; full history of changes with who made them; CSV export (for audits) |
 | Detection Settings | Device in use (GPU / CPU) and the actual analysis rate per camera; **minimum person confidence** (tunable: raise it if objects cause false alarms); the detector's thresholds and timings and the clip settings (read-only, from ml-service) |
-| Settings | Health of every service, the gateway's stream-hub address, theme |
+| Settings | Health of every service, **time zone** (facility-wide: every time shown, falls per day, report windows, CSV exports; default = the browser's), the gateway's stream-hub address, theme, Live View default layout |
 
 The header bell lists open fall alerts and cameras that stopped working. **Clear** hides them in that browser only; the alerts stay open in Fall Events until someone acknowledges or resolves them.
 

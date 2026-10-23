@@ -14,6 +14,7 @@ interface UiState {
   liveLayout: LiveLayout; // Live View's default layout
   noteAuthor: string; // name put on notes (no user accounts yet)
   notifClearedAt: string | null; // bell: hide notifications from before this time (alerts stay open)
+  timeZone: string | null; // facility time zone from the API (Settings); null = this browser's
   openNav: () => void;
   closeNav: () => void;
   toggleNav: () => void;
@@ -22,6 +23,7 @@ interface UiState {
   setLiveLayout: (l: LiveLayout) => void;
   setNoteAuthor: (name: string) => void;
   clearNotifications: () => void;
+  setTimeZone: (tz: string | null) => void;
 }
 
 /** Client-only UI state. Server data does NOT live here (see docs/ARCHITECTURE.md). */
@@ -34,6 +36,7 @@ export const useUiStore = create<UiState>()(
       liveLayout: 'auto',
       noteAuthor: '',
       notifClearedAt: null,
+      timeZone: null,
       openNav: () => set({ navOpen: true }),
       closeNav: () => set({ navOpen: false }),
       toggleNav: () => set((s) => ({ navOpen: !s.navOpen })),
@@ -42,11 +45,12 @@ export const useUiStore = create<UiState>()(
       setLiveLayout: (liveLayout) => set({ liveLayout }),
       setNoteAuthor: (noteAuthor) => set({ noteAuthor }),
       clearNotifications: () => set({ notifClearedAt: new Date().toISOString() }),
+      setTimeZone: (timeZone) => set({ timeZone }),
     }),
     {
       name: 'fallguard-ui',
       partialize: (s) => ({ navCollapsed: s.navCollapsed, theme: s.theme, liveLayout: s.liveLayout, noteAuthor: s.noteAuthor,
-        notifClearedAt: s.notifClearedAt }),
+        notifClearedAt: s.notifClearedAt, timeZone: s.timeZone }),
     },
   ),
 );

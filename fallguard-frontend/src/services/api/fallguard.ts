@@ -3,6 +3,7 @@ import type {
   Prediction, Stats,
 } from '../../types/domain';
 import { apiRequest, apiUrl } from './client';
+import { appTimeZone } from '../../lib/format';
 
 const json = (body: unknown): RequestInit => ({ body: JSON.stringify(body) });
 const enc = encodeURIComponent;
@@ -34,8 +35,8 @@ export interface LogQuery {
   limit?: number;
 }
 
-/** The browser's time zone, so exported times match what the page shows. */
-const tz = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+/** The app's time zone (Settings, else the browser's), so stats and exports match the page. */
+const tz = appTimeZone;
 
 export interface CameraInput {
   name: string;
@@ -81,6 +82,10 @@ export const api = {
 
   notifications: () => apiRequest<Notifications>('/notifications'),
   logs: (q: LogQuery = {}) => apiRequest<{ entries: LogEntry[] }>('/logs' + query(q)),
+
+  /** Facility-wide settings: timezone null = each browser's own. */
+  settings: () => apiRequest<{ timezone: string | null }>('/settings'),
+  saveSettings: (s: { timezone: string | null }) => apiRequest('/settings', { method: 'PUT', ...json(s) }),
 
   detection: () => apiRequest<DetectionSettings>('/detection'),
   /** person_confidence null = back to config.yaml's value. */
