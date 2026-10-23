@@ -20,7 +20,11 @@ type FrameSender struct {
 	cameraID string
 	tenantID string
 	address  string
+	closed   bool // set by Close; a closed sender never reconnects
 }
+
+// errSenderClosed is returned by SendNALU after Close.
+var errSenderClosed = fmt.Errorf("frame sender is closed")
 
 // NewFrameSender creates a new FrameSender. Instead of failing immediately
 // if the server is down, it attempts an initial connection and logs/retries in background
@@ -44,6 +48,9 @@ func (fs *FrameSender) connect() error {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 
+	if fs.closed {
+		return errSenderClosed
+	}
 	if fs.conn != nil {
 		return nil // it is connected
 	}
@@ -91,6 +98,10 @@ func (fs *FrameSender) sendHandshakeLocked() error {
 // SendNALU sends a single H.264 fragment, with automatic reconnection if disconnected.
 func (fs *FrameSender) SendNALU(nalu []byte) error {
 	fs.mu.Lock()
+	if fs.closed {
+		fs.mu.Unlock()
+		return errSenderClosed
+	}
 	// if there is no any activate connection, it try again
 	if fs.conn == nil {
 		fs.mu.Unlock()
@@ -124,11 +135,13 @@ func (fs *FrameSender) SendNALU(nalu []byte) error {
 	return nil
 }
 
-// Close closes the underlying TCP connection and sets it to nil.
+// Close closes the underlying TCP connection for good: later SendNALU calls return an
+// error instead of reconnecting.
 func (fs *FrameSender) Close() error {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 
+	fs.closed = true
 	if fs.conn != nil {
 		err := fs.conn.Close()
 		fs.conn = nil

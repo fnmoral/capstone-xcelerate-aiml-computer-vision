@@ -11,7 +11,7 @@ type Camera struct {
 	RTSPURL   string    `json:"rtsp_url" db:"rtsp_url"`
 	Username  string    `json:"username" db:"username"`
 	Password  string    `json:"password" db:"password"`
-	Status    string    `json:"status" db:"status"` // online, offline, error
+	Status    string    `json:"status" db:"status"` // online, offline, error, paused
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }

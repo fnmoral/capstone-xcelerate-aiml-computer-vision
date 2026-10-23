@@ -32,12 +32,16 @@ func NewHandler(service Service, tenantID string) *Handler {
 //   - POST   /cameras       -> AddCamera
 //   - GET    /cameras       -> GetCameras
 //   - DELETE /cameras/:id   -> RemoveCamera
+//   - POST   /cameras/:id/pause  -> PauseCamera
+//   - POST   /cameras/:id/resume -> ResumeCamera
 func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	cams := router.Group("/cameras")
 	{
 		cams.POST("", h.AddCamera)
 		cams.GET("", h.GetCameras)
 		cams.DELETE("/:id", h.RemoveCamera)
+		cams.POST("/:id/pause", h.PauseCamera)
+		cams.POST("/:id/resume", h.ResumeCamera)
 	}
 	router.GET("/health", h.HealthCheck)
 }
@@ -101,6 +105,39 @@ func (h *Handler) RemoveCamera(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Camera successfully removed."})
+}
+
+// PauseCamera stops a camera's stream without deleting it.
+//
+// Responses:
+//   - 404 Not Found if no camera has the ID.
+//   - 500 Internal Server Error for any other service error.
+//   - 200 OK with the camera (status "paused") on success.
+func (h *Handler) PauseCamera(c *gin.Context) {
+	h.respondCamera(c, h.service.PauseCamera)
+}
+
+// ResumeCamera restarts a paused camera's stream.
+//
+// Responses:
+//   - 404 Not Found if no camera has the ID.
+//   - 500 Internal Server Error for any other service error.
+//   - 200 OK with the camera (status "online") on success.
+func (h *Handler) ResumeCamera(c *gin.Context) {
+	h.respondCamera(c, h.service.ResumeCamera)
+}
+
+func (h *Handler) respondCamera(c *gin.Context, action func(id string) (*Camera, error)) {
+	cam, err := action(c.Param("id"))
+	if err != nil {
+		if errors.Is(err, ErrCameraNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"Error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, cam)
 }
 
 // HealthCheck verifies service status.

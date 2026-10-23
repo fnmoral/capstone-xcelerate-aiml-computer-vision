@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -14,6 +15,7 @@ type Repository interface {
 	FindAll() ([]Camera, error)
 	Count() (int64, error)
 	Delete(id string) error
+	UpdateStatus(id, status string) error
 }
 
 type sqliteRepository struct {
@@ -91,5 +93,19 @@ func (r *sqliteRepository) Delete(id string) error {
 		return errors.New("No camera found to delete")
 	}
 
+	return nil
+}
+
+// UpdateStatus sets a camera's status (e.g. "online", "paused").
+func (r *sqliteRepository) UpdateStatus(id, status string) error {
+	query := `UPDATE cameras SET status = $1, updated_at = $2 WHERE id = $3`
+
+	res, err := r.db.Exec(query, status, time.Now(), id)
+	if err != nil {
+		return fmt.Errorf("Error updating camera status: %w", err)
+	}
+	if rowsAffected, _ := res.RowsAffected(); rowsAffected == 0 {
+		return ErrCameraNotFound
+	}
 	return nil
 }

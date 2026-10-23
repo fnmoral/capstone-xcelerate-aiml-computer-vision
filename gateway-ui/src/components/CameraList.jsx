@@ -32,6 +32,26 @@ export default function CameraList() {
     fetchCameras();
   }, []);
 
+  const [busyId, setBusyId] = useState(null);
+
+  // Pause or resume a camera's stream (the camera stays registered)
+  const handlePauseResume = async (cam) => {
+    const action = cam.status === 'paused' ? 'resume' : 'pause';
+    try {
+      setBusyId(cam.id);
+      const response = await fetch(`/gateway/actions/cameras/${cam.id}/${action}`, { method: 'POST' });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.Error || `Failed to ${action} camera`);
+      }
+      fetchCameras();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   // Delete camera by ID
   const handleDelete = async (id) => {
     if (!confirm('Are you sure you want to delete this camera?')) return;
@@ -97,6 +117,13 @@ export default function CameraList() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {cameras.map((cam) => {
           const isOnline = cam.status === 'online';
+          const isPaused = cam.status === 'paused';
+          const badge = isOnline
+            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
+            : isPaused
+              ? 'bg-slate-100 text-slate-600 border border-slate-200'
+              : 'bg-amber-50 text-amber-700 border border-amber-200/60';
+          const dot = isOnline ? 'bg-emerald-500 animate-pulse' : isPaused ? 'bg-slate-400' : 'bg-amber-500';
           return (
             <div key={cam.id} className="bg-slate-50/40 border border-slate-200/80 rounded-2xl p-5 flex flex-col justify-between space-y-4 hover:border-slate-300 hover:shadow-md transition group">
               
@@ -105,10 +132,8 @@ export default function CameraList() {
                   <h3 className="text-sm font-bold text-slate-900 truncate pr-2" title={cam.name}>
                     {cam.name}
                   </h3>
-                  <span className={`px-2.5 py-1 text-[11px] font-semibold rounded-full flex items-center gap-1.5 shrink-0 ${
-                    isOnline ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60' : 'bg-amber-50 text-amber-700 border border-amber-200/60'
-                  }`}>
-                    <span className={`h-1.5 w-1.5 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                  <span className={`px-2.5 py-1 text-[11px] font-semibold rounded-full flex items-center gap-1.5 shrink-0 ${badge}`}>
+                    <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
                     {cam.status || 'offline'}
                   </span>
                 </div>
@@ -127,7 +152,19 @@ export default function CameraList() {
                   <span>{cam.created_at ? new Date(cam.created_at).toLocaleDateString() : ''}</span>
                 </div>
 
-                <div className="flex justify-end">
+                <div className="flex items-center justify-between">
+                  <button
+                    onClick={() => handlePauseResume(cam)}
+                    disabled={busyId === cam.id}
+                    title={isPaused ? 'Start streaming this camera again' : 'Stop streaming without deleting the camera'}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition cursor-pointer disabled:opacity-50 disabled:cursor-wait ${
+                      isPaused
+                        ? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-600'
+                        : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+                    }`}
+                  >
+                    {busyId === cam.id ? '…' : isPaused ? '▶ Resume' : '❚❚ Pause'}
+                  </button>
                   <button
                     onClick={() => handleDelete(cam.id)}
                     className="text-xs text-rose-600 hover:text-rose-700 font-semibold cursor-pointer transition opacity-80 group-hover:opacity-100"

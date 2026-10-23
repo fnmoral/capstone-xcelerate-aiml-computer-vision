@@ -19,6 +19,15 @@ import (
 // beyond the maximum allowed limit of three cameras per gateway.
 var ErrMaxCamerasReached = errors.New("Limit reached: Only up to 3 cameras are allowed per gateway.")
 
+// ErrCameraNotFound is returned when no camera has the given ID.
+var ErrCameraNotFound = errors.New("Camera not found.")
+
+// Camera statuses.
+const (
+	StatusOnline = "online"
+	StatusPaused = "paused" // stream stopped by the user; not restarted on gateway start
+)
+
 // Service defines the business logic operations for managing cameras.
 type Service interface {
 	// AddCamera creates a new camera, persists it, and starts its stream relay.
@@ -29,6 +38,13 @@ type Service interface {
 
 	// RemoveCamera stops the stream relay and deletes the camera by its ID.
 	RemoveCamera(id string) error
+
+	// PauseCamera stops the camera's stream relay and marks it paused, so it stays
+	// stopped across gateway restarts until resumed.
+	PauseCamera(id string) (*Camera, error)
+
+	// ResumeCamera restarts a paused camera's stream relay and marks it online.
+	ResumeCamera(id string) (*Camera, error)
 
 	// InitStreams starts the stream relay for all cameras stored in the repository.
 	InitStreams() error
@@ -114,6 +130,46 @@ func (s *service) RemoveCamera(id string) error {
 	return s.repo.Delete(id)
 }
 
+// PauseCamera stops the stream relay for the camera and stores the paused status.
+// Downstream, stream-hub and ml-service see the camera disconnect.
+func (s *service) PauseCamera(id string) (*Camera, error) {
+	cam, err := s.repo.FindByID(id)
+	if err != nil {
+		return nil, err
+	}
+	if cam == nil {
+		return nil, ErrCameraNotFound
+	}
+	s.streamManager.StopRelay(id)
+	if err := s.repo.UpdateStatus(id, StatusPaused); err != nil {
+		return nil, err
+	}
+	cam.Status = StatusPaused
+	log.Printf("Camera [%s] (%s) paused", cam.ID, cam.Name)
+	return cam, nil
+}
+
+// ResumeCamera starts the stream relay again and stores the online status.
+func (s *service) ResumeCamera(id string) (*Camera, error) {
+	cam, err := s.repo.FindByID(id)
+	if err != nil {
+		return nil, err
+	}
+	if cam == nil {
+		return nil, ErrCameraNotFound
+	}
+	fullURL := buildRTSPURL(cam.RTSPURL, cam.Username, cam.Password)
+	if err := s.streamManager.StartRelay(cam.ID, cam.TenantID, fullURL); err != nil {
+		return nil, fmt.Errorf("ERROR resuming stream: %w", err)
+	}
+	if err := s.repo.UpdateStatus(id, StatusOnline); err != nil {
+		return nil, err
+	}
+	cam.Status = StatusOnline
+	log.Printf("Camera [%s] (%s) resumed", cam.ID, cam.Name)
+	return cam, nil
+}
+
 // InitStreams retrieves all cameras from the repository and starts the stream
 // relay for each of them.
 //
@@ -126,6 +182,9 @@ func (s *service) InitStreams() error {
 	}
 
 	for _, cam := range cameras {
+		if cam.Status == StatusPaused {
+			continue
+		}
 		fullURL := buildRTSPURL(cam.RTSPURL, cam.Username, cam.Password)
 		if err := s.streamManager.StartRelay(cam.ID, cam.TenantID, fullURL); err != nil {
 			log.Printf("ERROR restoring stream for camera %s: %v", cam.Name, err)
@@ -179,6 +238,10 @@ func (s *service) RestoreSavedStreams(ctx context.Context) error {
 	log.Printf("Restoring connection for %d stored camera(s)...", len(cameras))
 
 	for _, cam := range cameras {
+		if cam.Status == StatusPaused {
+			log.Printf("Camera [%s] (%s) is paused; not restoring its stream", cam.ID, cam.Name)
+			continue
+		}
 		// Launch each stream in its own goroutine.
 		go func(c Camera) {
 			log.Printf("Restoring relay for camera [%s] (%s) -> URL: %s", c.ID, c.Name, c.RTSPURL)

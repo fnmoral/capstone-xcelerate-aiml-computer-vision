@@ -136,6 +136,19 @@ func (c *RTSPClient) connectAndStream() error {
 	}
 	defer client.Close()
 
+	// Stop() cancels c.ctx: close the RTSP session right away so no more packets arrive.
+	// Without this, client.Wait() below keeps the session open and every packet would
+	// make the (closed) FrameSender reconnect, so a removed camera kept streaming.
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		select {
+		case <-c.ctx.Done():
+			client.Close()
+		case <-done:
+		}
+	}()
+
 	desc, _, err := client.Describe(u)
 	if err != nil {
 		return fmt.Errorf("RTSP Describe error: %w", err)
@@ -168,7 +181,7 @@ func (c *RTSPClient) connectAndStream() error {
 	}
 
 	client.OnPacketRTP(media, forma, func(pkt *rtp.Packet) {
-		if pkt == nil || c.extractor == nil || c.sender == nil {
+		if pkt == nil || c.extractor == nil || c.sender == nil || c.ctx.Err() != nil {
 			return
 		}
 		nalus, _ := c.extractor.ProcessPacket(pkt)
@@ -190,6 +203,9 @@ func (c *RTSPClient) connectAndStream() error {
 
 	_, err = client.Play(nil)
 	if err != nil {
+		if c.ctx.Err() != nil {
+			return nil // stopped while connecting
+		}
 		return fmt.Errorf("RTSP Play error: %w", err)
 	}
 
