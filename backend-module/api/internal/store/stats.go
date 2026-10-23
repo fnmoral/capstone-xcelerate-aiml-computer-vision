@@ -24,8 +24,8 @@ type Stats struct {
 
 // DayCount is the number of incidents on one day.
 type DayCount struct {
-	Day   time.Time `json:"day"`
-	Count int       `json:"count"`
+	Day   string `json:"day"` // local date, YYYY-MM-DD
+	Count int    `json:"count"`
 }
 
 // CameraCount is the number of incidents first seen by one camera.
@@ -35,10 +35,19 @@ type CameraCount struct {
 	Count      int     `json:"count"`
 }
 
-// Stats computes the dashboard numbers. "Today" and days are in the database's time zone (UTC).
-func (s *Store) Stats(ctx context.Context) (*Stats, error) {
+// Stats computes the dashboard numbers. "Today" and the days of PerDay start at midnight in
+// tz (an IANA zone such as America/Toronto, from the browser; invalid or empty = UTC), so
+// a fall at 9 pm doesn't count for the next day.
+func (s *Store) Stats(ctx context.Context, tz string) (*Stats, error) {
+	if _, err := time.LoadLocation(tz); err != nil || tz == "" {
+		tz = "UTC"
+	}
 	st := &Stats{BySeverity: map[string]int{}, ByStatus: map[string]int{}, PredictionsLastHour: map[string]int{}}
 	err := s.tx(ctx, func(tx pgx.Tx, tid string) error {
+		// date_trunc('day', ...) on timestamptz follows the session time zone.
+		if _, err := tx.Exec(ctx, `SELECT set_config('TimeZone', $1, true)`, tz); err != nil {
+			return err
+		}
 		err := tx.QueryRow(ctx, `
 			SELECT
 			  (SELECT count(*) FROM incidents WHERE tenant_id = $1 AND status = 'active'),
@@ -58,7 +67,7 @@ func (s *Store) Stats(ctx context.Context) (*Stats, error) {
 		}
 
 		rows, err := tx.Query(ctx, `
-			SELECT d.day, count(i.id)
+			SELECT to_char(d.day, 'YYYY-MM-DD'), count(i.id)
 			FROM generate_series(date_trunc('day', now()) - interval '13 days', date_trunc('day', now()), interval '1 day') AS d(day)
 			LEFT JOIN incidents i ON i.tenant_id = $1 AND i.status <> 'false_positive'
 			     AND i.started_at >= d.day AND i.started_at < d.day + interval '1 day'

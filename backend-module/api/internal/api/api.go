@@ -621,7 +621,7 @@ func (s *Server) alertStatus(status string) gin.HandlerFunc {
 }
 
 func (s *Server) stats(c *gin.Context) {
-	st, err := s.db.Stats(c.Request.Context())
+	st, err := s.db.Stats(c.Request.Context(), c.Query("tz"))
 	if err != nil {
 		fail(c, err)
 		return
