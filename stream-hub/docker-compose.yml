@@ -1,0 +1,28 @@
+# stream-hub on its own (the whole stack: ../docker-compose.yml).
+#   docker compose up -d --build
+# Joins the shared "fallguard" network: gateways send to stream-hub:8090, and it forwards
+# every camera to ml-service:9999.
+name: fallguard-stream-hub
+
+services:
+  stream-hub:
+    build: .
+    image: capstone/stream-hub:latest
+    restart: unless-stopped
+    environment:
+      STREAM_HUB_HTTP_ADDR: ":9000"
+      STREAM_HUB_TCP_ADDR: ":8090"
+      STREAM_HUB_AI_SERVER_ADDR: ${STREAM_HUB_AI_SERVER_ADDR:-ml-service:9999}
+    ports:
+      - "${STREAM_HUB_HTTP_PORT:-9000}:9000"   # /health and /ws/<tenant>/<camera> for the frontend
+      - "${STREAM_HUB_TCP_PORT:-8090}:8090"    # gateways running outside this Docker network
+    networks: [fallguard]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+networks:
+  fallguard:
+    name: fallguard               # shared by every module; whichever starts first creates it

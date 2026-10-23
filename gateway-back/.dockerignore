@@ -1,0 +1,7 @@
+gateway.db
+config.json
+*.exe
+bin/
+Dockerfile
+docker-compose.yml
+.dockerignore

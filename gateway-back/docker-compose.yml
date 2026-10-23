@@ -1,0 +1,27 @@
+# gateway-back on its own (the whole stack: ../docker-compose.yml).
+#   docker compose up -d --build
+#   open http://localhost:8080
+# Joins the shared "fallguard" network; stream-hub is reached as stream-hub:8090.
+name: fallguard-gateway
+
+services:
+  gateway-back:
+    build: .
+    image: capstone/gateway-back:latest
+    restart: unless-stopped
+    environment:
+      # Only used to create config.json on first start (see docker-entrypoint.sh).
+      GATEWAY_CLOUD_ADDRESS: ${GATEWAY_CLOUD_ADDRESS:-stream-hub:8090}
+      GATEWAY_TENANT_ID: ${GATEWAY_TENANT_ID:-demo-facility}
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"   # web UI + /gateway/actions API
+    volumes:
+      - gateway-data:/data             # config.json + gateway.db (cameras)
+    networks: [fallguard]
+
+volumes:
+  gateway-data:
+
+networks:
+  fallguard:
+    name: fallguard               # shared by every module; whichever starts first creates it
