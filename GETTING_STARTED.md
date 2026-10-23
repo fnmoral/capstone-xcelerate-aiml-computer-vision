@@ -121,6 +121,11 @@ Rules:
 - Never upload or share the `.env` files. Git already ignores them; don't paste them in chat.
   Each teammate picks their own passwords for their own computer.
 
+**Demo data or a clean start?** `SEED_DEMO_DATA=true` (in `backend-module/.env`) fills the
+app with 3 sample cameras and 4 sample falls, handy to look around. Set it to `false` for an
+empty system where you add your own cameras. Like the passwords, it only counts on the very
+first start; to change it later, wipe the data with `docker compose down -v`.
+
 ---
 
 ## Step 4. Start everything
