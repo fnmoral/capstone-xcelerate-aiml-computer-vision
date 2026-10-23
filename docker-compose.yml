@@ -10,13 +10,15 @@
 #
 #   camera (RTSP) ─► gateway-back :8080 ─► stream-hub :8090 ─► ml-service :9999 ─► db :5432
 #                                              └─► browsers over WebSocket :9000
+#   browser ─► fallguard-frontend :3000 ─► api :8000 ─► db, gateway-back, ml-service (video :8000)
 name: fallguard
 
 include:
-  - backend-module/docker-compose.yml    # db + partitions; reads backend-module/.env
+  - backend-module/docker-compose.yml    # db, partitions, api; reads backend-module/.env
   - ml-service/deploy/docker-compose.yml # reads ml-service/deploy/.env
   - stream-hub/docker-compose.yml
   - gateway-back/docker-compose.yml
+  - fallguard-frontend/docker-compose.yml # http://localhost:3000
 
 services:
   # An RTSP "camera" that plays test-media/test.mp4 on a loop, for testing the full chain
@@ -29,10 +31,13 @@ services:
       MTX_PATHS_TEST_RUNONINIT: >-
         ffmpeg -re -stream_loop -1 -i /media/test.mp4 -an
         -c:v libx264 -preset ultrafast -tune zerolatency -g 50 -pix_fmt yuv420p
-        -f rtsp rtsp://localhost:$$RTSP_PORT/$$MTX_PATH
+        -f rtsp -rtsp_transport tcp rtsp://localhost:$$RTSP_PORT/$$MTX_PATH
       MTX_PATHS_TEST_RUNONINITRESTART: "yes"
     volumes:
       - ./test-media:/media:ro
     ports:
       - "8554:8554"                      # also playable from the host: rtsp://localhost:8554/test
     networks: [fallguard]
+    logging:                           # cap Docker's log files (stream-hub logs every video chunk)
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}

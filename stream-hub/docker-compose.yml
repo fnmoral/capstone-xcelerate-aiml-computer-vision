@@ -17,6 +17,9 @@ services:
       - "${STREAM_HUB_HTTP_PORT:-9000}:9000"   # /health and /ws/<tenant>/<camera> for the frontend
       - "${STREAM_HUB_TCP_PORT:-8090}:8090"    # gateways running outside this Docker network
     networks: [fallguard]
+    logging:                           # cap Docker's log files (stream-hub logs every video chunk)
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9000/health"]
       interval: 10s

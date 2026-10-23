@@ -3,15 +3,21 @@
 ```
 camera (RTSP) ─► gateway-back :8080 ─► stream-hub :8090 ─► ml-service :9999 ─► db :5432
                                            └─► browsers over WebSocket :9000
+browser ─► fallguard-frontend :3000 ─► api :8000 ─► db · gateway-back · ml-service (video, photos)
 ```
+
+**Open the app at http://localhost:3000** (FallGuard Vision): live view, fall events,
+analytics, cameras, detection settings, system status.
 
 | Service | Folder | Ports on the host | Notes |
 |---|---|---|---|
+| `frontend` | `fallguard-frontend/` | `3000` | React app (nginx); forwards `/api` to the backend API |
+| `api` | `backend-module/api/` | `127.0.0.1:8100` | Core backend REST API: incidents, alerts, stats, cameras (via the gateway) |
 | `db`, `partitions` | `backend-module/` | `127.0.0.1:5432` | PostgreSQL 17 + pgvector |
-| `ml-service` | `ml-service/deploy/` | `9999` | Needs an NVIDIA GPU; prod mode (IP cameras only) |
+| `ml-service` | `ml-service/deploy/` | `9999`, `127.0.0.1:8000` (viewer) | Needs an NVIDIA GPU; prod mode (IP cameras only) |
 | `stream-hub` | `stream-hub/` | `9000` (HTTP/WS), `8090` (gateways) | Forwards every camera to `ml-service:9999` |
 | `gateway-back` | `gateway-back/` | `8080` (web UI + API) | Cameras and settings kept in the `gateway-data` volume |
-| `test-camera` (optional) | root | `8554` | Plays `test-media/test.mp4` as `rtsp://test-camera:8554/test` |
+| `test-camera` (optional) | root | `8554` | RTSP server: plays `test-media/test.mp4` as `rtsp://test-camera:8554/test`, and accepts published streams (e.g. a webcam) |
 
 The root [`docker-compose.yml`](docker-compose.yml) runs everything; each folder's own
 compose file runs that module alone. All of them declare the same fixed-name Docker network
@@ -76,34 +82,49 @@ What to look for:
 | `docker compose logs ml-service` | `model yolo26n-pose.pt ready on GPU 0 (...)`, `database connected`, `listening for stream-hub on 0.0.0.0:9999` |
 | `docker compose logs stream-hub` | `ai=ml-service:9999`, `Ingestion TCP server listening on :8090` |
 | `docker compose logs gateway-back` | `created config.json (cloud_address=stream-hub:8090 ...)`, `Gateway active` |
-| http://localhost:8080 | The gateway UI |
+| `docker compose logs api` | `backend API on :8000 (tenant demo-facility, ...)` |
+| http://localhost:3000 → Settings | Every service "Running" |
+| http://localhost:8080 | The gateway's own UI (also has Pause / Resume per camera) |
+| http://localhost:8000 | ml-service's bare live viewer (debugging) |
 
 ## 4. Test the whole chain
 
+**With your webcam (Windows):** stream it into the test camera, then add it as a camera.
+
 ```bash
-# A camera: test-media/test.mp4 on a loop (put a clip with people in it there)
 docker compose --profile test-camera up -d test-camera
+```
 
-# Register it in the gateway (or use the UI at http://localhost:8080)
-curl -X POST http://localhost:8080/gateway/actions/cameras \
-     -H 'Content-Type: application/json' \
-     -d '{"name":"test camera","rtsp_url":"rtsp://test-camera:8554/test"}'
+```powershell
+# On Windows, in the repo folder (uses ml-service's venv; Ctrl+C to stop)
+ml-service\.venv\Scripts\python.exe ml-service\tools\publish_webcam.py --index 0
+```
 
+Then in http://localhost:3000 → **Cameras → Add camera**: RTSP URL
+`rtsp://test-camera:8554/webcam`. Within seconds **Live View** shows the video with a box
+and label on each person. Lie down in view for 3 seconds: an incident and an alert appear
+under **Fall Events** (with the photo), and the header shows "1 person down".
+
+**With a video file:** put a clip with people in it at `test-media/test.mp4` and add the
+camera `rtsp://test-camera:8554/test` instead.
+
+A real IP camera works the same way: add its `rtsp://<ip>:554/...` URL with its username
+and password (stored only on the gateway). It must stream **H.264**.
+
+Useful checks:
+
+```bash
 docker compose logs -f stream-hub ml-service   # camera connects at the hub, then at ml-service
-
-# Results in the database
 docker compose exec db psql -U fallguard_admin fallguard -c \
   "SELECT camera_id, label, count(*) FROM model_predictions GROUP BY 1,2;"
 ```
-
-A real IP camera works the same way: add its `rtsp://user:password@<ip>:554/...` URL
-in the gateway. It must stream **H.264**.
 
 ## Day-to-day
 
 | Task | Command |
 |---|---|
-| Rebuild one service after a code change | `docker compose up -d --build ml-service` |
+| Rebuild one service after a code change | `docker compose up -d --build ml-service` (or `api`, `frontend`, ...) |
+| Pause a camera without deleting it | Cameras page → **Pause** (or the gateway UI) |
 | Stop everything, keep data | `docker compose down` |
 | Reset everything (database, cameras, results) | `docker compose down -v` |
 | Only the database | `cd backend-module && docker compose up -d` |
