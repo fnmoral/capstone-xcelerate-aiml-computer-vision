@@ -1,4 +1,4 @@
-import { env } from '../../config/env';
+import { env } from "../../config/env";
 
 export class ApiError extends Error {
   status: number;
@@ -9,15 +9,18 @@ export class ApiError extends Error {
 }
 
 /** Thin typed REST wrapper for the core backend API. Errors carry the backend's message. */
-export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function apiRequest<T>(
+  path: string,
+  init: RequestInit = {},
+): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${env.apiBaseUrl}${path}`, {
       ...init,
-      headers: { 'Content-Type': 'application/json', ...init.headers },
+      headers: { "Content-Type": "application/json", ...init.headers },
     });
   } catch {
-    throw new ApiError(0, 'Cannot reach the backend. Is the stack running?');
+    throw new ApiError(0, "Cannot reach the backend. Is the stack running?");
   }
   if (!res.ok) {
     const text = await res.text();
@@ -36,4 +39,8 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
 /** URL of a backend resource for <img> tags (video streams, snapshots). */
 export function apiUrl(path: string): string {
   return `${env.apiBaseUrl}${path}`;
+}
+/** URL of a backend resource for <img> tags (video streams, snapshots). */
+export function streamHubUrl(path: string): string {
+  return `${env.streamBaseUrl}${path}`;
 }

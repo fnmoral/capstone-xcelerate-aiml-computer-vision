@@ -32,8 +32,16 @@ func main() {
 
 	// Initialize Gin HTTP and WebSocket Server
 	router := gin.Default()
-	apiHandler := api.NewHandler(broker)
-	apiHandler.RegisterRoutes(router)
+
+	// Health, WebSocket and live video (MJPEG / single frame) from the broker
+	api.NewHandler(broker, cfg.Tenant).RegisterRoutes(router)
+
+	// Stored snapshots and clips, proxied to the ml-service
+	recordings, err := api.NewRecordingsHandler(cfg.MLURL)
+	if err != nil {
+		log.Fatalf("Invalid ml_url %q: %v", cfg.MLURL, err)
+	}
+	recordings.RegisterRoutes(router)
 
 	log.Printf("Starting HTTP/WebSocket server on %s...", cfg.HTTPAddr)
 	if err := router.Run(cfg.HTTPAddr); err != nil {

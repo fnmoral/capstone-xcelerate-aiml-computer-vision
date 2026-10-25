@@ -6,8 +6,6 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"net/http/httputil"
-	"net/url"
 	"regexp"
 	"sort"
 	"strings"
@@ -25,33 +23,23 @@ type Config struct {
 }
 
 // Server holds the dependencies of the routes.
+// Server holds the dependencies of the routes.
 type Server struct {
 	cfg     Config
 	db      *store.Store
 	gateway gateway
 	ml      ml
 	hub     *httpClient
-	mlProxy *httputil.ReverseProxy
 }
 
 // New creates the server.
 func New(cfg Config, db *store.Store) *Server {
-	mlURL, err := url.Parse(cfg.MLURL)
-	if err != nil {
-		log.Fatalf("ML_URL: %v", err)
-	}
-	proxy := httputil.NewSingleHostReverseProxy(mlURL)
-	proxy.FlushInterval = -1 // stream MJPEG frames through immediately
-	proxy.ErrorHandler = func(w http.ResponseWriter, _ *http.Request, err error) {
-		http.Error(w, "ml-service unavailable: "+err.Error(), http.StatusBadGateway)
-	}
 	return &Server{
 		cfg:     cfg,
 		db:      db,
 		gateway: gateway{newClient("gateway-back", cfg.GatewayURL, 8*time.Second)},
 		ml:      ml{newClient("ml-service", cfg.MLURL, 3*time.Second)},
 		hub:     newClient("stream-hub", cfg.StreamHubURL, 3*time.Second),
-		mlProxy: proxy,
 	}
 }
 
@@ -68,8 +56,6 @@ func (s *Server) Register(r *gin.Engine) {
 	a.POST("/cameras/:id/pause", s.pauseResume("pause", "disabled"))
 	a.POST("/cameras/:id/resume", s.pauseResume("resume", "online"))
 	a.POST("/cameras/:id/switch", s.switchCamera)
-	a.GET("/cameras/:id/stream", s.proxyML(func(id string) string { return "/stream/" + url.PathEscape(id) }))
-	a.GET("/cameras/:id/frame.jpg", s.proxyML(func(id string) string { return "/frame/" + url.PathEscape(id) + ".jpg" }))
 	a.GET("/zones", s.listZones)
 	a.GET("/notifications", s.notifications)
 	a.GET("/logs", s.listLogs)
@@ -87,8 +73,6 @@ func (s *Server) Register(r *gin.Engine) {
 	a.POST("/alerts/:id/reopen", s.reopenAlert)
 
 	a.GET("/stats", s.stats)
-	a.GET("/snapshots/:name", s.snapshot)
-	a.GET("/clips/:name", s.clip)
 	a.GET("/detection", s.detection)
 	a.PUT("/detection", s.saveDetection)
 	a.GET("/settings", s.settings)
@@ -644,46 +628,6 @@ func (s *Server) stats(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, st)
-}
-
-// ---------- pass-through to ml-service and gateway-back ----------
-
-var (
-	snapshotName = regexp.MustCompile(`^[\w.-]+\.jpg$`)
-	clipName     = regexp.MustCompile(`^[\w.-]+\.mp4$`)
-)
-
-func (s *Server) proxyML(path func(id string) string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Request.URL.Path = path(c.Param("id"))
-		c.Request.URL.RawPath = ""
-		c.Request.URL.RawQuery = ""
-		s.mlProxy.ServeHTTP(c.Writer, c.Request)
-	}
-}
-
-func (s *Server) snapshot(c *gin.Context) {
-	name := c.Param("name")
-	if !snapshotName.MatchString(name) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
-		return
-	}
-	c.Request.URL.Path = "/snapshots/" + name
-	c.Request.URL.RawQuery = ""
-	c.Header("Cache-Control", "max-age=86400")
-	s.mlProxy.ServeHTTP(c.Writer, c.Request)
-}
-
-// clip streams an incident video from ml-service. Range requests (seeking) pass through.
-func (s *Server) clip(c *gin.Context) {
-	name := c.Param("name")
-	if !clipName.MatchString(name) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
-		return
-	}
-	c.Request.URL.Path = "/clips/" + name
-	c.Request.URL.RawQuery = ""
-	s.mlProxy.ServeHTTP(c.Writer, c.Request)
 }
 
 // detection: ml-service's settings (what it runs with now) plus "saved", the values set

@@ -30,8 +30,9 @@ func env(key, fallback string) string {
 
 func main() {
 	cfg := api.Config{
-		Addr:         env("API_ADDR", ":8000"),
-		DatabaseURL:  env("DATABASE_URL", "postgresql://fallguard_admin@localhost:5432/fallguard"),
+		Addr:        env("API_ADDR", ":8000"),
+		DatabaseURL: env("DATABASE_URL", "postgresql://fallguard_admin:change-me@localhost:5433/fallguard?sslmode=disable"),
+		// DatabaseURL:  env("DATABASE_URL", "postgresql://fallguard_admin@localhost:5432/fallguard"),
 		Tenant:       env("TENANT", "demo-facility"),
 		GatewayURL:   env("GATEWAY_URL", "http://localhost:8080"),
 		MLURL:        env("ML_URL", "http://localhost:8000"),

@@ -39,7 +39,7 @@ services:
     ports:
       # Host access for psql / DB tools / ml-service running outside Docker.
       # Only this machine by default; set DB_BIND=0.0.0.0 to open it to the network.
-      - "${DB_BIND:-127.0.0.1}:${DB_PORT:-5432}:5432"
+      - "${DB_BIND:-127.0.0.1}:${DB_PORT:-5433}:5432"
     networks:
       fallguard:
         aliases: [postgres]           # reachable as db or postgres
@@ -55,27 +55,27 @@ services:
 
   # Core backend API (Module 2): the REST API the fallguard frontend talks to. It reads the
   # database and manages cameras through gateway-back; video/photos come from ml-service.
-  api:
-    build: ./api
-    image: capstone/backend-api:latest
-    restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      # Table owner for now; switch to a restricted role once user accounts exist.
-      DATABASE_URL: postgresql://${POSTGRES_USER:-fallguard_admin}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-fallguard}
-      TENANT: ${TENANT:-demo-facility}
-      PROD_MODE: ${PROD_MODE:-true}            # dev (false): adds the PC's webcam to an empty gateway
-      GATEWAY_URL: ${GATEWAY_URL:-http://gateway-back:8080}
-      ML_URL: ${ML_URL:-http://ml-service:8000}
-      STREAM_HUB_URL: ${STREAM_HUB_URL:-http://stream-hub:9000}
-    ports:
-      - "127.0.0.1:${API_PORT:-8100}:8000"   # for debugging; the frontend reaches it as api:8000
-    networks: [fallguard]
-    logging:
-      driver: json-file
-      options: {max-size: "10m", max-file: "3"}
+  # api:
+  #   build: ./api
+  #   image: capstone/backend-api:latest
+  #   restart: unless-stopped
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+  #   environment:
+  #     # Table owner for now; switch to a restricted role once user accounts exist.
+  #     DATABASE_URL: postgresql://${POSTGRES_USER:-fallguard_admin}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-fallguard}
+  #     TENANT: ${TENANT:-demo-facility}
+  #     PROD_MODE: ${PROD_MODE:-true}            # dev (false): adds the PC's webcam to an empty gateway
+  #     GATEWAY_URL: ${GATEWAY_URL:-http://gateway-back:8080}
+  #     ML_URL: ${ML_URL:-http://ml-service:8000}
+  #     STREAM_HUB_URL: ${STREAM_HUB_URL:-http://stream-hub:9000}
+  #   ports:
+  #     - "127.0.0.1:${API_PORT:-8100}:8000"   # for debugging; the frontend reaches it as api:8000
+  #   networks: [fallguard]
+  #   logging:
+  #     driver: json-file
+  #     options: {max-size: "10m", max-file: "3"}
 
   # Keeps monthly partitions created ahead of time (see create_monthly_partitions in
   # schema.sql). Runs as the table owner, once at start and then daily.
