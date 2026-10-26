@@ -1,40 +1,30 @@
 // Package camera provides the HTTP handlers for the camera management API.
-//
-// This file implements the Gin handlers that expose the camera service
-// operations (add, list, and remove cameras) over REST endpoints.
 package camera
 
 import (
 	"errors"
 	"net/http"
 
+	"gateway-back/internal/config"
+
 	"github.com/gin-gonic/gin"
 )
 
 // Handler holds the dependencies required to handle camera-related HTTP requests.
 type Handler struct {
-	// service is the camera service that provides the business logic.
-	service  Service
-	tenantID string
+	service Service
+	cfg     *config.Config
 }
 
-// NewHandler creates a new Handler with the given camera service.
-func NewHandler(service Service, tenantID string) *Handler {
+// NewHandler creates a new Handler with the given camera service and configuration reference.
+func NewHandler(service Service, cfg *config.Config) *Handler {
 	return &Handler{
-		service:  service,
-		tenantID: tenantID,
+		service: service,
+		cfg:     cfg,
 	}
 }
 
 // RegisterRoutes registers the camera-related routes on the provided router group.
-//
-// The following routes are registered under the "/cameras" prefix:
-//   - POST   /cameras       -> AddCamera
-//   - GET    /cameras       -> GetCameras
-//   - DELETE /cameras/:id   -> RemoveCamera
-//   - POST   /cameras/:id/pause  -> PauseCamera
-//   - POST   /cameras/:id/resume -> ResumeCamera
-//   - GET    /limits             -> {max_streaming, max_saved}
 func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	cams := router.Group("/cameras")
 	{
@@ -50,18 +40,14 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	})
 }
 
-// AddCamera handles the creation of a new camera.
-//
-// It binds the JSON request body to a CreateCameraDTO, assigns a tenant ID,
-// and delegates the creation to the camera service.
-//
-// Responses:
-//   - 400 Bad Request if the request body is invalid.
-//   - 409 Conflict if MaxSaved cameras are saved.
-//   - 201 Created with status "paused" when MaxStreaming are already streaming (standby).
-//   - 500 Internal Server Error for any other service error.
-//   - 201 Created with the created camera on success.
+// AddCamera handles the creation of a new camera ensuring gateway information is updated first.
 func (h *Handler) AddCamera(c *gin.Context) {
+	// Check if gateway information has been updated before allowing camera addition.
+	if !h.cfg.GatewayInfoUpdated {
+		c.JSON(http.StatusForbidden, gin.H{"Error": "Gateway information must be updated before adding cameras"})
+		return
+	}
+
 	var dto CreateCameraDTO
 	if err := c.ShouldBindJSON(&dto); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
@@ -69,7 +55,7 @@ func (h *Handler) AddCamera(c *gin.Context) {
 	}
 
 	// ID of the local tenant assigned at the gateway.
-	cam, err := h.service.AddCamera(dto, h.tenantID)
+	cam, err := h.service.AddCamera(dto, h.cfg.TenantID)
 	if err != nil {
 		if errors.Is(err, ErrMaxCamerasReached) {
 			c.JSON(http.StatusConflict, gin.H{"Error": err.Error()})
@@ -83,10 +69,6 @@ func (h *Handler) AddCamera(c *gin.Context) {
 }
 
 // GetCameras handles the retrieval of all registered cameras.
-//
-// Responses:
-//   - 500 Internal Server Error if the service fails to retrieve the cameras.
-//   - 200 OK with the list of cameras on success.
 func (h *Handler) GetCameras(c *gin.Context) {
 	cameras, err := h.service.GetCameras()
 	if err != nil {
@@ -97,12 +79,6 @@ func (h *Handler) GetCameras(c *gin.Context) {
 }
 
 // RemoveCamera handles the removal of a camera by its ID.
-//
-// The camera ID is extracted from the URL path parameter ":id".
-//
-// Responses:
-//   - 400 Bad Request if the service fails to remove the camera.
-//   - 200 OK with a confirmation message on success.
 func (h *Handler) RemoveCamera(c *gin.Context) {
 	id := c.Param("id")
 	if err := h.service.RemoveCamera(id); err != nil {
@@ -113,22 +89,11 @@ func (h *Handler) RemoveCamera(c *gin.Context) {
 }
 
 // PauseCamera stops a camera's stream without deleting it.
-//
-// Responses:
-//   - 404 Not Found if no camera has the ID.
-//   - 500 Internal Server Error for any other service error.
-//   - 200 OK with the camera (status "paused") on success.
 func (h *Handler) PauseCamera(c *gin.Context) {
 	h.respondCamera(c, h.service.PauseCamera)
 }
 
 // ResumeCamera restarts a paused camera's stream.
-//
-// Responses:
-//   - 404 Not Found if no camera has the ID.
-//   - 409 Conflict if MaxStreaming cameras are already streaming.
-//   - 500 Internal Server Error for any other service error.
-//   - 200 OK with the camera (status "online") on success.
 func (h *Handler) ResumeCamera(c *gin.Context) {
 	h.respondCamera(c, h.service.ResumeCamera)
 }

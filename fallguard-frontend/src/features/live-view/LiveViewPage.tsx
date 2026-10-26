@@ -93,7 +93,6 @@ function FocusView({
 
 export default function LiveViewPage() {
   const { data, error, loading } = usePolling(() => api.cameras(), 2000);
-  console.log("DATA LIEV PAGE ----", data);
   const { liveLayout, setLiveLayout } = useUiStore();
   const [layout, setLayout] = useState<LiveLayout>(liveLayout);
   const [page, setPage] = useState(0);

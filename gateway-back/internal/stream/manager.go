@@ -24,6 +24,8 @@ type StreamManager struct {
 
 	// cloudAddress is the address of the remote cloud server that receives the streams.
 	cloudAddress string
+
+	statusUpdater func(id, status string)
 }
 
 // NewStreamManager creates a new StreamManager with the given cloud server address.
@@ -51,6 +53,12 @@ func (sm *StreamManager) UpdateCloudAddress(newAddress string) {
 	// the previous connection until they are restarted or StartRelay is invoked again.
 }
 
+func (sm *StreamManager) SetStatusUpdater(updater func(id, status string)) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.statusUpdater = updater
+}
+
 // StartRelay starts relaying the stream of the given camera to the cloud server.
 //
 // If a client already exists for the camera ID, it is stopped and removed before
@@ -73,6 +81,15 @@ func (sm *StreamManager) StartRelay(cameraID, tenantID, localRTSPURL string) err
 	}
 
 	cameraClient := rtsp.NewRTSPClient(cameraID, localRTSPURL, sender)
+	cameraClient.OnStatusChange = func(id, status string) {
+		sm.mu.Lock()
+		updater := sm.statusUpdater
+		sm.mu.Unlock()
+
+		if updater != nil {
+			updater(id, status)
+		}
+	}
 
 	if err := cameraClient.Start(); err != nil {
 		return fmt.Errorf("ERROR starting RTSP client for [%s]: %w", cameraID, err)

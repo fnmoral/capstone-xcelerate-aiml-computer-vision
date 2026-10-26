@@ -38,6 +38,8 @@ type RTSPClient struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	OnStatusChange func(id, status string)
 }
 
 // NewRTSPClient creates a new RTSPClient instance with the given ID, RTSP URL,
@@ -106,11 +108,21 @@ func (c *RTSPClient) connectionLoop() {
 
 		if err != nil {
 			log.Printf("[%s] Connection error: %v. Retrying in 5 seconds...", c.ID, err)
+
+			if c.OnStatusChange != nil {
+				c.OnStatusChange(c.ID, "error")
+			}
+
 			time.Sleep(5 * time.Second)
 			continue
 		}
 
 		log.Printf("[%s] Connection ended. Reconnecting in 3 seconds...", c.ID)
+
+		if c.OnStatusChange != nil {
+			c.OnStatusChange(c.ID, "offline")
+		}
+
 		time.Sleep(3 * time.Second)
 	}
 }
@@ -221,6 +233,9 @@ func (c *RTSPClient) connectAndStream() error {
 
 	log.Printf("[%s] RTSP stream established successfully", c.ID)
 
+	if c.OnStatusChange != nil {
+		c.OnStatusChange(c.ID, "online")
+	}
 	// Blocks here until the connection is lost or fails
 	return client.Wait()
 }

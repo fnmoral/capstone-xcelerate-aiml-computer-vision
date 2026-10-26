@@ -6,9 +6,14 @@ import (
 )
 
 type Config struct {
-	CloudAddress string `json:"cloud_address"`
-	ServerPort   string `json:"server_port"`
-	TenantID     string `json:"tenant_id"`
+	StreamHubAddress   string `json:"stream_hub_address"`
+	BackEndAddress     string `json:"back_end_address"`
+	ServerPort         string `json:"server_port"`
+	TenantID           string `json:"tenant_id"`
+	TenantNAME         string `json:"tenant_name"`
+	GatewayNameID      string `json:"gateway_name_id"`
+	GatewayID          string `json:"gateway_id"`
+	GatewayInfoUpdated bool   `json:"gateway_information_updated"`
 }
 
 func LoadConfig(filename string) (*Config, error) {
@@ -27,12 +32,12 @@ func LoadConfig(filename string) (*Config, error) {
 	return &cfg, nil
 }
 
-// SaveConfig escribe la nueva configuración en el archivo JSON
+// SaveConfig writes the new configuration to the JSON file.
 func SaveConfig(filename string, cfg *Config) error {
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
 	}
-	// Escribe el archivo con permisos de lectura/escritura (0644)
+	// Write file with read/write permissions (0644).
 	return os.WriteFile(filename, data, 0644)
 }

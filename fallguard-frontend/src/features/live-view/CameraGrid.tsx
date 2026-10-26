@@ -45,26 +45,20 @@ function nalInfo(buf: Uint8Array) {
 function Video({
   cam,
   live,
-  tenantId,
 }: {
   cam: Camera;
   live: boolean;
   tenantId?: string;
 }) {
-  // const [snapshotSrc, setSnapshotSrc] = useState<string | null>(null);
-  // const videoRef = useRef<HTMLVideoElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const jmuxerRef = useRef<any>(null);
-  const [snapshotSrc, setSnapshotSrc] = useState<string | null>(null);
-  // ID único para que JMuxer pueda encontrar el elemento de video en el DOM
-  const videoElementId = `jmuxer-video-${cam.id}`;
-  // Lógica para el modo Live mediante WebSocket
+  const [snapshotSrc] = useState<string | null>(null);
+
   useEffect(() => {
     if (!live) return;
     const video = videoRef.current;
     if (!video) return;
 
-    // 1. Inicializar JMuxer para manejar los NALUs H.264 crudos que vienen del WebSocket
+    // init the websocket to handle NALUS H.264
     const jmuxer = new JMuxer({
       node: video,
       mode: "video",
@@ -73,26 +67,12 @@ function Video({
       debug: false,
     });
 
-    // Construir la URL del WebSocket basada en el entorno actual
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    // Si usas el proxy de Vite o puerto 9000 directamente:
-    const wsHost =
-      window.location.hostname === "localhost"
-        ? "localhost:9000"
-        : window.location.host;
-    // const wsUrl = `${protocol}//${wsHost}/ws/${tenantId}/${cam.id}`;
-    // const wsUrl = `${protocol}//${wsHost}/stream-hub/ws/tenant_example/${cam.id}`;
-    // const wsUrl = streamHubUrl(`/ws/${tenantId}/${cam.id}`);
-    const wsUrl = streamHubUrl(`/ws/tenant_example/${cam.id}`);
+    const wsUrl = streamHubUrl(`/ws/${cam.tenant_id}/${cam.id}`);
+    // const wsUrl = streamHubUrl(`/ws/tenant_example/${cam.id}`);
     let disposed = false;
     const ws = new WebSocket(wsUrl);
     ws.binaryType = "arraybuffer";
 
-    // ws.onmessage = (event) => {
-    //   if (event.data instanceof ArrayBuffer) {
-    //     jmuxer.feed({ video: new Uint8Array(event.data) });
-    //   }
-    // };
     let n = 0;
     ws.onmessage = (event) => {
       if (!(event.data instanceof ArrayBuffer)) return;
@@ -117,7 +97,7 @@ function Video({
       ws.close();
       jmuxer.destroy();
     };
-  }, [cam.id, live, tenantId]);
+  }, [cam.id, live, cam.tenant_id]);
 
   if (live) {
     return (
@@ -153,8 +133,9 @@ export function CameraTile({
 }) {
   const watching = cam.on_gateway && cam.status !== "paused";
   const down = cam.people.filter((p) => p.label !== "upright");
-  // const broken = cam.health === "not_working";
-  const broken = false;
+  // Uncomment this part for the test without ml module
+  // const broken = false;
+  const broken = cam.health === "not_working";
   const flagged = broken && cam.alert_offline;
 
   const placeholder = broken
@@ -188,8 +169,9 @@ export function CameraTile({
         tabIndex={select ? 0 : undefined}
         aria-label={select ? `Show ${cam.name} larger` : undefined}
       >
-        {/* {watching && cam.live ? ( */}
-        {watching ? (
+        {/* uncomment this part for test without ml module */}
+        {/* {watching ? ( */}
+        {watching && cam.live ? (
           <Video cam={cam} live={live} />
         ) : (
           <p className="cam-tile__placeholder">{placeholder}</p>

@@ -37,8 +37,10 @@ var ErrCameraNotFound = errors.New("Camera not found.")
 
 // Camera statuses.
 const (
-	StatusOnline = "online"
-	StatusPaused = "paused" // stream stopped by the user; not restarted on gateway start
+	StatusOnline  = "online"
+	StatusError   = "error"   // stream stopped by the user; not restarted on gateway start
+	StatusOffline = "offline" // stream stopped by the user; not restarted on gateway start
+	StatusPaused  = "paused"  // stream stopped by the user; not restarted on gateway start
 )
 
 // Service defines the business logic operations for managing cameras.
@@ -83,10 +85,33 @@ type service struct {
 //
 // Note: this constructor no longer receives the cloudIngest string.
 func NewService(repo Repository, sm *stream.StreamManager) Service {
-	return &service{
+	s := &service{
 		repo:          repo,
 		streamManager: sm,
 	}
+
+	// Vinculamos la actualización automática que viene desde los streams activos
+	sm.SetStatusUpdater(func(id, status string) {
+		cam, err := repo.FindByID(id)
+		if err != nil || cam == nil {
+			return
+		}
+		// Si el usuario la pausó manualmente, ignoramos los cambios automáticos de red
+		if cam.Status == StatusPaused {
+			return
+		}
+
+		// Si el estado es diferente al actual, lo actualizamos en base de datos
+		if cam.Status != status {
+			if err := repo.UpdateStatus(id, status); err != nil {
+				log.Printf("ERROR updating runtime status for camera [%s]: %v", id, err)
+			} else {
+				log.Printf("Camera [%s] status dynamically updated to: %s", id, status)
+			}
+		}
+	})
+
+	return s
 }
 
 // AddCamera creates a new camera with the provided data, persists it, and

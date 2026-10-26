@@ -52,7 +52,7 @@ func main() {
 	defer db.Close()
 
 	// Initialize StreamManager
-	streamMgr := stream.NewStreamManager(cfg.CloudAddress)
+	streamMgr := stream.NewStreamManager(cfg.StreamHubAddress)
 
 	// Initialize camera repository and service
 	repo := camera.NewRepository(db)
@@ -70,7 +70,7 @@ func main() {
 	// API Routes Group
 	api := r.Group("/gateway/actions")
 	{
-		handler := camera.NewHandler(svc, cfg.TenantID)
+		handler := camera.NewHandler(svc, cfg)
 		configHandler := config.NewConfigHandler(configPath, cfg, streamMgr)
 
 		handler.RegisterRoutes(api)

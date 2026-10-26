@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"regexp"
@@ -30,6 +31,12 @@ type Server struct {
 	gateway gateway
 	ml      ml
 	hub     *httpClient
+}
+
+type GatewayRegisterRequest struct {
+	TenantName    string `json:"tenant_name"`
+	GatewayNameID string `json:"gateway_name_id"`
+	AuthToken     string `json:"auth_token"` // Optional or default hash
 }
 
 // New creates the server.
@@ -79,6 +86,7 @@ func (s *Server) Register(r *gin.Engine) {
 	a.PUT("/settings", s.saveSettings)
 	a.GET("/gateway/config", s.gatewayConfig)
 	a.PUT("/gateway/config", s.gatewayConfig)
+	a.POST("/gateway/add", s.gatewayAdd)
 }
 
 // ---------- helpers ----------
@@ -184,6 +192,7 @@ type CameraView struct {
 	People          []map[string]any `json:"people"`
 	LastFrameAgeS   *float64         `json:"last_frame_age_s"`
 	ActiveIncidents int              `json:"active_incidents"`
+	TenantID        string           `json:"tenant_id"`
 }
 
 func (s *Server) listCameras(c *gin.Context) {
@@ -203,6 +212,7 @@ func (s *Server) listCameras(c *gin.Context) {
 	if gwErr == nil {
 		synced := false
 		for _, g := range gw {
+			fmt.Printf("GATEWAY--- %+v\n", g)
 			if _, ok := byID[g.ID]; !ok {
 				if err := s.db.UpsertCamera(ctx, g.ID, g.Name, g.RTSPURL, dbStatus(g.Status), nil, nil); err != nil {
 					log.Printf("registering gateway camera %s: %v", g.ID, err)
@@ -238,7 +248,8 @@ func (s *Server) listCameras(c *gin.Context) {
 	seen := map[string]bool{}
 	for _, g := range gw {
 		v := CameraView{ID: g.ID, Name: g.Name, Status: g.Status, OnGateway: true,
-			RTSPURL: store.SafeURL(g.RTSPURL), CreatedAt: g.CreatedAt, People: []map[string]any{}}
+			RTSPURL: store.SafeURL(g.RTSPURL), CreatedAt: g.CreatedAt, People: []map[string]any{},
+			TenantID: g.TenantID}
 		d, ok := byID[g.ID]
 		if ok {
 			v.Name, v.Location, v.Zone = d.Name, d.Location, d.Zone
@@ -720,4 +731,43 @@ func (s *Server) gatewayConfig(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, out)
+}
+
+func (s *Server) gatewayAdd(c *gin.Context) {
+	var req GatewayRegisterRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body payload"})
+		return
+	}
+
+	// Validate required fields
+	if req.TenantName == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_name (slug) is required"})
+		return
+	}
+
+	// Default auth token hash if not provided
+	authTokenHash := req.AuthToken
+	if authTokenHash == "" {
+		authTokenHash = "default_hash_placeholder"
+	}
+
+	gatewayName := req.GatewayNameID
+	if gatewayName == "" {
+		gatewayName = "default_gateway"
+	}
+
+	// Call the store method to validate tenant slug, register the gateway, and get IDs.
+	tenantID, gatewayID, err := s.db.RegisterGateway(c.Request.Context(), req.TenantName, gatewayName, authTokenHash)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Return tenant_id and gateway_id back to the gateway.
+	c.JSON(http.StatusOK, gin.H{
+		"tenant_id":  tenantID,
+		"gateway_id": gatewayID,
+		"message":    "Gateway registered successfully",
+	})
 }
