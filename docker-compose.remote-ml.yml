@@ -1,0 +1,20 @@
+# ml-service on the course server instead of in Docker. Everything else runs here as usual.
+#
+#   python scripts/server/ssh.py "sh fallguard/start-ml.sh"   # (re)start ml-service on the server
+#   docker compose -f docker-compose.yml -f docker-compose.remote-ml.yml up -d --build
+#
+# The "ml-service" container becomes an SSH tunnel with the same name, so stream-hub
+# (ml-service:9999) and the API (ml-service:8000) need no changes. It also forwards the
+# server's 127.0.0.1:15432 back to db:5432, so ml-service can save incidents.
+# Login: scripts/server/.env (see .env.example).
+services:
+  ml-service:
+    build: !override
+      context: ./scripts/server
+    image: capstone/ml-tunnel:latest
+    environment: !reset {}
+    ports: !override
+      - "127.0.0.1:8000:8000"  # live viewer from the server: http://localhost:8000
+    volumes: !override
+      - ./scripts/server/.env:/run/secrets/server.env:ro
+    deploy: !reset {}
