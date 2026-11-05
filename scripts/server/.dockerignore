@@ -1,0 +1,4 @@
+# Only the tunnel script and the pinned host key go into the image (never .env).
+*
+!ssh.py
+!known_hosts
