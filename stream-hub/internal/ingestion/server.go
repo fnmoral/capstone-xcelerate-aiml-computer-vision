@@ -11,6 +11,12 @@ import (
 	"stream-hub/internal/hub"
 )
 
+const (
+	// frameHeaderSize is 4 bytes of NALU length + 8 bytes of PTS.
+	frameHeaderSize = 12
+	maxNALUSize     = 4 * 1024 * 1024
+)
+
 // Server handles TCP connections coming from gateways.
 type Server struct {
 	addr         string
@@ -62,33 +68,53 @@ func (s *Server) handleConnection(conn net.Conn) {
 	cameraID := hs.Cameras[0]
 	log.Printf("Camera [%s] connected (tenant=%s)", cameraID, hs.TenantID)
 
-	// Init ai worker
-	log.Println(s.aiServerAddr)
+	// Init AI worker
+	log.Printf("Starting AI worker for camera [%s] -> %s", cameraID, s.aiServerAddr)
 	aiWorker := hub.NewAIWorker(hs.TenantID, cameraID, s.aiServerAddr)
 	aiWorker.Start()
-
-	// Worker has registered
 	s.broker.RegisterAIWorker(hs.TenantID, cameraID, aiWorker)
 
-	// clean and unregister when the gateway is desconected
+	// Clean up when the gateway disconnects. Stop also ends the worker's
+	// reconnection loop if the Python server is down at that moment.
 	defer func() {
 		s.broker.UnregisterAIWorker(hs.TenantID, cameraID, aiWorker)
+		aiWorker.Stop()
 		log.Printf("AIWorker unregistered for camera [%s]", cameraID)
 	}()
 
 	for {
-		nalu, err := readLengthPrefixedBytes(reader, 4*1024*1024)
+		frame, err := readFrame(reader, maxNALUSize)
 		if err != nil {
 			log.Printf("camera [%s] disconnected: %v", cameraID, err)
 			return
 		}
-
-		log.Printf("Retrieve frame NALU from camera [%s], size: %d bytes", cameraID, len(nalu))
-		s.broker.BroadcastFrame(hs.TenantID, cameraID, nalu)
+		s.broker.BroadcastFrame(hs.TenantID, cameraID, frame)
 	}
-
 }
 
+// readFrame reads one frame from the gateway:
+// [4 bytes BE uint32: NALU length][8 bytes BE int64: PTS, Unix ms][NALU].
+func readFrame(r io.Reader, maxSize uint32) (hub.Frame, error) {
+	var hdr [frameHeaderSize]byte
+	if _, err := io.ReadFull(r, hdr[:]); err != nil {
+		return hub.Frame{}, err
+	}
+
+	n := binary.BigEndian.Uint32(hdr[0:4])
+	if n == 0 || n > maxSize {
+		return hub.Frame{}, fmt.Errorf("invalid frame size: %d", n)
+	}
+	pts := int64(binary.BigEndian.Uint64(hdr[4:12]))
+
+	data := make([]byte, n)
+	if _, err := io.ReadFull(r, data); err != nil {
+		return hub.Frame{}, err
+	}
+	return hub.Frame{PTS: pts, Data: data}, nil
+}
+
+// readLengthPrefixedBytes reads [4 bytes BE length][payload]. Kept for the
+// handshake, whose format did not change.
 func readLengthPrefixedBytes(r io.Reader, maxSize uint32) ([]byte, error) {
 	var lenBuf [4]byte
 	if _, err := io.ReadFull(r, lenBuf[:]); err != nil {

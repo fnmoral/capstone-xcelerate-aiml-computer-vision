@@ -84,7 +84,7 @@ clips:
 database:
   # Leave empty and set the ML_DATABASE_URL environment variable instead; the URL holds a
   # password. Format: postgresql://ml_service:<password>@<host>:5432/<database>
-  url: ""
+  url: "postgresql://fallguard_admin:change-me@localhost:5433/fallguard?sslmode=disable"
   connect_timeout_s: 5
   zones_from_db: true        # also use zones from the zones table + cameras.zone_id
 

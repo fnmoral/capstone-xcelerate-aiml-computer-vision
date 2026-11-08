@@ -44,6 +44,9 @@ var upgrader = websocket.Upgrader{
 }
 
 // StreamWebSocket upgrades HTTP connections to WebSockets and streams frames to frontend clients.
+//
+// Messages are still the bare Annex B NALU, as the frontend expects today.
+// The PTS is available in frame.PTS for the stage that changes the frontend.
 func (h *Handler) StreamWebSocket(c *gin.Context) {
 	tenantID := c.Param("tenant_id")
 	cameraID := c.Param("camera_id")
@@ -56,7 +59,7 @@ func (h *Handler) StreamWebSocket(c *gin.Context) {
 
 	client := &hub.Client{
 		ID:       conn.RemoteAddr().String(),
-		SendChan: make(chan []byte, 256),
+		SendChan: make(chan hub.Frame, 256),
 		TenantID: tenantID,
 		CameraID: cameraID,
 	}
@@ -66,8 +69,13 @@ func (h *Handler) StreamWebSocket(c *gin.Context) {
 
 	synced := false // true once the client has received SPS + PPS + an IDR
 	for frame := range client.SendChan {
+		// The broker dropped frames for this client: its decoder needs a new keyframe.
+		if client.NeedsResync() {
+			synced = false
+		}
+
 		if !synced {
-			if hub.NALType(frame) != 5 { // drop P frames until a keyframe arrives
+			if hub.NALType(frame.Data) != 5 { // drop P frames until a keyframe arrives
 				continue
 			}
 			sps, pps := h.broker.ParamSets(tenantID, cameraID)
@@ -81,7 +89,7 @@ func (h *Handler) StreamWebSocket(c *gin.Context) {
 			}
 			synced = true
 		}
-		if err := conn.WriteMessage(websocket.BinaryMessage, frame); err != nil {
+		if err := conn.WriteMessage(websocket.BinaryMessage, frame.Data); err != nil {
 			break
 		}
 	}

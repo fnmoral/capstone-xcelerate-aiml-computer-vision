@@ -134,8 +134,8 @@ export function CameraTile({
   const watching = cam.on_gateway && cam.status !== "paused";
   const down = cam.people.filter((p) => p.label !== "upright");
   // Uncomment this part for the test without ml module
-  // const broken = false;
-  const broken = cam.health === "not_working";
+  const broken = false;
+  // const broken = cam.health === "not_working";
   const flagged = broken && cam.alert_offline;
 
   const placeholder = broken
@@ -170,8 +170,8 @@ export function CameraTile({
         aria-label={select ? `Show ${cam.name} larger` : undefined}
       >
         {/* uncomment this part for test without ml module */}
-        {/* {watching ? ( */}
-        {watching && cam.live ? (
+        {watching ? (
+          // {watching && cam.live ? (
           <Video cam={cam} live={live} />
         ) : (
           <p className="cam-tile__placeholder">{placeholder}</p>

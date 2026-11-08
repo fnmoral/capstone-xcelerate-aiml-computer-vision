@@ -49,7 +49,8 @@ func (b *StreamBroker) UnregisterClient(tenantID, cameraID string, client *Clien
 	}
 
 	for i, c := range clients {
-		if c.ID == client.ID {
+		// Compare pointers: two clients behind the same proxy can share an ID.
+		if c == client {
 			b.subscribers[tenantID][cameraID] = append(clients[:i], clients[i+1:]...)
 			close(client.SendChan)
 			break
@@ -88,11 +89,16 @@ func (b *StreamBroker) UnregisterAIWorker(tenantID, cameraID string, worker *AIW
 	}
 }
 
-// BroadcastFrame distributes frame data to all frontend subscribers and AI workers listening to a specific tenant and camera.
-func (b *StreamBroker) BroadcastFrame(tenantID, cameraID string, frame []byte) {
+// BroadcastFrame distributes a frame to all frontend subscribers and AI workers
+// listening to a specific tenant and camera. The PTS travels with the frame.
+//
+// Sends never block ingestion: when a consumer's buffer is full the frame is
+// dropped and the consumer is flagged to resync at the next keyframe, because
+// a decoder that misses a frame shows garbage until then.
+func (b *StreamBroker) BroadcastFrame(tenantID, cameraID string, frame Frame) {
 	// Frontend clients get Annex B (what the browser-side muxer expects)
-	annexB := ToAnnexB(frame)
-	b.cacheParams(tenantID, cameraID, annexB)
+	annexB := Frame{PTS: frame.PTS, Data: ToAnnexB(frame.Data)}
+	b.cacheParams(tenantID, cameraID, annexB.Data)
 
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -103,7 +109,7 @@ func (b *StreamBroker) BroadcastFrame(tenantID, cameraID string, frame []byte) {
 			select {
 			case client.SendChan <- annexB:
 			default:
-				// Skip if client buffer is full to prevent blocking ingestion
+				client.resync.Store(true)
 			}
 		}
 	}
@@ -114,6 +120,7 @@ func (b *StreamBroker) BroadcastFrame(tenantID, cameraID string, frame []byte) {
 			select {
 			case worker.InputChan <- frame:
 			default:
+				worker.resync.Store(true)
 			}
 		}
 	}
@@ -137,12 +144,14 @@ func ToAnnexB(nalu []byte) []byte {
 	return append(out, nalu...)
 }
 
-// NALType returns the H.264 NAL unit type of an Annex B NALU with a 4-byte start code.
-func NALType(annexB []byte) int {
-	if len(annexB) < 5 {
+// NALType returns the H.264 NAL unit type of a NALU, with or without a
+// 3- or 4-byte Annex B start code.
+func NALType(nalu []byte) int {
+	h := naluPayload(nalu)
+	if len(h) == 0 {
 		return -1
 	}
-	return int(annexB[4] & 0x1f)
+	return int(h[0] & 0x1f)
 }
 
 // ParamSets returns the cached SPS and PPS for a camera (nil if not seen yet).
