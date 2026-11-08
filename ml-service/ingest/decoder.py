@@ -42,6 +42,15 @@ class VideoDecoder:
     The codec is detected from the first parameter set (see detect_codec); NALUs before it
     are dropped, as nothing can be decoded without one.
 
+    Two ways to feed it:
+      * decode(nalu): FFmpeg's parser finds where each picture ends. Frames have no
+        meaningful pts. Used by sources without timestamps.
+      * decode(nalu, pts): stream-hub sends every NALU of one picture with the same PTS, so
+        NALUs are grouped by PTS into an access unit, which is decoded when the next PTS
+        starts. Each returned frame has frame.pts set to its picture's PTS (Unix epoch ms).
+        This costs one frame of latency but ties every frame to the gateway's timestamp,
+        which the frontend uses to line detections up with the video.
+
     Every frame has to be decoded (frames depend on each other), but converting to a BGR
     array is the expensive part, so callers convert only the frames they will analyse.
     """
@@ -52,34 +61,70 @@ class VideoDecoder:
         self._codec: av.CodecContext | None = None
         self._errors = 0
         self._skipped = 0
+        self._au: list[bytes] = []  # NALUs of the access unit being collected
+        self._au_pts: int | None = None
 
     @staticmethod
     def to_bgr(frame: av.VideoFrame) -> np.ndarray:
         return frame.to_ndarray(format="bgr24")
 
-    def decode(self, nalu: bytes) -> list[av.VideoFrame]:
-        if self._codec is None:
-            codec = detect_codec(nalu)
-            if codec is None:
-                self._skipped += 1
-                if self._skipped == 300:
-                    log.warning("[%s] no H.264 / H.265 parameter set yet after %d packets: "
-                                "is the camera sending H.264 or H.265?", self.camera_id, self._skipped)
-                return []
-            self.codec = codec
-            self._codec = av.CodecContext.create(codec, "r")
-            log.info("[%s] video codec: %s", self.camera_id, "H.265" if codec == "hevc" else "H.264")
+    def decode(self, nalu: bytes, pts: int | None = None) -> list[av.VideoFrame]:
+        if not self._ensure_codec(nalu):
+            return []
+        if pts is None:
+            return self._decode_parsed(nalu)
 
+        frames: list[av.VideoFrame] = []
+        if self._au and pts != self._au_pts:
+            frames = self._decode_access_unit()
+        self._au.append(to_annexb(nalu))
+        self._au_pts = pts
+        return frames
+
+    def _ensure_codec(self, nalu: bytes) -> bool:
+        """Create the decoder once a parameter set reveals the codec. False until then."""
+        if self._codec is not None:
+            return True
+        codec = detect_codec(nalu)
+        if codec is None:
+            self._skipped += 1
+            if self._skipped == 300:
+                log.warning("[%s] no H.264 / H.265 parameter set yet after %d packets: "
+                            "is the camera sending H.264 or H.265?", self.camera_id, self._skipped)
+            return False
+        self.codec = codec
+        self._codec = av.CodecContext.create(codec, "r")
+        log.info("[%s] video codec: %s", self.camera_id, "H.265" if codec == "hevc" else "H.264")
+        return True
+
+    def _decode_parsed(self, nalu: bytes) -> list[av.VideoFrame]:
         frames: list[av.VideoFrame] = []
         try:
             for packet in self._codec.parse(to_annexb(nalu)):
                 frames.extend(self._codec.decode(packet))
         except av.FFmpegError as e:
-            # Expected until the first keyframe arrives, or after the hub drops NALUs.
-            self._errors += 1
-            if self._errors % 100 == 1:
-                log.warning("[%s] decode error #%d: %s", self.camera_id, self._errors, e)
+            self._log_error(e)
         return frames
+
+    def _decode_access_unit(self) -> list[av.VideoFrame]:
+        packet = av.Packet(b"".join(self._au))
+        packet.pts = self._au_pts
+        self._au.clear()
+        try:
+            frames = list(self._codec.decode(packet))
+        except av.FFmpegError as e:
+            self._log_error(e)
+            return []
+        for frame in frames:
+            if frame.pts is None:
+                frame.pts = packet.pts
+        return frames
+
+    def _log_error(self, e: Exception) -> None:
+        # Expected until the first keyframe arrives, or after the hub drops NALUs.
+        self._errors += 1
+        if self._errors % 100 == 1:
+            log.warning("[%s] decode error #%d: %s", self.camera_id, self._errors, e)
 
 
 class FrameSampler:

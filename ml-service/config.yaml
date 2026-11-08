@@ -62,7 +62,7 @@ server:
 viewer:
   enabled: true
   host: 127.0.0.1            # http://localhost:8000
-  port: 8000
+  port: 8001
   fps: 5                     # frames per second sent to each browser
   jpeg_quality: 70
 
@@ -91,7 +91,7 @@ database:
 handshake:
   # stream-hub's ai_worker.go currently sends only camera_id. Set to true once
   # it also sends tenant_id first, like gateway-back's frame_sender.go does.
-  tenant_in_handshake: false
+  tenant_in_handshake: true
   # A tenants.slug or tenants.id from the database (demo-facility = seed.sql's tenant).
   default_tenant_id: demo-facility
 

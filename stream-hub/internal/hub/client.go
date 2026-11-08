@@ -15,6 +15,10 @@ type Client struct {
 	TenantID string
 	CameraID string
 
+	// MetaChan receives the ml-service results (JSON) for this camera.
+	// Leave it nil for clients that only want video.
+	MetaChan chan []byte
+
 	// resync is set by the broker when it had to drop a frame for this client
 	// because its buffer was full. After a drop, the decoder needs a new keyframe.
 	resync atomic.Bool

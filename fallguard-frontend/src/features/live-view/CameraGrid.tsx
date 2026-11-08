@@ -6,12 +6,12 @@ import {
   type CSSProperties,
   type KeyboardEvent,
 } from "react";
-import JMuxer from "jmuxer";
 import { Link } from "react-router-dom";
 import { StatusBadge } from "../../components/ui/StatusBadge";
 import { streamHubUrl } from "../../services/api/client";
 import type { Camera } from "../../types/domain";
 import { formatTime, LABEL_TEXT } from "../../lib/format";
+import { LiveVideo } from "./live/LiveVideo";
 import "./CameraGrid.css";
 
 const PLACEHOLDER: Record<string, string> = {
@@ -22,91 +22,19 @@ const PLACEHOLDER: Record<string, string> = {
 
 /** Browsers keep only ~6 connections per site open; WebSockets use a persistent upgraded connection. */
 export const MAX_LIVE_STREAMS = 4;
-const SNAPSHOT_MS = 1000;
-
-function nalInfo(buf: Uint8Array) {
-  const out: { h264: number; h265: number }[] = [];
-  for (let i = 0; i + 4 < buf.length; i++) {
-    const sc4 =
-      buf[i] === 0 && buf[i + 1] === 0 && buf[i + 2] === 0 && buf[i + 3] === 1;
-    const sc3 = buf[i] === 0 && buf[i + 1] === 0 && buf[i + 2] === 1;
-    if (sc4 || sc3) {
-      const h = buf[i + (sc4 ? 4 : 3)];
-      out.push({ h264: h & 0x1f, h265: (h >> 1) & 0x3f });
-    }
-  }
-  return out;
-}
 
 /**
- * Video Component: Conectado por WebSocket para recibir streams H.264 en tiempo real
- * o snapshots de respaldo cuando live=false.
+ * Live camera video (stream-hub WebSocket, protocol v2) with the fall-detection boxes,
+ * or a snapshot when live=false.
  */
-function Video({
-  cam,
-  live,
-}: {
-  cam: Camera;
-  live: boolean;
-  tenantId?: string;
-}) {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+function Video({ cam, live }: { cam: Camera; live: boolean }) {
   const [snapshotSrc] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!live) return;
-    const video = videoRef.current;
-    if (!video) return;
-
-    // init the websocket to handle NALUS H.264
-    const jmuxer = new JMuxer({
-      node: video,
-      mode: "video",
-      flushingTime: 0,
-      fps: 30,
-      debug: false,
-    });
-
-    const wsUrl = streamHubUrl(`/ws/${cam.tenant_id}/${cam.id}`);
-    // const wsUrl = streamHubUrl(`/ws/tenant_example/${cam.id}`);
-    let disposed = false;
-    const ws = new WebSocket(wsUrl);
-    ws.binaryType = "arraybuffer";
-
-    let n = 0;
-    ws.onmessage = (event) => {
-      if (!(event.data instanceof ArrayBuffer)) return;
-      const data = new Uint8Array(event.data);
-      if (n++ < 15) {
-        console.log(
-          "bytes:",
-          data.length,
-          "head:",
-          Array.from(data.slice(0, 8)),
-          nalInfo(data),
-        );
-      }
-      jmuxer.feed({ video: data });
-    };
-    ws.onerror = (e) => {
-      if (!disposed) console.error("Video WebSocket error:", e);
-    };
-
-    return () => {
-      disposed = true;
-      ws.close();
-      jmuxer.destroy();
-    };
-  }, [cam.id, live, cam.tenant_id]);
 
   if (live) {
     return (
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted
-        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+      <LiveVideo
+        url={streamHubUrl(`/ws/${cam.tenant_id}/${cam.id}?v=2`)}
+        label={`Live video from ${cam.name}`}
       />
     );
   }

@@ -71,6 +71,10 @@ func (s *Server) handleConnection(conn net.Conn) {
 	// Init AI worker
 	log.Printf("Starting AI worker for camera [%s] -> %s", cameraID, s.aiServerAddr)
 	aiWorker := hub.NewAIWorker(hs.TenantID, cameraID, s.aiServerAddr)
+	// Detections and incident events from the ml-service go to the camera's frontend clients.
+	aiWorker.OnResult = func(payload []byte) {
+		s.broker.BroadcastMeta(hs.TenantID, cameraID, payload)
+	}
 	aiWorker.Start()
 	s.broker.RegisterAIWorker(hs.TenantID, cameraID, aiWorker)
 

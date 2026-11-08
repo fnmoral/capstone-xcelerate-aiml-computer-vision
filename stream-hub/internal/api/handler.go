@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/binary"
 	"net/http"
 
 	"stream-hub/internal/hub"
@@ -43,10 +44,15 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-// StreamWebSocket upgrades HTTP connections to WebSockets and streams frames to frontend clients.
+// StreamWebSocket upgrades HTTP connections to WebSockets and streams a camera to a frontend client.
 //
-// Messages are still the bare Annex B NALU, as the frontend expects today.
-// The PTS is available in frame.PTS for the stage that changes the frontend.
+// Binary messages carry the video, one Annex B NALU each:
+//   - default (v=1): the bare NALU, for the JMuxer-based player.
+//   - ?v=2: [8 bytes big-endian int64 PTS, Unix ms][NALU]. Every NALU of one picture has the
+//     same PTS, which the frontend uses to group them and to line detections up with the video.
+//
+// Text messages carry the ml-service results (detections and incident events) as JSON;
+// clients that don't handle them can ignore them.
 func (h *Handler) StreamWebSocket(c *gin.Context) {
 	tenantID := c.Param("tenant_id")
 	cameraID := c.Param("camera_id")
@@ -60,6 +66,7 @@ func (h *Handler) StreamWebSocket(c *gin.Context) {
 	client := &hub.Client{
 		ID:       conn.RemoteAddr().String(),
 		SendChan: make(chan hub.Frame, 256),
+		MetaChan: make(chan []byte, 64),
 		TenantID: tenantID,
 		CameraID: cameraID,
 	}
@@ -67,30 +74,79 @@ func (h *Handler) StreamWebSocket(c *gin.Context) {
 	h.broker.RegisterClient(tenantID, cameraID, client)
 	defer h.broker.UnregisterClient(tenantID, cameraID, client)
 
-	synced := false // true once the client has received SPS + PPS + an IDR
-	for frame := range client.SendChan {
-		// The broker dropped frames for this client: its decoder needs a new keyframe.
-		if client.NeedsResync() {
-			synced = false
-		}
+	video := videoWriter{
+		conn:     conn,
+		broker:   h.broker,
+		tenantID: tenantID,
+		cameraID: cameraID,
+		client:   client,
+		withPTS:  c.Query("v") == "2",
+	}
 
-		if !synced {
-			if hub.NALType(frame.Data) != 5 { // drop P frames until a keyframe arrives
-				continue
+	// One goroutine writes to the connection: gorilla/websocket allows a single writer.
+	for {
+		select {
+		case frame, ok := <-client.SendChan:
+			if !ok {
+				return
 			}
-			sps, pps := h.broker.ParamSets(tenantID, cameraID)
-			for _, ps := range [][]byte{sps, pps} {
-				if ps == nil {
-					continue
-				}
-				if err := conn.WriteMessage(websocket.BinaryMessage, ps); err != nil {
-					return
-				}
+			if err := video.write(frame); err != nil {
+				return
 			}
-			synced = true
-		}
-		if err := conn.WriteMessage(websocket.BinaryMessage, frame.Data); err != nil {
-			break
+		case meta, ok := <-client.MetaChan:
+			if !ok {
+				return
+			}
+			if err := conn.WriteMessage(websocket.TextMessage, meta); err != nil {
+				return
+			}
 		}
 	}
+}
+
+// videoWriter sends video frames to one client, starting (and restarting after
+// dropped frames) at a keyframe preceded by the cached SPS and PPS.
+type videoWriter struct {
+	conn     *websocket.Conn
+	broker   *hub.StreamBroker
+	tenantID string
+	cameraID string
+	client   *hub.Client
+	withPTS  bool // protocol v2: prefix every NALU with its PTS
+	synced   bool // true once the client has received SPS + PPS + an IDR
+}
+
+func (v *videoWriter) write(frame hub.Frame) error {
+	// The broker dropped frames for this client: its decoder needs a new keyframe.
+	if v.client.NeedsResync() {
+		v.synced = false
+	}
+
+	if !v.synced {
+		if hub.NALType(frame.Data) != 5 { // drop P frames until a keyframe arrives
+			return nil
+		}
+		sps, pps := v.broker.ParamSets(v.tenantID, v.cameraID)
+		for _, ps := range [][]byte{sps, pps} {
+			if ps == nil {
+				continue
+			}
+			// Same PTS as the keyframe, so the frontend groups them into one picture.
+			if err := v.send(frame.PTS, ps); err != nil {
+				return err
+			}
+		}
+		v.synced = true
+	}
+	return v.send(frame.PTS, frame.Data)
+}
+
+func (v *videoWriter) send(pts int64, nalu []byte) error {
+	if !v.withPTS {
+		return v.conn.WriteMessage(websocket.BinaryMessage, nalu)
+	}
+	msg := make([]byte, 8+len(nalu))
+	binary.BigEndian.PutUint64(msg[:8], uint64(pts))
+	copy(msg[8:], nalu)
+	return v.conn.WriteMessage(websocket.BinaryMessage, msg)
 }

@@ -53,6 +53,9 @@ func (b *StreamBroker) UnregisterClient(tenantID, cameraID string, client *Clien
 		if c == client {
 			b.subscribers[tenantID][cameraID] = append(clients[:i], clients[i+1:]...)
 			close(client.SendChan)
+			if client.MetaChan != nil {
+				close(client.MetaChan)
+			}
 			break
 		}
 	}
@@ -122,6 +125,25 @@ func (b *StreamBroker) BroadcastFrame(tenantID, cameraID string, frame Frame) {
 			default:
 				worker.resync.Store(true)
 			}
+		}
+	}
+}
+
+// BroadcastMeta relays an ml-service result (a JSON object) to the frontend clients
+// of a camera that asked for results. The hub does not parse it.
+//
+// Dropping a result for a slow client is harmless: the next one replaces it.
+func (b *StreamBroker) BroadcastMeta(tenantID, cameraID string, payload []byte) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	for _, client := range b.subscribers[tenantID][cameraID] {
+		if client.MetaChan == nil {
+			continue
+		}
+		select {
+		case client.MetaChan <- payload:
+		default:
 		}
 	}
 }

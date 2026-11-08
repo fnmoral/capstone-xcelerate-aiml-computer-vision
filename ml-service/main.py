@@ -18,7 +18,6 @@ Environment: ML_CONFIG picks the config file, ML_PROD_MODE=true forces prod (the
 import argparse
 import logging
 import os
-import socket
 import sys
 import threading
 import time
@@ -30,7 +29,7 @@ import numpy as np
 import config
 from clips import ClipRecorder, ClipWriter
 from fall.zones import IncidentAggregator
-from ingest.protocol import MAX_NALU_LEN, ProtocolError, read_handshake, read_message
+from ingest.server import Publish, StreamHubServer
 from pipeline import CameraPipeline
 from sinks import FanoutSink, SnapshotStore, clip_record
 from sinks.jsonl import JsonlSink
@@ -57,9 +56,11 @@ def tenant_overrides(tenant_id: str) -> dict:
     return overrides.get(tenant_id, {})
 
 
-def new_pipeline(tenant_id: str, camera_id: str, cfg: config.Config, sink: FanoutSink) -> CameraPipeline:
+def new_pipeline(tenant_id: str, camera_id: str, cfg: config.Config, sink: FanoutSink,
+                 publish: Publish | None = None) -> CameraPipeline:
     clips = ClipRecorder(camera_id, tenant_id, cfg.clips, clip_writer) if clip_writer is not None else None
-    return CameraPipeline(tenant_id, camera_id, cfg, sink, aggregator, snapshots, clips, tenant_overrides)
+    return CameraPipeline(tenant_id, camera_id, cfg, sink, aggregator, snapshots, clips, tenant_overrides,
+                          publish)
 
 
 def build_sink(cfg: config.Config):
@@ -149,42 +150,16 @@ def unregister(pipeline: CameraPipeline) -> None:
 
 # ---------- tcp: cameras streamed by stream-hub ----------
 
-def handle_connection(conn: socket.socket, addr, cfg: config.Config, sink: JsonlSink) -> None:
-    camera_id = "?"
-    pipeline = None
-    try:
-        tenant_id, camera_id = read_handshake(conn, cfg.tenant_in_handshake, cfg.default_tenant_id)
-        log.info("camera [%s] tenant [%s] connected from %s", camera_id, tenant_id, addr)
-        pipeline = new_pipeline(tenant_id, camera_id, cfg, sink)
-        if not register(pipeline):
-            return
-        while (nalu := read_message(conn, MAX_NALU_LEN)) is not None:
-            pipeline.handle_nalu(nalu)
-    except (ProtocolError, ConnectionError, UnicodeDecodeError) as e:
-        log.warning("camera [%s] connection error: %s", camera_id, e)
-    finally:
-        conn.close()
-        if pipeline is not None:
-            unregister(pipeline)
-        log.info("camera [%s] disconnected", camera_id)
+def start_stream_hub(cfg: config.Config, sink: FanoutSink) -> StreamHubServer:
+    """Listen for stream-hub. Each connection is one camera; its results go back on it."""
 
+    def open_camera(tenant_id: str, camera_id: str, publish: Publish) -> CameraPipeline | None:
+        pipeline = new_pipeline(tenant_id, camera_id, cfg, sink, publish)
+        return pipeline if register(pipeline) else None
 
-def serve(cfg: config.Config, sink: JsonlSink) -> socket.socket:
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server.bind((cfg.host, cfg.port))
-    server.listen()
-    log.info("listening for stream-hub on %s:%d", cfg.host, cfg.port)
-
-    def accept_loop():
-        while True:
-            try:
-                conn, addr = server.accept()
-            except OSError:
-                return
-            threading.Thread(target=handle_connection, args=(conn, addr, cfg, sink), daemon=True).start()
-
-    threading.Thread(target=accept_loop, daemon=True).start()
+    server = StreamHubServer(cfg.host, cfg.port, cfg.tenant_in_handshake, cfg.default_tenant_id,
+                             open_camera, unregister)
+    server.start()
     return server
 
 
@@ -478,7 +453,7 @@ def main() -> None:
                viewer_sink, cfg.output_dir, lambda: detection_settings(cfg)).start()
 
     warm_up(cfg)
-    server = serve(cfg, sink) if cfg.uses_tcp else None
+    server = start_stream_hub(cfg, sink) if cfg.uses_tcp else None
     capture_threads = []
     for src in cfg.sources:
         if src.type != "tcp":

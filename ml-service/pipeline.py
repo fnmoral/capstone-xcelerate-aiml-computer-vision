@@ -3,6 +3,9 @@
 Threading: reader threads call handle_nalu() / submit() / close(), which never touch
 PyTorch. The main thread calls step(), which runs the model. PyTorch 2.14 on Python 3.15
 crashes the process when any tensor is created off the main thread.
+
+Results for the frontend (detections per analysed frame and incident events) go to
+`publish`, which for stream-hub cameras sends them back on the camera's connection.
 """
 
 import logging
@@ -10,6 +13,7 @@ import threading
 import time
 from collections import deque
 from pathlib import Path
+from typing import Callable
 
 import cv2
 import numpy as np
@@ -21,6 +25,7 @@ from fall.rules import LYING, FALLING, RuleClassifier
 from fall.state_machine import RECOVERED, STARTED, UNRESOLVED, FallMonitor, IncidentEvent
 from fall.zones import IncidentAggregator
 from ingest.decoder import FrameSampler, VideoDecoder
+from ingest.results import detections_message, incident_message, person_entry
 from sinks import Sink, SnapshotStore, incident_record, prediction_record
 from vision.pose import Person, PoseTracker
 
@@ -29,11 +34,18 @@ log = logging.getLogger(__name__)
 LABEL_COLORS = {LYING: (0, 0, 255), FALLING: (0, 165, 255)}
 RATE_WINDOW_S = 30.0  # rates() averages over this long
 
+Publish = Callable[[dict], None]
+
+
+def wall_clock_pts() -> int:
+    """Current time as a PTS (Unix epoch ms), for sources that don't carry one."""
+    return int(time.time() * 1000)
+
 
 class CameraPipeline:
     def __init__(self, tenant_id: str, camera_id: str, cfg: Config, sink: Sink,
                  aggregator: IncidentAggregator, snapshots: SnapshotStore,
-                 clips: ClipRecorder | None = None, overrides=None):
+                 clips: ClipRecorder | None = None, overrides=None, publish: Publish | None = None):
         self.tenant_id = tenant_id
         self.camera_id = camera_id
         self.cfg = cfg
@@ -42,6 +54,7 @@ class CameraPipeline:
         self.snapshots = snapshots
         self.clips = clips              # dashcam-style clip recorder (stream-hub cameras only)
         self.overrides = overrides or (lambda tenant: {})  # tenant -> settings changed in the frontend
+        self.publish = publish          # results for the frontend; None for sources nobody watches live
         # Counters for the periodic stats log line; read and reset by take_stats().
         self.frames_in = 0
         self.frames_analysed = 0
@@ -49,6 +62,7 @@ class CameraPipeline:
         self._stats_since = time.monotonic()
         self._connected_at = self._stats_since
         self._received_times: deque[float] = deque()  # monotonic times, last RATE_WINDOW_S
+        self._receiving = False  # set by the first frame; see _count_received_locked
         self._analysed_times: deque[float] = deque()
         self.decoder = VideoDecoder(camera_id)
         self.sampler = FrameSampler(cfg.inference.target_fps)
@@ -61,6 +75,7 @@ class CameraPipeline:
         self.monitor = FallMonitor(cfg.monitor)
         self._last_prediction: dict[int, float] = {}
         self._pending: np.ndarray | None = None
+        self._pending_pts: int = 0  # PTS of _pending (Unix epoch ms)
         self._pending_lock = threading.Lock()
         self._monitor_lock = threading.Lock()  # step() on the main thread vs close() from a reader thread
         # For the preview window and the viewer: newest annotated frame and who is in it.
@@ -68,8 +83,9 @@ class CameraPipeline:
         self.latest_people: list[dict] = []
         self.latest_at: float | None = None
 
-    def handle_nalu(self, nalu: bytes) -> None:
-        frames = self.decoder.decode(nalu)
+    def handle_nalu(self, nalu: bytes, pts: int | None = None) -> None:
+        """Feed one NALU. pts is its picture's PTS (Unix epoch ms) when the source has one."""
+        frames = self.decoder.decode(nalu, pts)
         if self.clips is not None:
             self.clips.feed(nalu, self.decoder.codec)
         for frame in frames:
@@ -78,18 +94,32 @@ class CameraPipeline:
             # without paying the BGR conversion for frames that would be thrown away.
             if now >= self._next_convert:
                 self._next_convert = now + self._convert_interval
-                self.submit(VideoDecoder.to_bgr(frame))
+                self.submit(VideoDecoder.to_bgr(frame), frame.pts if pts is not None else None)
             else:
                 with self._pending_lock:
-                    self.frames_in += 1
-                    self._received_times.append(time.monotonic())
+                    self._count_received_locked()
 
-    def submit(self, frame: np.ndarray) -> None:
-        """Hand over a decoded BGR frame. Only the newest one is kept, so a slow model never falls behind."""
+    def submit(self, frame: np.ndarray, pts: int | None = None) -> None:
+        """Hand over a decoded BGR frame and its PTS (now, if None).
+        Only the newest one is kept, so a slow model never falls behind."""
         with self._pending_lock:
             self._pending = frame
-            self.frames_in += 1
-            self._received_times.append(time.monotonic())
+            self._pending_pts = pts if pts is not None else wall_clock_pts()
+            self._count_received_locked()
+
+    def _count_received_locked(self) -> None:
+        """Count a received frame. Caller holds _pending_lock.
+
+        The first frame starts the stats and rate windows. Before it the camera was only
+        connected (a stream-hub camera waits for its first keyframe, which can take several
+        seconds), and counting that wait made a healthy camera look slow in the first stats line.
+        """
+        now = time.monotonic()
+        if not self._receiving:
+            self._receiving = True
+            self._stats_since = self._connected_at = now
+        self.frames_in += 1
+        self._received_times.append(now)
 
     def rates(self) -> tuple[float, float]:
         """(frames received, frames analysed) per second, averaged over the last RATE_WINDOW_S
@@ -124,10 +154,12 @@ class CameraPipeline:
         if self.clips is not None:
             self.clips.close()
 
-    def _report(self, event: IncidentEvent, frame: np.ndarray | None) -> None:
+    def _report(self, event: IncidentEvent, frame: np.ndarray | None, pts: int | None = None) -> None:
         # Asked before handle(): once a member closes, the aggregator forgets it.
         incident_id = self.aggregator.incident_id_for(event.incident)
         reports = self.aggregator.handle(self.tenant_id, self.camera_id, event)
+        # After handle(): a new incident only has an ID now.
+        current_id = self.aggregator.incident_id_for(event.incident) or incident_id
         if self.clips is not None:
             # Every camera that confirmed the fall records its own clip of it.
             if event.kind == STARTED:
@@ -141,8 +173,18 @@ class CameraPipeline:
             if frame is not None and event.kind == STARTED:
                 key = self.snapshots.save(zone_incident, self.camera_id, frame)
             self.sink.incident(incident_record(kind, zone_incident, event.at, key, self.camera_id if key else None))
+            self._publish(incident_message(self.camera_id, pts, kind, current_id, zone_incident.severity,
+                                           zone_incident.zone, zone_incident.cameras))
             log.info("[%s] %s zone=%s cameras=%s severity=%s", self.camera_id, kind, zone_incident.zone,
                      ",".join(zone_incident.cameras), zone_incident.severity)
+
+    def _publish(self, message: dict) -> None:
+        if self.publish is None:
+            return
+        try:
+            self.publish(message)
+        except Exception:
+            log.exception("[%s] could not publish a result", self.camera_id)
 
     def step(self) -> bool:
         """Run the model on the newest frame if one is due. Main thread only. Returns True if it ran."""
@@ -150,17 +192,17 @@ class CameraPipeline:
         with self._pending_lock:
             if self._pending is None or not self.sampler.accept(now):
                 return False
-            frame, self._pending = self._pending, None
+            frame, pts, self._pending = self._pending, self._pending_pts, None
         if self.pose is None:
             inf = self.cfg.inference
             self.pose = PoseTracker(inf.weights, inf.device, inf.conf, inf.imgsz, inf.tracker, inf.half)
         # Minimum person confidence can be changed in the frontend (Detection Settings).
         self.pose.conf = self.overrides(self.tenant_id).get("person_confidence", self.cfg.inference.conf)
         with self._monitor_lock:
-            self._process(frame, now)
+            self._process(frame, now, pts)
         return True
 
-    def _process(self, frame: np.ndarray, now: float) -> None:
+    def _process(self, frame: np.ndarray, now: float, pts: int) -> None:
         start = time.perf_counter()
         people = self.pose(frame)
         elapsed_ms = (time.perf_counter() - start) * 1000
@@ -178,7 +220,7 @@ class CameraPipeline:
             labels[person.track_id] = (label, confidence)
 
             for event in self.monitor.update(now, person.track_id, label, confidence):
-                self._report(event, frame)
+                self._report(event, frame, pts)
 
             if now - self._last_prediction.get(person.track_id, 0.0) >= self.cfg.prediction_interval_s:
                 self._last_prediction[person.track_id] = now
@@ -198,13 +240,28 @@ class CameraPipeline:
                 ))
 
         for event in self.monitor.expire(now):
-            self._report(event, None)
+            self._report(event, None, pts)
+
+        self._publish_detections(frame, pts, people, labels)
 
         self.latest_people = [{"track": t, "label": label, "confidence": round(conf, 2)}
                               for t, (label, conf) in sorted(labels.items())]
         self.latest_at = now
         if self.cfg.show or self.cfg.viewer_enabled:
             self.latest_annotated = self._annotate(frame, people, labels)
+
+    def _publish_detections(self, frame: np.ndarray, pts: int, people: list[Person],
+                            labels: dict[int, tuple[str, float]]) -> None:
+        """Send who is where in this frame, also when nobody is (so the overlay clears)."""
+        if self.publish is None:
+            return
+        height, width = frame.shape[:2]
+        entries = []
+        for p in people:
+            label, conf = labels[p.track_id]
+            incident_id = self.aggregator.incident_id_for(self.monitor.incident_of(p.track_id))
+            entries.append(person_entry(p.track_id, label, conf, p.box, width, height, incident_id))
+        self._publish(detections_message(self.camera_id, pts, width, height, entries))
 
     def _annotate(self, frame: np.ndarray, people: list[Person],
                   labels: dict[int, tuple[str, float]]) -> np.ndarray:

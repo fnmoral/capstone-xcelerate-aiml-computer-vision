@@ -1,7 +1,10 @@
 package hub
 
 import (
+	"bufio"
 	"encoding/binary"
+	"fmt"
+	"io"
 	"log"
 	"net"
 	"sort"
@@ -13,18 +16,30 @@ import (
 const (
 	aiDialTimeout  = 3 * time.Second
 	aiWriteTimeout = 5 * time.Second
+
+	// maxResultSize bounds one JSON result from the ml-service.
+	maxResultSize = 1 << 20
 )
 
-// AIWorker forwards the NALUs of one camera, in order, to the Python ml-service.
+// AIWorker exchanges one camera's stream with the Python ml-service over one TCP
+// connection:
 //
-// Every new connection to Python starts a fresh decoder there, so the worker
-// waits for a keyframe and sends the cached parameter sets right before it.
-// The same happens when the broker had to drop frames for this worker.
+//	Handshake (hub -> ML):  [4 len][tenantID] [4 len][cameraID]
+//	Video     (hub -> ML):  [4 len][8 PTS int64, Unix ms][NALU]   (repeated)
+//	Results   (ML -> hub):  [4 len][JSON]                          (repeated)
+//
+// Every new connection starts a fresh decoder in Python, so the worker waits for
+// a keyframe and sends the cached parameter sets right before it. The same
+// happens when the broker had to drop frames for this worker.
 type AIWorker struct {
 	TenantID     string
 	CameraID     string
 	AiServerAddr string
 	InputChan    chan Frame
+
+	// OnResult is called with each JSON result the ml-service sends back.
+	// Set it before Start. It runs on the worker's reader goroutine.
+	OnResult func(payload []byte)
 
 	stopChan chan struct{}
 	stopOnce sync.Once
@@ -101,7 +116,7 @@ func (w *AIWorker) run() {
 			continue
 		}
 
-		if err := sendFrame(conn, Frame{Data: []byte(w.CameraID)}); err != nil {
+		if err := w.sendHandshake(conn); err != nil {
 			conn.Close()
 			if !w.wait(2 * time.Second) {
 				return
@@ -110,13 +125,40 @@ func (w *AIWorker) run() {
 		}
 		log.Printf("Handshake sent to Python for camera [%s]", w.CameraID)
 
+		go w.readResults(conn)
+
 		finished := w.forward(conn, st)
-		conn.Close()
+		conn.Close() // also ends readResults
 		if finished {
 			return
 		}
 		if !w.wait(2 * time.Second) {
 			return
+		}
+	}
+}
+
+func (w *AIWorker) sendHandshake(conn net.Conn) error {
+	conn.SetWriteDeadline(time.Now().Add(aiWriteTimeout))
+	defer conn.SetWriteDeadline(time.Time{})
+	if err := writeMessage(conn, []byte(w.TenantID)); err != nil {
+		return err
+	}
+	return writeMessage(conn, []byte(w.CameraID))
+}
+
+// readResults delivers the ml-service results until the connection closes.
+// On a read error it closes the connection, so the writer notices and reconnects.
+func (w *AIWorker) readResults(conn net.Conn) {
+	r := bufio.NewReader(conn)
+	for {
+		payload, err := readMessage(r, maxResultSize)
+		if err != nil {
+			conn.Close()
+			return
+		}
+		if w.OnResult != nil {
+			w.OnResult(payload)
 		}
 	}
 }
@@ -167,10 +209,10 @@ func (w *AIWorker) drainStale(st *aiStreamState) bool {
 func (w *AIWorker) handleFrame(conn net.Conn, st *aiStreamState, f Frame) error {
 	kind := st.observe(f)
 
-	// Codec not known yet: forward as-is, as before. The gateway sends the
-	// parameter sets first, so this only lasts for the first NALUs.
+	// Codec not known yet: forward as-is. The gateway sends the parameter sets
+	// first, so this only lasts for the first NALUs.
 	if st.codec == CodecUnknown {
-		return sendFrame(conn, f)
+		return writeFrame(conn, f)
 	}
 
 	if w.resync.Swap(false) {
@@ -181,28 +223,54 @@ func (w *AIWorker) handleFrame(conn net.Conn, st *aiStreamState, f Frame) error 
 		if kind != KindKeyframe {
 			return nil // parameter sets are already cached by observe
 		}
+		// Same PTS as the keyframe: Python groups NALUs by PTS into one picture.
 		for _, ps := range st.orderedParams() {
-			if err := sendFrame(conn, Frame{PTS: f.PTS, Data: ps}); err != nil {
+			if err := writeFrame(conn, Frame{PTS: f.PTS, Data: ps}); err != nil {
 				return err
 			}
 		}
 		st.waitKeyframe = false
 	}
 
-	return sendFrame(conn, f)
+	return writeFrame(conn, f)
 }
 
-// sendFrame writes a frame in the format the ml-service reads today:
-// [4 bytes BE length][NALU]. The PTS is not sent yet; the next stage adds it
-// together with the change on the Python side.
-func sendFrame(conn net.Conn, f Frame) error {
-	var hdr [4]byte
-	binary.BigEndian.PutUint32(hdr[:], uint32(len(f.Data)))
+// writeFrame sends [4 bytes BE length][8 bytes BE PTS][NALU] in one write.
+func writeFrame(conn net.Conn, f Frame) error {
+	var hdr [12]byte
+	binary.BigEndian.PutUint32(hdr[0:4], uint32(len(f.Data)))
+	binary.BigEndian.PutUint64(hdr[4:12], uint64(f.PTS))
 	bufs := net.Buffers{hdr[:], f.Data}
 
 	conn.SetWriteDeadline(time.Now().Add(aiWriteTimeout))
 	_, err := bufs.WriteTo(conn)
 	return err
+}
+
+// writeMessage sends [4 bytes BE length][payload].
+func writeMessage(conn net.Conn, payload []byte) error {
+	var hdr [4]byte
+	binary.BigEndian.PutUint32(hdr[:], uint32(len(payload)))
+	bufs := net.Buffers{hdr[:], payload}
+	_, err := bufs.WriteTo(conn)
+	return err
+}
+
+// readMessage reads [4 bytes BE length][payload].
+func readMessage(r io.Reader, maxSize uint32) ([]byte, error) {
+	var hdr [4]byte
+	if _, err := io.ReadFull(r, hdr[:]); err != nil {
+		return nil, err
+	}
+	n := binary.BigEndian.Uint32(hdr[:])
+	if n == 0 || n > maxSize {
+		return nil, fmt.Errorf("invalid result size: %d", n)
+	}
+	payload := make([]byte, n)
+	if _, err := io.ReadFull(r, payload); err != nil {
+		return nil, err
+	}
+	return payload, nil
 }
 
 // wait sleeps for d; it returns false if the worker was stopped meanwhile.
