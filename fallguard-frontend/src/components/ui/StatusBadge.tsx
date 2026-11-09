@@ -12,7 +12,7 @@ const TONE: Record<string, string> = {
   online: 'good', paused: 'muted', not_on_gateway: 'muted', offline: 'warning',
   not_working: 'critical', connecting: 'warning', not_connected: 'muted',
   // live labels
-  lying: 'critical', falling: 'warning', upright: 'good',
+  lying: 'critical', falling: 'warning', upright: 'good', unclear: 'muted',
 };
 
 /** Colored badge that always carries its text label (status color is never the only cue). */
