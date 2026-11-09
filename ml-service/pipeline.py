@@ -4,8 +4,9 @@ Threading: reader threads call handle_nalu() / submit() / close(), which never t
 PyTorch. The main thread calls step(), which runs the model. PyTorch 2.14 on Python 3.15
 crashes the process when any tensor is created off the main thread.
 
-Results for the frontend (detections per analysed frame and incident events) go to
-`publish`, which for stream-hub cameras sends them back on the camera's connection.
+Results go to `publish`, which for stream-hub cameras sends them back on the camera's
+connection: detections and incident events for the frontend, and for stream-hub itself the
+incident snapshots and when to start and stop recording a clip (stream-hub keeps the video).
 """
 
 import logging
@@ -18,21 +19,23 @@ from typing import Callable
 import cv2
 import numpy as np
 
-from clips import ClipRecorder
 from config import Config
 from fall.features import extract
 from fall.rules import LYING, FALLING, RuleClassifier
 from fall.state_machine import RECOVERED, STARTED, UNRESOLVED, FallMonitor, IncidentEvent
 from fall.zones import IncidentAggregator
 from ingest.decoder import FrameSampler, VideoDecoder
-from ingest.results import detections_message, incident_message, person_entry
-from sinks import Sink, SnapshotStore, incident_record, prediction_record
+from ingest.results import (detections_message, incident_message, person_entry, recording_message,
+                            snapshot_message)
+from sinks import (Sink, SnapshotStore, clip_key, clip_record, incident_record, prediction_record, snapshot_key,
+                   snapshot_name)
 from vision.pose import Person, PoseTracker
 
 log = logging.getLogger(__name__)
 
 LABEL_COLORS = {LYING: (0, 0, 255), FALLING: (0, 165, 255)}
 RATE_WINDOW_S = 30.0  # rates() averages over this long
+SNAPSHOT_JPEG_QUALITY = 85
 
 Publish = Callable[[dict], None]
 
@@ -45,14 +48,13 @@ def wall_clock_pts() -> int:
 class CameraPipeline:
     def __init__(self, tenant_id: str, camera_id: str, cfg: Config, sink: Sink,
                  aggregator: IncidentAggregator, snapshots: SnapshotStore,
-                 clips: ClipRecorder | None = None, overrides=None, publish: Publish | None = None):
+                 overrides=None, publish: Publish | None = None):
         self.tenant_id = tenant_id
         self.camera_id = camera_id
         self.cfg = cfg
         self.sink = sink
         self.aggregator = aggregator
-        self.snapshots = snapshots
-        self.clips = clips              # dashcam-style clip recorder (stream-hub cameras only)
+        self.snapshots = snapshots      # local snapshots, for sources without stream-hub
         self.overrides = overrides or (lambda tenant: {})  # tenant -> settings changed in the frontend
         self.publish = publish          # results for the frontend; None for sources nobody watches live
         # Counters for the periodic stats log line; read and reset by take_stats().
@@ -78,7 +80,7 @@ class CameraPipeline:
         self._pending_pts: int = 0  # PTS of _pending (Unix epoch ms)
         self._pending_lock = threading.Lock()
         self._monitor_lock = threading.Lock()  # step() on the main thread vs close() from a reader thread
-        # For the preview window and the viewer: newest annotated frame and who is in it.
+        # For the preview window: newest annotated frame and who is in it.
         self.latest_annotated: np.ndarray | None = None
         self.latest_people: list[dict] = []
         self.latest_at: float | None = None
@@ -86,8 +88,6 @@ class CameraPipeline:
     def handle_nalu(self, nalu: bytes, pts: int | None = None) -> None:
         """Feed one NALU. pts is its picture's PTS (Unix epoch ms) when the source has one."""
         frames = self.decoder.decode(nalu, pts)
-        if self.clips is not None:
-            self.clips.feed(nalu, self.decoder.codec)
         for frame in frames:
             now = time.monotonic()
             # Convert at most twice the analysis rate, so a fresh frame is always waiting
@@ -151,8 +151,6 @@ class CameraPipeline:
         with self._monitor_lock:
             for event in self.monitor.close_all(time.time()):
                 self._report(event, None)
-        if self.clips is not None:
-            self.clips.close()
 
     def _report(self, event: IncidentEvent, frame: np.ndarray | None, pts: int | None = None) -> None:
         # Asked before handle(): once a member closes, the aggregator forgets it.
@@ -160,23 +158,37 @@ class CameraPipeline:
         reports = self.aggregator.handle(self.tenant_id, self.camera_id, event)
         # After handle(): a new incident only has an ID now.
         current_id = self.aggregator.incident_id_for(event.incident) or incident_id
-        if self.clips is not None:
-            # Every camera that confirmed the fall records its own clip of it.
-            if event.kind == STARTED:
-                if zone_id := self.aggregator.incident_id_for(event.incident):
-                    self.clips.start(zone_id)
-            elif event.kind in (RECOVERED, UNRESOLVED) and incident_id:
-                self.clips.stop(incident_id)
+        # Every camera that confirmed the fall records its own clip of it (in stream-hub).
+        if event.kind == STARTED and current_id:
+            self._publish(recording_message(self.camera_id, "start", current_id))
+        elif event.kind in (RECOVERED, UNRESOLVED) and incident_id:
+            self._publish(recording_message(self.camera_id, "stop", incident_id))
+            if self.publish is not None:
+                # stream-hub saves the clip post_roll_s from now under this key.
+                self.sink.clip(clip_record(self.tenant_id, incident_id, self.camera_id,
+                                           clip_key(incident_id, self.camera_id), None))
         for kind, zone_incident in reports:
             # Each camera that confirms the fall contributes its own snapshot.
             key = None
             if frame is not None and event.kind == STARTED:
-                key = self.snapshots.save(zone_incident, self.camera_id, frame)
+                key = self._save_snapshot(zone_incident, frame)
             self.sink.incident(incident_record(kind, zone_incident, event.at, key, self.camera_id if key else None))
             self._publish(incident_message(self.camera_id, pts, kind, current_id, zone_incident.severity,
                                            zone_incident.zone, zone_incident.cameras))
             log.info("[%s] %s zone=%s cameras=%s severity=%s", self.camera_id, kind, zone_incident.zone,
                      ",".join(zone_incident.cameras), zone_incident.severity)
+
+    def _save_snapshot(self, zone_incident, frame: np.ndarray) -> str | None:
+        """Send this camera's snapshot to stream-hub (or save it locally for other sources)."""
+        if self.publish is None:
+            return self.snapshots.save(zone_incident, self.camera_id, frame)
+        ok, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, SNAPSHOT_JPEG_QUALITY])
+        if not ok:
+            log.warning("[%s] could not encode the snapshot of incident %s", self.camera_id, zone_incident.id)
+            return None
+        name = snapshot_name(zone_incident, self.camera_id)
+        self._publish(snapshot_message(self.camera_id, zone_incident.id, name, jpeg.tobytes()))
+        return snapshot_key(name)
 
     def _publish(self, message: dict) -> None:
         if self.publish is None:
@@ -247,7 +259,7 @@ class CameraPipeline:
         self.latest_people = [{"track": t, "label": label, "confidence": round(conf, 2)}
                               for t, (label, conf) in sorted(labels.items())]
         self.latest_at = now
-        if self.cfg.show or self.cfg.viewer_enabled:
+        if self.cfg.show:
             self.latest_annotated = self._annotate(frame, people, labels)
 
     def _publish_detections(self, frame: np.ndarray, pts: int, people: list[Person],

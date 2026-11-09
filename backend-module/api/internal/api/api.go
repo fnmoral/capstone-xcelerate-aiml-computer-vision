@@ -3,8 +3,8 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"regexp"
@@ -20,16 +20,14 @@ import (
 
 // Config is the backend's runtime configuration (environment variables, see main.go).
 type Config struct {
-	Addr, DatabaseURL, Tenant, GatewayURL, MLURL, StreamHubURL string
+	Addr, DatabaseURL, Tenant, GatewayURL, StreamHubURL string
 }
 
-// Server holds the dependencies of the routes.
 // Server holds the dependencies of the routes.
 type Server struct {
 	cfg     Config
 	db      *store.Store
 	gateway gateway
-	ml      ml
 	hub     *httpClient
 }
 
@@ -45,7 +43,6 @@ func New(cfg Config, db *store.Store) *Server {
 		cfg:     cfg,
 		db:      db,
 		gateway: gateway{newClient("gateway-back", cfg.GatewayURL, 8*time.Second)},
-		ml:      ml{newClient("ml-service", cfg.MLURL, 3*time.Second)},
 		hub:     newClient("stream-hub", cfg.StreamHubURL, 3*time.Second),
 	}
 }
@@ -112,17 +109,19 @@ func fail(c *gin.Context, err error) {
 	}
 }
 
-// RequestLog logs API calls except the frequent polling and video routes.
+// quietRoutes are polled every few seconds by the frontend; RequestLog skips them when they succeed.
+var quietRoutes = map[string]bool{
+	"/api/cameras": true, "/api/stats": true, "/api/health": true, "/api/alerts": true,
+	"/api/notifications": true, "/api/logs": true, "/api/incidents": true, "/api/detection": true,
+}
+
+// RequestLog logs API calls except the frequent polling routes.
 func RequestLog() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		c.Next()
 		p := c.Request.URL.Path
-		if c.Request.Method == http.MethodGet && (strings.HasSuffix(p, "/stream") || strings.HasSuffix(p, "/frame.jpg") ||
-			p == "/api/cameras" || p == "/api/stats" || p == "/api/health" || p == "/api/alerts" ||
-			p == "/api/notifications" || p == "/api/logs" ||
-			strings.HasPrefix(p, "/api/snapshots/") || strings.HasPrefix(p, "/api/clips/") || p == "/api/incidents") &&
-			c.Writer.Status() < 400 {
+		if c.Request.Method == http.MethodGet && quietRoutes[p] && c.Writer.Status() < 400 {
 			return
 		}
 		log.Printf("%s %s %d %s", c.Request.Method, p, c.Writer.Status(), time.Since(start).Round(time.Millisecond))
@@ -144,7 +143,8 @@ func (s *Server) health(c *gin.Context) {
 		"gateway-back": func(ctx context.Context) error {
 			return s.gateway.do(ctx, http.MethodGet, "/gateway/actions/health", nil, nil)
 		},
-		"ml-service": func(ctx context.Context) error { return s.ml.do(ctx, http.MethodGet, "/api/config", nil, nil) },
+		// ml-service has no API of its own: it is up if it keeps reporting its status.
+		"ml-service": func(ctx context.Context) error { _, err := s.mlFrameAges(ctx); return err },
 		"stream-hub": func(ctx context.Context) error { return s.hub.do(ctx, http.MethodGet, "/health", nil, nil) },
 	}
 	out := map[string]check{}
@@ -195,6 +195,22 @@ type CameraView struct {
 	TenantID        string           `json:"tenant_id"`
 }
 
+// liveState is what ml-service is doing right now, from the database: when it last
+// analysed each camera (ml_status) and who it saw (recent model_predictions).
+type liveState struct {
+	frameAge map[string]float64
+	people   map[string][]map[string]any
+}
+
+func (s *Server) liveState(ctx context.Context) liveState {
+	frameAge, _ := s.mlFrameAges(ctx) // empty if ml-service is down
+	people, err := s.db.RecentPeople(ctx, peopleWindow)
+	if err != nil {
+		log.Printf("recent people: %v", err)
+	}
+	return liveState{frameAge: frameAge, people: people}
+}
+
 func (s *Server) listCameras(c *gin.Context) {
 	ctx := c.Request.Context()
 	gw, gwErr := s.gateway.cameras(ctx)
@@ -212,7 +228,6 @@ func (s *Server) listCameras(c *gin.Context) {
 	if gwErr == nil {
 		synced := false
 		for _, g := range gw {
-			fmt.Printf("GATEWAY--- %+v\n", g)
 			if _, ok := byID[g.ID]; !ok {
 				if err := s.db.UpsertCamera(ctx, g.ID, g.Name, g.RTSPURL, dbStatus(g.Status), nil, nil); err != nil {
 					log.Printf("registering gateway camera %s: %v", g.ID, err)
@@ -231,7 +246,7 @@ func (s *Server) listCameras(c *gin.Context) {
 		}
 	}
 
-	live, _ := s.ml.state(ctx) // empty if ml-service is down
+	live := s.liveState(ctx)
 	active := map[string]int{}
 	if list, err := s.db.Incidents(ctx, store.IncidentFilter{Status: "active", Limit: 500}); err == nil {
 		for _, i := range list {
@@ -254,7 +269,7 @@ func (s *Server) listCameras(c *gin.Context) {
 		if ok {
 			v.Name, v.Location, v.Zone = d.Name, d.Location, d.Zone
 		}
-		s.addLive(&v, live, active)
+		v.addLive(live, active)
 		v.setHealth(&d, ok)
 		out = append(out, v)
 		seen[g.ID] = true
@@ -265,7 +280,7 @@ func (s *Server) listCameras(c *gin.Context) {
 		}
 		v := CameraView{ID: d.ID, Name: d.Name, Location: d.Location, Zone: d.Zone, Status: "not_on_gateway",
 			CreatedAt: d.CreatedAt, People: []map[string]any{}}
-		s.addLive(&v, live, active)
+		v.addLive(live, active)
 		v.setHealth(&d, true)
 		out = append(out, v)
 	}
@@ -293,12 +308,14 @@ func sortByOrder(out []CameraView, dbCams []store.Camera) {
 	sort.SliceStable(out, func(i, j int) bool { return pos(out[i].ID) < pos(out[j].ID) })
 }
 
-func (s *Server) addLive(v *CameraView, live map[string]MLCamera, active map[string]int) {
-	if l, ok := live[v.ID]; ok {
-		v.Live = l.LastFrameAgeS != nil && *l.LastFrameAgeS < 10
-		v.LastFrameAgeS = l.LastFrameAgeS
-		if l.People != nil {
-			v.People = l.People
+func (v *CameraView) addLive(live liveState, active map[string]int) {
+	if age, ok := live.frameAge[v.ID]; ok {
+		v.Live = age < 10
+		v.LastFrameAgeS = &age
+	}
+	if v.Live {
+		if people := live.people[v.ID]; people != nil {
+			v.People = people
 		}
 	}
 	v.ActiveIncidents = active[v.ID]
@@ -641,14 +658,30 @@ func (s *Server) stats(c *gin.Context) {
 	c.JSON(http.StatusOK, st)
 }
 
-// detection: ml-service's settings (what it runs with now) plus "saved", the values set
-// in the frontend. ml-service picks those up within 15 s.
+// detection: ml-service's settings (what it runs with now, from its latest status in
+// ml_status) plus "saved", the values set in the frontend. ml-service picks those up
+// within 15 s. When the status is old, ml-service is down: its live figures (device,
+// analysis rate) are blanked so the page doesn't show them as current.
 func (s *Server) detection(c *gin.Context) {
 	ctx := c.Request.Context()
-	var out map[string]any
-	if err := s.ml.do(ctx, http.MethodGet, "/api/config", nil, &out); err != nil {
+	st, err := s.db.MLStatus(ctx)
+	if err != nil {
 		fail(c, err)
 		return
+	}
+	if st == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": errMLNoStatus.Error(), "service": "ml-service"})
+		return
+	}
+	var out map[string]any
+	if err := json.Unmarshal(st.Payload, &out); err != nil {
+		fail(c, err)
+		return
+	}
+	stale := time.Since(st.UpdatedAt) > mlStatusStale
+	if stale {
+		out["device_in_use"] = nil
+		out["analysis"] = gin.H{"average_fps": nil, "cameras": []any{}}
 	}
 	saved, err := s.db.Detection(ctx)
 	if err != nil {
@@ -656,6 +689,8 @@ func (s *Server) detection(c *gin.Context) {
 		return
 	}
 	out["saved"] = saved
+	out["updated_at"] = st.UpdatedAt
+	out["stale"] = stale
 	c.JSON(http.StatusOK, out)
 }
 

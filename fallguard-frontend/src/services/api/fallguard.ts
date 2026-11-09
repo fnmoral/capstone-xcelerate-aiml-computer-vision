@@ -170,14 +170,17 @@ export const exportUrl = {
     apiUrl("/export/logs.csv" + query({ ...q, limit: undefined, tz: tz() })),
 };
 
-/** MJPEG live video (annotated by ml-service). */
+/**
+ * @deprecated MJPEG from the old annotated-video design; the live view now uses the
+ * stream-hub WebSocket (features/live-view/live). Remove once nothing imports it.
+ */
 export const streamUrl = (cameraId: string) =>
   streamHubUrl("/cameras/" + enc(cameraId) + "/stream");
 
-/** Incident video; clip keys look like "clips/<incident>_<camera>.mp4". */
+/** Incident video, stored by stream-hub; clip keys look like "clips/<incident>_<camera>.mp4". */
 export const clipUrl = (key: string) =>
-  apiUrl("/clips/" + enc(key.split("/").pop() ?? key));
+  streamHubUrl("/recordings/clips/" + enc(key.split("/").pop() ?? key));
 
-/** Incident photo; snapshot keys look like "snapshots/<id>.jpg". */
+/** Incident photo, stored by stream-hub; snapshot keys look like "snapshots/<id>.jpg". */
 export const snapshotUrl = (key: string) =>
-  apiUrl("/snapshots/" + enc(key.split("/").pop() ?? key));
+  streamHubUrl("/recordings/snapshots/" + enc(key.split("/").pop() ?? key));

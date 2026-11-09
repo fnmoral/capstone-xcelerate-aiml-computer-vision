@@ -27,26 +27,24 @@ import cv2
 import numpy as np
 
 import config
-from clips import ClipRecorder, ClipWriter
 from fall.zones import IncidentAggregator
 from ingest.server import Publish, StreamHubServer
 from pipeline import CameraPipeline
-from sinks import FanoutSink, SnapshotStore, clip_record
+from sinks import FanoutSink, SnapshotStore
 from sinks.jsonl import JsonlSink
-from viewer import Viewer, ViewerSink
 from vision.pose import PoseTracker, describe_device
 
 log = logging.getLogger("ml-service")
 
 RECONNECT_SECONDS = 3.0
 RTSP_TIMEOUT_MS = 5000  # OpenCV's default is ~30 s, too slow to notice a dead camera
+STATUS_EVERY_S = 10.0   # how often the Detection Settings figures are written to the database
 
 pipelines: dict[str, CameraPipeline] = {}
 pipelines_lock = threading.Lock()
 # Shared by all cameras so overlapping cameras raise one incident; set in main().
 aggregator = IncidentAggregator({}, 0.0)
 snapshots: SnapshotStore | None = None
-clip_writer: ClipWriter | None = None
 device_in_use = ""  # what inference.device resolved to, e.g. "GPU 0 (NVIDIA ...)"; set by warm_up
 # Detection settings changed in the frontend, per tenant (slug and UUID); see refresh_from_db.
 overrides: dict[str, dict] = {}
@@ -58,9 +56,8 @@ def tenant_overrides(tenant_id: str) -> dict:
 
 def new_pipeline(tenant_id: str, camera_id: str, cfg: config.Config, sink: FanoutSink,
                  publish: Publish | None = None) -> CameraPipeline:
-    clips = ClipRecorder(camera_id, tenant_id, cfg.clips, clip_writer) if clip_writer is not None else None
-    return CameraPipeline(tenant_id, camera_id, cfg, sink, aggregator, snapshots, clips, tenant_overrides,
-                          publish)
+    return CameraPipeline(tenant_id, camera_id, cfg, sink, aggregator, snapshots,
+                          overrides=tenant_overrides, publish=publish)
 
 
 def build_sink(cfg: config.Config):
@@ -116,6 +113,15 @@ def refresh_from_db(cfg: config.Config, pg, stop: threading.Event, every_s: floa
             current = zones
             aggregator.set_zones(zones)
             log.info("zones reloaded from the database: %s", ", ".join(zones) or "none")
+
+
+def report_status(cfg: config.Config, pg, stop: threading.Event) -> None:
+    """Write what this service runs and how fast (detection_settings) to the database,
+    where the backend reads it for the Detection Settings page."""
+    while True:
+        pg.status(detection_settings(cfg))
+        if stop.wait(STATUS_EVERY_S):
+            return
 
 
 def merge_zones(file_zones: dict[str, list[str]], db_zones: dict[str, list[str]]) -> dict[str, list[str]]:
@@ -335,14 +341,21 @@ def main_loop(stop: threading.Event, show: bool, capture_threads: list[threading
 
 
 def detection_settings(cfg: config.Config) -> dict:
-    """Read-only summary of the detection settings, shown by the frontend."""
+    """Read-only summary of the detection settings, shown by the frontend (via ml_status)."""
     r, m = cfg.rules, cfg.monitor
     with pipelines_lock:
         active = list(pipelines.items())
     cameras = []
+    now = time.time()
     for camera_id, p in active:
         received, analysed = p.rates()
-        cameras.append({"camera_id": camera_id, "received_fps": round(received, 1), "analysed_fps": round(analysed, 1)})
+        cameras.append({
+            "camera_id": camera_id,
+            "received_fps": round(received, 1),
+            "analysed_fps": round(analysed, 1),
+            # The backend uses this for camera health ("not working" after 20 s without video).
+            "last_frame_age_s": round(now - p.latest_at, 1) if p.latest_at else None,
+        })
     live = [c["analysed_fps"] for c in cameras if c["received_fps"] > 0]
     return {
         "mode": "prod" if cfg.prod_mode else "dev",
@@ -356,8 +369,6 @@ def detection_settings(cfg: config.Config) -> dict:
         "target_fps": cfg.inference.target_fps,
         "person_confidence": tenant_overrides(cfg.default_tenant_id).get("person_confidence", cfg.inference.conf),
         "person_confidence_default": cfg.inference.conf,  # config.yaml; the frontend can override it
-        "clips": {k: getattr(cfg.clips, k) for k in ("enabled", "pre_roll_s", "post_roll_s", "max_s",
-                                                       "max_width", "retention_days", "max_total_gb")},
         "rules": {
             "lying_torso_angle_deg": r.lying_torso_angle_deg,
             "falling_torso_angle_deg": r.falling_torso_angle_deg,
@@ -422,17 +433,12 @@ def main() -> None:
         log.warning("no display found; preview turned off")
         cfg.show = False
 
-    global aggregator, snapshots, clip_writer
+    global aggregator, snapshots
     sink, pg = build_sink(cfg)
     db_zones = (load_db_zones(pg) or {}) if pg is not None and cfg.zones_from_db else {}
     zones = merge_zones(cfg.zones, db_zones)
     aggregator = IncidentAggregator(zones, cfg.merge_window_s)
-    snapshots = SnapshotStore(cfg.output_dir)
-    if cfg.clips.enabled:
-        clip_writer = ClipWriter(cfg.output_dir, cfg.clips, on_saved=lambda job, key, seconds: sink.clip(
-            clip_record(job.tenant_id, job.incident_id, job.camera_id, key, seconds)))
-        log.info("incident clips: %.0f s before to %.0f s after, saved under %s/clips", cfg.clips.pre_roll_s,
-                 cfg.clips.post_roll_s, cfg.output_dir)
+    snapshots = SnapshotStore(cfg.output_dir)  # only used by sources read directly (dev)
     if pg is not None:
         load_overrides(pg)
     for name, cams in zones.items():
@@ -441,18 +447,10 @@ def main() -> None:
     stop = threading.Event()
     if pg is not None:
         threading.Thread(target=refresh_from_db, args=(cfg, pg, stop), name="db-refresh", daemon=True).start()
-    if cfg.viewer_enabled:
-        viewer_sink = ViewerSink()
-        sink.sinks.append(viewer_sink)
-
-        def current_pipelines() -> dict[str, CameraPipeline]:
-            with pipelines_lock:
-                return dict(pipelines)
-
-        Viewer(cfg.viewer_host, cfg.viewer_port, cfg.viewer_fps, cfg.viewer_jpeg_quality, current_pipelines,
-               viewer_sink, cfg.output_dir, lambda: detection_settings(cfg)).start()
 
     warm_up(cfg)
+    if pg is not None:  # after warm_up, so the first status already says which device is in use
+        threading.Thread(target=report_status, args=(cfg, pg, stop), name="status", daemon=True).start()
     server = start_stream_hub(cfg, sink) if cfg.uses_tcp else None
     capture_threads = []
     for src in cfg.sources:
@@ -472,8 +470,6 @@ def main() -> None:
             server.close()
         if cfg.show:
             cv2.destroyAllWindows()
-        if clip_writer is not None:
-            clip_writer.close()  # finishes clips being encoded
         sink.close()  # lets the database writer finish what is queued
         log.info("stopped")
 

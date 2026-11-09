@@ -18,6 +18,15 @@
 --     existing database at startup)
 --   * cameras.status is kept current by the API; cameras.metadata holds status_since and
 --     alert_offline (notify when the camera stops working; default true)
+--
+-- Changes for stream-hub recordings and the ml-service status:
+--   * incident snapshots and clips are stored and served by stream-hub (its recordings
+--     volume); ml-service writes their keys here. Key formats are unchanged:
+--     'snapshots/<file>.jpg' and 'clips/<incident>_<camera>.mp4'.
+--   * ml_status: what ml-service is running and how fast (model, device, analysed fps per
+--     camera, rules from its config.yaml), for the Detection Settings page. ml-service
+--     rewrites its row every 10 s; the backend reads it. On an existing database, run the
+--     CREATE TABLE ml_status statement below once.
 
 CREATE EXTENSION IF NOT EXISTS citext;
 CREATE EXTENSION IF NOT EXISTS vector;     -- only needed if using pgvector
@@ -163,6 +172,19 @@ CREATE TABLE rule_channels (
     PRIMARY KEY (rule_id, channel_id)
 );
 
+-- ---------- Service status ----------
+
+-- What ml-service is running and how fast, for the Detection Settings page: model, device
+-- in use, analysed fps per camera, rules and timings from its config.yaml, zones in use.
+-- One row per service, rewritten every 10 s by ml-service and read by the backend; an old
+-- updated_at means the service is down. Platform-wide (cameras of every tenant), so it has
+-- no tenant_id and no row-level security; the backend shows each tenant only its cameras.
+CREATE TABLE ml_status (
+    service     TEXT PRIMARY KEY,               -- 'ml-service'
+    payload     JSONB NOT NULL,                 -- ml-service's detection_settings()
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- =====================================================================
 -- DB2: EVENTS, ALERTS, LOGS (partitioned by month on time)
 -- No cross-DB foreign keys: tenant_id/camera_id/rule_id are plain UUIDs
@@ -210,7 +232,7 @@ CREATE TABLE alerts (
     severity        TEXT NOT NULL,
     status          TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','acknowledged','resolved','false_positive')),
     summary         TEXT,
-    snapshot_key    TEXT,                       -- object storage key
+    snapshot_key    TEXT,                       -- stream-hub recordings key ('snapshots/<file>.jpg')
     acknowledged_by UUID,
     acknowledged_at TIMESTAMPTZ,
     PRIMARY KEY (id, triggered_at)
@@ -279,8 +301,8 @@ CREATE TABLE incidents (
                      CHECK (severity IN ('low','medium','high','critical')),
     peak_confidence  REAL,                      -- highest fall confidence from the model
     location_label   TEXT,                      -- copy of cameras.location at the time
-    snapshot_key     TEXT,                      -- object storage key for the key image
-    clip_key         TEXT,                      -- object storage key for a short clip
+    snapshot_key     TEXT,                      -- stream-hub recordings key for the key image
+    clip_key         TEXT,                      -- stream-hub recordings key for the main clip
     notes            TEXT,
     PRIMARY KEY (id, started_at)
 ) PARTITION BY RANGE (started_at);
@@ -295,8 +317,9 @@ CREATE TABLE incident_cameras (
     camera_id     UUID NOT NULL,
     track_id      INT  NOT NULL,                -- ML tracker ID of the person on that camera
     joined_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    snapshot_key  TEXT,                         -- object storage key for this camera's image
-    clip_key      TEXT,                         -- this camera's video clip of the incident (ml-service clips)
+    snapshot_key  TEXT,                         -- stream-hub recordings key for this camera's image
+    clip_key      TEXT,                         -- this camera's clip, recorded by stream-hub. Set when the
+                                                -- camera stops recording; the file follows ~10 s later
     PRIMARY KEY (incident_id, camera_id, track_id)
 );
 CREATE INDEX idx_incident_cameras_cam ON incident_cameras (tenant_id, camera_id, joined_at DESC);
@@ -428,15 +451,17 @@ ALTER TABLE model_predictions ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON model_predictions
     USING (tenant_id = current_setting('app.tenant_id')::uuid);
 -- repeat for sites, gateways, api_keys, notification_channels, frames, etc.
+-- ml_status is platform-wide (no tenant_id): no row-level security.
 
 -- =====================================================================
 -- ML SERVICE ROLE (optional, recommended for production)
--- ml-service only needs to write detections and read camera/zone setup. It sets
--- app.tenant_id per transaction, so row-level security applies to it too.
+-- ml-service only needs to write detections and its status, and read camera/zone setup.
+-- It sets app.tenant_id per transaction, so row-level security applies to it too.
 -- =====================================================================
 -- CREATE ROLE ml_service LOGIN PASSWORD '<from a secret store>';
 -- GRANT SELECT ON tenants, cameras, zones, rules TO ml_service;
 -- GRANT SELECT, INSERT, UPDATE ON incidents, incident_cameras, alerts TO ml_service;
 -- GRANT INSERT ON model_predictions TO ml_service;
+-- GRANT SELECT, INSERT, UPDATE ON ml_status TO ml_service;
 -- GRANT EXECUTE ON FUNCTION create_monthly_partitions(date, int) TO ml_service;  -- also needs CREATE on the schema
 -- RLS also needs policies on tenants/cameras/rules or a SECURITY DEFINER lookup if ml_service reads them under RLS.

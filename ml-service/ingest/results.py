@@ -1,6 +1,9 @@
-"""Results sent back to stream-hub, which relays them to the frontend over its WebSocket.
+"""Results sent back to stream-hub on the camera's connection.
 
-Messages are JSON objects with a "type" field:
+Messages are JSON objects with a "type" field. stream-hub relays some to the frontend
+over its WebSocket and acts on the others itself.
+
+Relayed to the frontend:
 
 detections: one per analysed frame, also when nobody is in view (so the frontend clears
 its overlay). Boxes are normalised to 0..1 as [x1, y1, x2, y2] so they can be drawn at
@@ -16,19 +19,31 @@ incident: a zone-level incident event (started, updated, recovered, unresolved).
     {"type": "incident", "camera_id": "cam1", "pts": 1730990000123 | null,
      "event": "incident_started", "incident_id": "...", "severity": "medium",
      "zone": "...", "cameras": ["cam1"]}
+
+For stream-hub, which records clips and stores snapshots:
+
+recording: start or finish this camera's clip of an incident. stream-hub saves it as
+clips/<incident_id>_<camera_id>.mp4 (see sinks.clip_key).
+
+    {"type": "recording", "camera_id": "cam1", "action": "start" | "stop", "incident_id": "..."}
+
+snapshot: the frame on which this camera confirmed the fall, as a base64 JPEG.
+stream-hub saves it as snapshots/<name> (see sinks.snapshot_key).
+
+    {"type": "snapshot", "camera_id": "cam1", "incident_id": "...", "name": "<id>.jpg",
+     "jpeg": "<base64>"}
 """
 
+import base64
 import json
 import logging
-import queue
 import socket
 import threading
+from collections import deque
 
 from ingest.protocol import write_message
 
 log = logging.getLogger(__name__)
-
-_STOP = object()
 
 
 def detections_message(camera_id: str, pts: int, width: int, height: int, people: list[dict]) -> dict:
@@ -53,57 +68,74 @@ def incident_message(camera_id: str, pts: int | None, event: str, incident_id: s
             "zone": str(zone), "cameras": [str(c) for c in cameras]}
 
 
+def recording_message(camera_id: str, action: str, incident_id: str) -> dict:
+    return {"type": "recording", "camera_id": camera_id, "action": action, "incident_id": str(incident_id)}
+
+
+def snapshot_message(camera_id: str, incident_id: str, name: str, jpeg: bytes) -> dict:
+    return {"type": "snapshot", "camera_id": camera_id, "incident_id": str(incident_id), "name": name,
+            "jpeg": base64.b64encode(jpeg).decode("ascii")}
+
+
 class ResultWriter:
     """Sends result messages on a stream-hub connection from its own thread.
 
     publish() never blocks: inference runs on the main thread for every camera, so a slow
-    or stuck stream-hub must not hold it up. When the queue is full the oldest message is
-    dropped; a newer detection replaces an older one anyway.
+    or stuck stream-hub must not hold it up. Detections are kept in a short queue that
+    drops the oldest when full (a newer detection replaces an older one anyway). Every
+    other message (incidents, recording commands, snapshots) is rare and is never dropped,
+    and goes out before queued detections.
     """
 
-    def __init__(self, sock: socket.socket, camera_id: str, max_queue: int = 256):
+    def __init__(self, sock: socket.socket, camera_id: str, max_detections: int = 64):
         self._sock = sock
         self._camera_id = camera_id
-        self._queue: queue.Queue = queue.Queue(maxsize=max_queue)
-        self._closed = threading.Event()
+        self._cond = threading.Condition()
+        self._control: deque[dict] = deque()
+        self._detections: deque[dict] = deque(maxlen=max_detections)
+        self._closed = False
         self._dropped = 0
         self._thread = threading.Thread(target=self._run, name=f"results-{camera_id}", daemon=True)
         self._thread.start()
 
     def publish(self, message: dict) -> None:
         """Queue a message for sending. Safe from any thread."""
-        if not self._closed.is_set():
-            self._put(message)
+        with self._cond:
+            if self._closed:
+                return
+            if message.get("type") == "detections":
+                if len(self._detections) == self._detections.maxlen:
+                    self._dropped += 1
+                    if self._dropped % 100 == 1:
+                        log.warning("[%s] stream-hub is not reading results; dropped %d detections so far",
+                                    self._camera_id, self._dropped)
+                self._detections.append(message)
+            else:
+                self._control.append(message)
+            self._cond.notify()
 
     def close(self) -> None:
         """Stop after what is already queued. Does not wait for the thread."""
-        if not self._closed.is_set():
-            self._closed.set()
-            self._put(_STOP)
+        with self._cond:
+            self._closed = True
+            self._cond.notify()
 
-    def _put(self, item) -> None:
-        while True:
-            try:
-                self._queue.put_nowait(item)
-                return
-            except queue.Full:
-                try:
-                    self._queue.get_nowait()
-                    self._dropped += 1
-                    if self._dropped % 100 == 1:
-                        log.warning("[%s] stream-hub is not reading results; dropped %d so far",
-                                    self._camera_id, self._dropped)
-                except queue.Empty:
-                    pass
+    def _next(self) -> dict | None:
+        with self._cond:
+            while not (self._control or self._detections or self._closed):
+                self._cond.wait()
+            if self._control:
+                return self._control.popleft()
+            if self._detections:
+                return self._detections.popleft()
+            return None  # closed and empty
 
     def _run(self) -> None:
-        while True:
-            item = self._queue.get()
-            if item is _STOP:
-                return
+        while (message := self._next()) is not None:
             try:
-                write_message(self._sock, json.dumps(item, separators=(",", ":")).encode("utf-8"))
+                write_message(self._sock, json.dumps(message, separators=(",", ":")).encode("utf-8"))
             except OSError as e:
                 log.debug("[%s] results connection closed: %s", self._camera_id, e)
-                self._closed.set()
+                with self._cond:
+                    self._closed = True
                 return

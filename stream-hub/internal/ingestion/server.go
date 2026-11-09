@@ -3,12 +3,14 @@ package ingestion
 import (
 	"bufio"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net"
 
 	"stream-hub/internal/hub"
+	"stream-hub/internal/recording"
 )
 
 const (
@@ -22,14 +24,16 @@ type Server struct {
 	addr         string
 	aiServerAddr string
 	broker       *hub.StreamBroker
+	recordings   *recording.Manager
 }
 
-// NewServer creates a new ingestion TCP server instance with a broker reference.
-func NewServer(addr string, aiServerAddr string, broker *hub.StreamBroker) *Server {
+// NewServer creates a new ingestion TCP server instance.
+func NewServer(addr string, aiServerAddr string, broker *hub.StreamBroker, recordings *recording.Manager) *Server {
 	return &Server{
 		addr:         addr,
 		broker:       broker,
 		aiServerAddr: aiServerAddr,
+		recordings:   recordings,
 	}
 }
 
@@ -71,9 +75,8 @@ func (s *Server) handleConnection(conn net.Conn) {
 	// Init AI worker
 	log.Printf("Starting AI worker for camera [%s] -> %s", cameraID, s.aiServerAddr)
 	aiWorker := hub.NewAIWorker(hs.TenantID, cameraID, s.aiServerAddr)
-	// Detections and incident events from the ml-service go to the camera's frontend clients.
 	aiWorker.OnResult = func(payload []byte) {
-		s.broker.BroadcastMeta(hs.TenantID, cameraID, payload)
+		s.handleResult(hs.TenantID, cameraID, payload)
 	}
 	aiWorker.Start()
 	s.broker.RegisterAIWorker(hs.TenantID, cameraID, aiWorker)
@@ -83,6 +86,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 	defer func() {
 		s.broker.UnregisterAIWorker(hs.TenantID, cameraID, aiWorker)
 		aiWorker.Stop()
+		s.recordings.CloseCamera(hs.TenantID, cameraID) // saves clips still recording
 		log.Printf("AIWorker unregistered for camera [%s]", cameraID)
 	}()
 
@@ -93,6 +97,42 @@ func (s *Server) handleConnection(conn net.Conn) {
 			return
 		}
 		s.broker.BroadcastFrame(hs.TenantID, cameraID, frame)
+		s.recordings.Feed(hs.TenantID, cameraID, frame)
+	}
+}
+
+// mlResult is the part of an ml-service result message the hub acts on.
+type mlResult struct {
+	Type       string `json:"type"`
+	Action     string `json:"action"`      // recording: "start" | "stop"
+	IncidentID string `json:"incident_id"` // recording, snapshot
+	Name       string `json:"name"`        // snapshot: file name
+	JPEG       []byte `json:"jpeg"`        // snapshot: image (base64 in the JSON)
+}
+
+// handleResult routes one ml-service result. Recording commands and snapshots are
+// for the hub; everything else (detections, incident events) goes to the camera's
+// frontend clients unchanged.
+func (s *Server) handleResult(tenantID, cameraID string, payload []byte) {
+	var r mlResult
+	if err := json.Unmarshal(payload, &r); err != nil {
+		log.Printf("camera [%s]: invalid ml-service result: %v", cameraID, err)
+		return
+	}
+	switch r.Type {
+	case "recording":
+		switch r.Action {
+		case "start":
+			s.recordings.Start(tenantID, cameraID, r.IncidentID)
+		case "stop":
+			s.recordings.Stop(tenantID, cameraID, r.IncidentID)
+		}
+	case "snapshot":
+		if err := s.recordings.SaveSnapshot(r.Name, r.JPEG); err != nil {
+			log.Printf("camera [%s]: snapshot for incident %s not saved: %v", cameraID, r.IncidentID, err)
+		}
+	default:
+		s.broker.BroadcastMeta(tenantID, cameraID, payload)
 	}
 }
 

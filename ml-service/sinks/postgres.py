@@ -11,8 +11,10 @@ ID mapping (the schema stores UUIDs):
   the tenant (e.g. 'CAM-02 Living Room'), otherwise a stable UUID derived from the name
   (uuid5), so 'local-webcam' always maps to the same ID
 
-Tables written: incidents, incident_cameras, alerts (one per incident), model_predictions.
-Every write sets app.tenant_id for its transaction, so row-level security applies.
+Tables written: incidents, incident_cameras, alerts (one per incident), model_predictions,
+and ml_status (one row: what this service is running and how fast, for the Detection
+Settings page). Every tenant write sets app.tenant_id for its transaction, so row-level
+security applies; ml_status is not per tenant.
 """
 
 import logging
@@ -33,6 +35,7 @@ ALERT_NAMESPACE = uuid.UUID("6b9f6b1e-2d1c-4a8e-9d3e-7f2a51c0e002")
 RETRY_SECONDS = 5.0
 BATCH_SIZE = 200
 CAMERA_CACHE_SECONDS = 60.0  # cameras get registered/renamed in the frontend while running
+STATUS_SERVICE = "ml-service"
 
 
 class UnknownTenant(Exception):
@@ -156,6 +159,10 @@ class PostgresSink:
     def clip(self, record: dict) -> None:
         self._queue.put(("clip", record))
 
+    def status(self, payload: dict) -> None:
+        """What this service is running and how fast; replaces the previous status."""
+        self._queue.put(("status", payload))
+
     def flush(self, timeout: float = 10.0) -> bool:
         """Wait until everything queued so far is written. False if it timed out."""
         deadline = time.monotonic() + timeout
@@ -276,6 +283,9 @@ class PostgresSink:
     def _write(self, conn, batch: list[tuple[str, dict]]) -> None:
         with conn.transaction(), conn.cursor() as cur:
             for kind, rec in batch:
+                if kind == "status":
+                    self._write_status(cur, rec)
+                    continue
                 try:
                     tenant = self.resolver.tenant(cur, rec["tenant_id"])
                 except UnknownTenant:
@@ -291,6 +301,19 @@ class PostgresSink:
                     self._write_clip(cur, tenant, rec)
                 else:
                     self._write_incident(cur, tenant, rec)
+
+    def _write_status(self, cur, payload: dict) -> None:
+        cur.execute("SAVEPOINT status")
+        try:
+            cur.execute(
+                "INSERT INTO ml_status (service, payload, updated_at) VALUES (%s, %s, now()) "
+                "ON CONFLICT (service) DO UPDATE SET payload = EXCLUDED.payload, updated_at = EXCLUDED.updated_at",
+                (STATUS_SERVICE, Jsonb(payload)))
+        except (psycopg.errors.UndefinedTable, psycopg.errors.InsufficientPrivilege) as e:
+            cur.execute("ROLLBACK TO SAVEPOINT status")
+            self.resolver.warn_once("ml_status", "cannot write the ml_status table (%s): the Detection Settings "
+                                    "page won't show live figures; run the ml_status migration",
+                                    str(e).strip().splitlines()[0])
 
     def _write_prediction(self, cur, tenant: uuid.UUID, rec: dict) -> None:
         camera, _ = self.resolver.camera(cur, tenant, rec["camera_id"])

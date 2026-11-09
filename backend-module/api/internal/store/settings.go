@@ -18,6 +18,18 @@ var migrations = []string{
 	`ALTER TABLE incident_cameras ADD COLUMN IF NOT EXISTS clip_key TEXT`,
 	// Facility time zone (Settings page); NULL = each browser's own.
 	`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS timezone TEXT`,
+	// ml-service status for the Detection Settings page and camera health (see MLStatus).
+	`CREATE TABLE IF NOT EXISTS ml_status (
+		service     TEXT PRIMARY KEY,
+		payload     JSONB NOT NULL,
+		updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+	)`,
+	// ml-service writes it; only if its restricted role exists (db/init/03-roles.sh).
+	`DO $$ BEGIN
+		IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ml_service') THEN
+			GRANT SELECT, INSERT, UPDATE ON ml_status TO ml_service;
+		END IF;
+	END $$`,
 }
 
 // Settings are facility-wide app settings.

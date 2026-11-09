@@ -1,9 +1,9 @@
 // Package main is the FallGuard core backend API (Module 2).
 //
-// It is the only service the frontend talks to. It reads incidents, alerts and stats
-// from PostgreSQL, manages cameras through gateway-back (keeping the database's cameras
-// table in sync), and passes through the live annotated video, photos and detection
-// settings from ml-service.
+// It is the only service the frontend talks to for data. It reads incidents, alerts,
+// stats and ml-service's status from PostgreSQL, and manages cameras through
+// gateway-back (keeping the database's cameras table in sync). Live video, incident
+// snapshots and clips come from stream-hub, not from here.
 package main
 
 import (
@@ -32,10 +32,9 @@ func main() {
 	cfg := api.Config{
 		Addr:        env("API_ADDR", ":8000"),
 		DatabaseURL: env("DATABASE_URL", "postgresql://fallguard_admin:change-me@localhost:5433/fallguard?sslmode=disable"),
-		// DatabaseURL:  env("DATABASE_URL", "postgresql://fallguard_admin@localhost:5432/fallguard"),
-		Tenant:       env("TENANT", "demo-facility"),
-		GatewayURL:   env("GATEWAY_URL", "http://localhost:8080"),
-		MLURL:        env("ML_URL", "http://localhost:8000"),
+		Tenant:      env("TENANT", "demo-facility"),
+		GatewayURL:  env("GATEWAY_URL", "http://localhost:8080"),
+		// stream-hub's HTTP address (its config.json http_addr), not its TCP ingest port.
 		StreamHubURL: env("STREAM_HUB_URL", "http://localhost:9000"),
 	}
 
@@ -60,8 +59,8 @@ func main() {
 	}
 
 	srv := &http.Server{Addr: cfg.Addr, Handler: r, ReadHeaderTimeout: 10 * time.Second}
-	log.Printf("backend API on %s (%s mode, tenant %s, gateway %s, ml %s)", cfg.Addr,
-		map[bool]string{true: "dev", false: "prod"}[devMode], cfg.Tenant, cfg.GatewayURL, cfg.MLURL)
+	log.Printf("backend API on %s (%s mode, tenant %s, gateway %s, stream-hub %s)", cfg.Addr,
+		map[bool]string{true: "dev", false: "prod"}[devMode], cfg.Tenant, cfg.GatewayURL, cfg.StreamHubURL)
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("server: %v", err)
 	}

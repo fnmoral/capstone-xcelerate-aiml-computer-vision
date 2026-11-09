@@ -1,13 +1,18 @@
-"""Stands in for stream-hub: encodes a video file or webcam to H.264 and sends it
-to ml-service using the same protocol as internal/hub/ai_worker.go.
+"""Stands in for stream-hub: encodes a video file or webcam to H.264 and sends it to
+ml-service using the same wire protocol as stream-hub (internal/hub/ai_worker.go),
+including the per-picture PTS that protocol now requires.
 
-    python tools/send_video.py --source 0                  # webcam
-    python tools/send_video.py --source fall.mp4 --loop    # video file
+    python tools/send_video.py --source 0 --tenant-id demo-facility          # webcam
+    python tools/send_video.py --source fall.mp4 --tenant-id demo-facility --loop
+
+Pass --tenant-id whenever ml-service's config has tenant_in_handshake: true, which the
+shipped config.yaml now defaults to for every tcp-reading section.
 """
 
 import argparse
 import socket
 import sys
+import threading
 import time
 from fractions import Fraction
 from pathlib import Path
@@ -16,7 +21,7 @@ import av
 import cv2
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ingest.protocol import write_message  # noqa: E402
+from ingest.protocol import read_message, write_frame, write_message  # noqa: E402
 
 
 def make_encoder(width: int, height: int, fps: int) -> av.CodecContext:
@@ -34,6 +39,20 @@ def make_encoder(width: int, height: int, fps: int) -> av.CodecContext:
     return enc
 
 
+def drain_results(sock: socket.socket, verbose: bool) -> None:
+    """Reads and discards ml-service's results (detections, incidents, recording
+    commands, snapshots) so its write buffer never fills up and blocks ml-service.
+    Runs until the connection closes.
+    """
+    try:
+        while (payload := read_message(sock, 16 << 20)) is not None:
+            if verbose:
+                kind = payload[:80]
+                print(f"  <- {len(payload)} bytes: {kind!r}", file=sys.stderr)
+    except OSError:
+        pass
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--source", default="0", help="webcam index or video file path")
@@ -42,6 +61,7 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=9999)
     parser.add_argument("--loop", action="store_true", help="restart a video file when it ends")
+    parser.add_argument("--show-results", action="store_true", help="print ml-service's results as they arrive")
     args = parser.parse_args()
 
     source = int(args.source) if args.source.isdigit() else args.source
@@ -58,6 +78,8 @@ def main() -> None:
     write_message(sock, args.camera_id.encode())
     print(f"sending {args.source} as [{args.camera_id}] at {enc.width}x{enc.height}@{fps} using {enc.name}")
 
+    threading.Thread(target=drain_results, args=(sock, args.show_results), daemon=True).start()
+
     pts = 0
     next_frame = time.monotonic()
     try:
@@ -68,12 +90,15 @@ def main() -> None:
                     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                     continue
                 break
+            # One PTS (Unix epoch ms) per picture, like the gateway: every NALU this
+            # picture encodes to shares it, so ml-service can group them back together.
+            frame_pts = int(time.time() * 1000)
             frame = av.VideoFrame.from_ndarray(bgr[: enc.height, : enc.width], format="bgr24")
             frame = frame.reformat(format="yuv420p")
             frame.pts = pts
             pts += 1
             for packet in enc.encode(frame):
-                write_message(sock, bytes(packet))
+                write_frame(sock, frame_pts, bytes(packet))
 
             if not isinstance(source, int):  # pace files at real time; webcams pace themselves
                 next_frame += 1 / fps

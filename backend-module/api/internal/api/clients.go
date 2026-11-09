@@ -23,14 +23,7 @@ type GatewayCamera struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// MLCamera is a camera's live state as ml-service's viewer reports it.
-type MLCamera struct {
-	ID            string           `json:"id"`
-	People        []map[string]any `json:"people"`
-	LastFrameAgeS *float64         `json:"last_frame_age_s"`
-}
-
-// upstreamError is a non-2xx response from gateway-back or ml-service.
+// upstreamError is a non-2xx response from gateway-back or stream-hub.
 type upstreamError struct {
 	Service string
 	Status  int
@@ -133,21 +126,4 @@ func (g gateway) limits(ctx context.Context) Limits {
 
 func (g gateway) deleteCamera(ctx context.Context, id string) error {
 	return g.do(ctx, http.MethodDelete, "/gateway/actions/cameras/"+url.PathEscape(id), nil, nil)
-}
-
-// ml wraps ml-service's viewer API.
-type ml struct{ *httpClient }
-
-func (m ml) state(ctx context.Context) (map[string]MLCamera, error) {
-	var st struct {
-		Cameras []MLCamera `json:"cameras"`
-	}
-	if err := m.do(ctx, http.MethodGet, "/api/state", nil, &st); err != nil {
-		return nil, err
-	}
-	out := make(map[string]MLCamera, len(st.Cameras))
-	for _, c := range st.Cameras {
-		out[c.ID] = c
-	}
-	return out, nil
 }

@@ -76,3 +76,20 @@ func Classify(c Codec, nalu []byte) (NALUKind, int) {
 
 	return KindOther, -1
 }
+
+// IsPicture reports whether a NALU carries picture data (a slice), as opposed to
+// parameter sets, SEI or delimiters.
+func IsPicture(c Codec, nalu []byte) bool {
+	h := naluPayload(nalu)
+	if len(h) == 0 {
+		return false
+	}
+	switch c {
+	case CodecH264:
+		t := h[0] & 0x1f
+		return t >= 1 && t <= 5
+	case CodecH265:
+		return (h[0]>>1)&0x3f <= 31
+	}
+	return false
+}

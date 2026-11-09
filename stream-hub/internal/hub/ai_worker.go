@@ -17,8 +17,8 @@ const (
 	aiDialTimeout  = 3 * time.Second
 	aiWriteTimeout = 5 * time.Second
 
-	// maxResultSize bounds one JSON result from the ml-service.
-	maxResultSize = 1 << 20
+	// maxResultSize bounds one JSON result from the ml-service (snapshots carry a JPEG).
+	maxResultSize = 16 << 20
 )
 
 // AIWorker exchanges one camera's stream with the Python ml-service over one TCP
