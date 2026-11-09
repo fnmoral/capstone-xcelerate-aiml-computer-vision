@@ -6,11 +6,9 @@ import threading
 from typing import Callable, Protocol
 
 from ingest.protocol import MAX_NALU_LEN, ProtocolError, read_frame, read_handshake
-from ingest.results import ResultWriter
+from ingest.results import Publish, ResultWriter
 
 log = logging.getLogger(__name__)
-
-Publish = Callable[[dict], None]
 
 
 class FrameConsumer(Protocol):

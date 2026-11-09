@@ -40,10 +40,14 @@ import logging
 import socket
 import threading
 from collections import deque
+from typing import Callable
 
 from ingest.protocol import write_message
 
 log = logging.getLogger(__name__)
+
+# Signature stream-hub connections and tests use to send a result: Publish(message_dict).
+Publish = Callable[[dict], None]
 
 
 def detections_message(camera_id: str, pts: int, width: int, height: int, people: list[dict]) -> dict:

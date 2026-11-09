@@ -7,7 +7,7 @@ developer PC and on the production server; a single switch decides which mode ru
 - [How the file is organised](#how-the-file-is-organised)
 - [All options](#all-options): [sources](#sources) · [zones](#zones) · [preview](#preview) ·
   [server](#server) · [handshake](#handshake) · [inference](#inference) · [fall](#fall) · [output](#output) ·
-  [database](#database) · [viewer](#viewer)
+  [database](#database)
 - [Command-line flags](#command-line-flags) · [Environment variables](#environment-variables)
 - [Recipes](#recipes) · [Errors you may see](#errors-you-may-see)
 
@@ -60,6 +60,7 @@ handshake: {...}
 inference: {...}
 fall: {...}
 output: {...}
+database: {...}
 ```
 
 - The `dev:` or `prod:` section is laid **on top of** the shared settings. Any shared
@@ -72,6 +73,11 @@ output: {...}
   holds `config.yaml`.
 - Older files without `dev:`/`prod:` sections, or with a single `source:` instead of
   `sources:`, still load.
+
+Incident clips and snapshots are **not** configured here: stream-hub (a separate Go
+service) owns that storage, with its own settings in its own `config.json`. This service
+only tells stream-hub when to start and stop recording, and sends it the snapshot image
+(see [the README's Outputs section](README.md#6-outputs)).
 
 ---
 
@@ -108,6 +114,9 @@ Rules:
 - Webcams and RTSP cameras that drop out are retried every 3 seconds. An RTSP connection
   attempt gives up after 5 seconds.
 - In prod mode only `tcp` and `rtsp` are allowed.
+- Only a `tcp` (stream-hub) camera has somewhere to send live detections, recording
+  commands and snapshots back to; `rtsp`, `webcam` and `file` sources only write to the
+  sinks (see [output](#output)).
 
 Example:
 
@@ -180,7 +189,7 @@ How stream-hub identifies each camera when it connects.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `handshake.tenant_in_handshake` | `false` | `true` once stream-hub sends the tenant ID before the camera ID. Today it sends only the camera ID |
+| `handshake.tenant_in_handshake` | `false` | `true` once stream-hub sends the tenant ID before the camera ID. The shipped config always sets this `true`, because stream-hub's `ai_worker.go` does send it; leaving it `false` against a real stream-hub records every incident under `default_tenant_id` instead of the camera's real tenant |
 | `handshake.default_tenant_id` | `demo-facility` | Tenant used when it isn't sent, and for webcam/file/RTSP sources without their own `tenant_id`. A `tenants.slug` or `tenants.id` from the database; `demo-facility` is the seed tenant |
 
 ### inference
@@ -226,7 +235,7 @@ Tune `confirm_seconds` first if you get false alarms (raise it) or late alerts (
 | Option | Default | Meaning |
 |---|---|---|
 | `output.sinks` | `[jsonl]` | Where results go: `jsonl` (local files) and/or `postgres` (the backend-module database, see [database](#database)). The shipped config uses `[jsonl]` in dev and `[jsonl, postgres]` in prod |
-| `output.dir` | `data` | Folder for `model_predictions.jsonl`, `incidents.jsonl` and `snapshots/`. In the container this is the `ml-data` volume. Snapshots are always saved here; the database stores their keys |
+| `output.dir` | `data` | Folder for `model_predictions.jsonl`, `incidents.jsonl`, `clips.jsonl` and local `snapshots/`. In the container this is the `ml-data` volume. Local snapshots are only used by webcam/RTSP/file sources — a stream-hub camera's snapshot is sent to stream-hub instead (see [the README's Outputs section](README.md#6-outputs)) |
 | `output.prediction_interval_s` | `1.0` | At most one `model_predictions` record per person per this many seconds |
 | `output.stats_interval_s` | `30` | How often to log a stats line per camera: frames received and analysed per second, and model time. `0` turns it off |
 
@@ -243,7 +252,7 @@ Used when `output.sinks` includes `postgres`.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `database.url` | `""` | `postgresql://<user>:<password>@<host>:5432/<db>`. **Prefer the `ML_DATABASE_URL` environment variable**, which wins over this, so the password stays out of the file |
+| `database.url` | `""` | `postgresql://<user>:<password>@<host>:5432/<db>`. **Prefer the `ML_DATABASE_URL` environment variable**, which wins over this, so the password stays out of the file. Leave this empty in `config.yaml` itself |
 | `database.connect_timeout_s` | `5` | Give up a connection attempt after this long |
 | `database.zones_from_db` | `true` | At startup, also load zones from the `zones` table + `cameras.zone_id`. Zones in `config.yaml` win for any camera listed in both |
 
@@ -257,61 +266,19 @@ How it behaves:
   `cameras.name` (so a dev source can be `camera_id: CAM-02 Living Room`), or anything else,
   which gets a stable derived UUID. Records for a tenant that isn't in the database are
   skipped with one warning; the JSONL files still have them.
-- **Row-level security:** every write sets `app.tenant_id` for its transaction, so it works
-  with a restricted role. The suggested `ml_service` role is at the end of `schema.sql`.
+- **Row-level security:** every tenant-scoped write sets `app.tenant_id` for its
+  transaction, so it works with a restricted role. `ml_status` (see below) is the
+  exception: it is platform-wide, not per tenant, and carries no row-level security. The
+  suggested `ml_service` role is at the end of `schema.sql`.
 - **Monthly partitions:** at connect it tries `create_monthly_partitions()`. A restricted
   role isn't allowed to (only the table owner is), which is logged once; schedule it as an
   admin job instead.
-
-### viewer
-
-A small web server for watching the detector: each camera's video with boxes and labels
-drawn on, and the recent incidents. The FallGuard frontend shows the same video through
-the backend API (`/api/cameras/<id>/stream`).
-
-| Option | Default | Meaning |
-|---|---|---|
-| `viewer.enabled` | `true` (shipped config) | Turn the viewer on |
-| `viewer.host` | `127.0.0.1` | Listen address. The prod section uses `0.0.0.0` inside the container; compose publishes it on `127.0.0.1:8000` only |
-| `viewer.port` | `8000` | http://localhost:8000 |
-| `viewer.fps` | `5` | Video frames per second sent to each browser |
-| `viewer.jpeg_quality` | `70` | JPEG quality of the video frames, 1–100 |
-
-Routes: `/` (page), `/stream/<camera>` (MJPEG), `/frame/<camera>.jpg`, `/api/state`,
-`/api/config` (detection settings, read-only), `/snapshots/<file>.jpg`, `/clips/<file>.mp4`
-(supports Range requests, for seeking). There is **no login**,
-so never expose the port beyond localhost or the internal network. The viewer runs on its
-own threads and never touches PyTorch (see the README's *Threading* section).
+- **Status for the frontend:** every 10 s this service rewrites one row of `ml_status`
+  with what it runs and how fast (model, device, analysed fps per camera, `fall:`
+  thresholds, zones). This is how the frontend's Detection Settings page gets its live
+  figures; an old `updated_at` on that row means this service is down.
 
 ---
-
-### clips
-
-Dashcam-style video of every incident, from each camera that saw it. Each camera keeps a
-short loop of its **compressed** video in memory (the H.264 / H.265 packets from
-stream-hub: about 1–2 MB for 15 s). When a fall is confirmed, the loop becomes the start of
-a recording that runs until `post_roll_s` after the person is back up or out of view. It is
-then encoded as an **H.264 MP4** (plays in every browser, also when the camera sends H.265)
-on a background thread, saved as `<output dir>/clips/<incident>_<camera>.mp4`, and linked
-in the database (`incident_cameras.clip_key`; `incidents.clip_key` = the main camera's).
-
-Only cameras that come through stream-hub (gateway → hub → `tcp` source) are recorded:
-webcam, RTSP and file sources are read by OpenCV, which gives decoded frames, not packets.
-
-| Option | Default | Meaning |
-|---|---|---|
-| `clips.enabled` | `true` | Record clips |
-| `clips.pre_roll_s` | `15` | Seconds kept from before the fall (from the keyframe before it) |
-| `clips.post_roll_s` | `10` | Seconds after the person is back up / out of view |
-| `clips.max_s` | `120` | Longest clip |
-| `clips.max_width` | `1280` | Scaled down to this width (never up). 720p H.264 at `crf` 28 is ~0.7 MB per 10 s |
-| `clips.crf` | `28` | H.264 quality: lower = better and bigger (18–32) |
-| `clips.buffer_mb` | `64` | Cap on each camera's in-memory loop (a high-bitrate camera keeps less than `pre_roll_s`) |
-| `clips.retention_days` | `30` | Delete clips older than this. `0` = keep |
-| `clips.max_total_gb` | `10` | Then delete the oldest while the folder is bigger. `0` = no cap |
-
-Encoding a 30 s clip takes a few seconds of CPU on the writer thread; detection is not
-affected (it never touches PyTorch).
 
 ## Command-line flags
 
@@ -327,6 +294,10 @@ be repeated or combined.
 | `--tcp` | Add the stream-hub listener |
 | `--show` / `--no-show` | Preview window on or off |
 | `--config PATH` | Use a different config file |
+
+A mode flag and a source flag can't fight: `--prod` together with `--webcam`/`--video` is
+rejected (`prod_mode only allows IP camera sources ...`), since production only watches IP
+cameras.
 
 ```powershell
 python main.py --webcam 0 --tcp        # a webcam next to the stream-hub cameras
@@ -444,5 +415,7 @@ At runtime (logged, the service keeps running):
 | Log message | Meaning |
 |---|---|
 | `database unavailable (...); retrying in 5s` | Can't reach the database; records are kept and retried |
-| `tenant '...' is not in the tenants table` | `default_tenant_id` isn't a tenant slug/UUID in the database; those records only go to JSONL |
+| `tenant '...' is not in the tenants table` | `default_tenant_id` (or the tenant stream-hub sent) isn't a tenant slug/UUID in the database; those records only go to JSONL |
 | `this database role can't create monthly partitions` | Expected with a restricted role; run `create_monthly_partitions()` as an admin job |
+| `camera [...] is already connected; ignoring the second one` | Two sources used the same `camera_id`, or the same camera connected twice before the first disconnect was noticed |
+| `stream-hub is not reading results; dropped N detections so far` | stream-hub (or whoever is reading that connection) is too slow or stuck; live detections are dropped first, incident/recording/snapshot messages never are |

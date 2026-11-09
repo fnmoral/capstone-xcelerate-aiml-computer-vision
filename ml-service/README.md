@@ -3,8 +3,8 @@
 Watches camera video and notices when someone falls and stays down.
 
 - **[Part 1 — What it does](#part-1--what-it-does)**: for everyone, no technical background needed
-- **[Part 2 — Technical reference](#part-2--technical-reference)**: architecture, detection logic,
-  setup, configuration and deployment
+- **[Part 2 — Technical reference](#part-2--technical-reference)**: setup, running it, then
+  architecture, detection logic and deployment
 
 ---
 
@@ -22,12 +22,14 @@ and how long they were down.
 
 | Camera | When it's used |
 |---|---|
-| **IP cameras** (security cameras on the network) | The real setup. The cameras send video through the project's gateway and stream hub |
+| **IP cameras** (security cameras on the network) | The real setup. The cameras send video through the project's gateway and stream-hub |
 | **A webcam on a laptop or PC** | Trying things out and demos |
 | **A recorded video** | Replaying a fall to test the system |
 
 It can watch several cameras at the same time. A webcam is handled exactly like an IP
-camera, so what you see in a demo is what happens with real cameras.
+camera, so what you see in a demo is what happens with real cameras — except that a webcam
+or file has no stream-hub behind it, so its clips and live overlay aren't available (see
+[Outputs](#6-outputs)).
 
 **Cameras that overlap.** When two or more cameras look at the same room, they can be
 grouped into a *zone*. A fall seen by several cameras of a zone is then recorded **once**,
@@ -74,15 +76,18 @@ All the timings above can be changed in the settings.
   how sure the system was, which cameras saw it, and when the person recovered.
 - An **alert** is created for it in the database, ready for the web app to show and for
   staff to acknowledge.
-- A **photo** of the moment is saved from each camera that saw it.
+- A **photo** of the moment is saved from each camera that saw it. For a camera that comes
+  through stream-hub (the real setup), this service only *takes* the photo; stream-hub is
+  what actually stores it. For a webcam, RTSP or video-file source used while prototyping,
+  this service stores it itself, next to the other local files below.
 - A **video clip** is saved from each camera that saw it, like a car dashcam: from 15
   seconds before the fall until 10 seconds after the person is back up (or out of view).
-  Each camera only keeps the last few seconds in memory, so nothing is stored while nothing
-  happens; a clip is a few MB.
-- On a screen with the live view, the person's box turns **red**.
-
-Everything is also kept in local files, so nothing is lost if the database is unreachable
-for a while; the service keeps detecting and catches up when it's back.
+  This is entirely stream-hub's job: it keeps a short loop of each camera's video and turns
+  it into the clip, so it only happens for cameras that come through it.
+- Model predictions and incident records are also kept in local files on this machine, so
+  nothing is lost if the database is unreachable for a while; the service keeps detecting
+  and catches up when the database is back. (Clips and stream-hub-stored photos don't have
+  this fallback: they only exist where stream-hub saved them.)
 
 ## Try it yourself
 
@@ -90,59 +95,202 @@ for a while; the service keeps detecting and catches up when it's back.
 2. Wait for the message `model ... ready`, about 5–15 seconds.
 3. Stand in view: you should see a **green** box with your number, e.g. `#1 upright`.
 4. Lie down on the floor: the box turns **red**, and after 3 seconds the log shows
-   `incident_started` and a photo appears in `data/snapshots/`.
+   `incident_started` and a photo appears in `data/snapshots/` (this is the webcam path;
+   see the note above).
 5. Stand up: 3 seconds later the log shows `incident_recovered`.
 6. Press `q` in the video window to stop.
 
 ## Not done yet
 
 - **No notifications.** Alerts are stored in the database, but nothing sends an email or
-  message yet, and the web app doesn't display them yet.
+  message yet.
 - **Rules, not a trained model.** The decision is made by hand-tuned rules, so expect some
   false alarms or misses until they are tuned on real footage. A trained model is planned.
 - **Overlapping cameras need setting up.** Cameras only merge their alerts once they are
   grouped into a zone. And if two different people fall at almost the same moment, each
   seen by a different camera of the same zone, they are recorded as one fall.
+- **No authentication on the video path.** stream-hub's connections (the one this service
+  uses, and the one the frontend uses) have no login; see [Known gaps](#known-gaps).
 
 ---
 
 # Part 2 — Technical reference
 
-Replaces `mock/receiver.py` (kept as a reference) and speaks the same TCP protocol
-on port `9999` (`ai_server_addr` in `stream-hub/config.json`). Runs on a Windows PC for
-prototyping and in a Linux container on the GPU server for production
-(see [Deployment](#deployment-linux-server-container)).
+Speaks a length-prefixed TCP protocol with stream-hub, documented in full in
+`ingest/protocol.py` and `ingest/results.py`, on port `9999` (`ai_server_addr` in
+`stream-hub/config.json`). Runs on a Windows PC for prototyping and in a Linux container on
+the GPU server for production (see [Deployment](#deployment-linux-server-container)).
+
+## Setup
+
+Pick your OS below, then continue to [Running](#running-dev-and-prod-mode).
+
+### Windows (PowerShell, Python 3.15, NVIDIA GPU)
+
+```powershell
+cd ml-service
+py -V:3.15 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
+$env:PYYAML_FORCE_LIBYAML = "0"
+pip install -r requirements.txt
+```
+
+Python 3.15 is new, so a few packages need workarounds until they publish 3.15 wheels:
+
+- **PyTorch** is only on the PyTorch CUDA index, not PyPI. The CUDA 13.0 build needs NVIDIA driver 580+.
+- **PyYAML** has no 3.15 wheel; `PYYAML_FORCE_LIBYAML=0` builds the pure-Python version
+  instead of failing for lack of a C++ compiler.
+- **lap**, which Ultralytics' ByteTrack imports, cannot be built without a C++ compiler.
+  `compat/lap.py` stands in for it using Ultralytics' own NumPy solver and is only used
+  when the real package is missing. Delete `compat/` once `pip install lap` works.
+
+The YOLO26 weights (`yolo26n-pose.pt`) download automatically on first run.
+
+### Linux / macOS (bash)
+
+```bash
+cd ml-service
+python3 -m venv .venv
+source .venv/bin/activate
+# NVIDIA GPU (Linux only): pick the CUDA build that matches your driver
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
+# No NVIDIA GPU (macOS, or a Linux machine without one): CPU build instead
+#   pip install torch torchvision
+pip install -r requirements.txt
+```
+
+This runs on plain Python 3.12+ without any workaround: PyYAML and `lap` both ship
+prebuilt wheels there, so `compat/lap.py` stays unused. The Windows section above (and its
+`PYYAML_FORCE_LIBYAML=0` step) is only for Python 3.15, which doesn't have those wheels yet;
+on Linux/macOS the equivalent is the same environment variable, set the bash way:
+
+```bash
+PYYAML_FORCE_LIBYAML=0 pip install -r requirements.txt   # only needed on Python 3.15
+```
+
+The YOLO26 weights (`yolo26n-pose.pt`) download automatically on first run.
+
+**If the preview window (`cv2.imshow`) fails with a `libGL` error**, install the same
+system packages the Docker image uses: `sudo apt install libgl1 libglib2.0-0`
+(Debian/Ubuntu; other distributions have equivalent packages). You don't need this at all
+if you only run with `--no-show`.
+
+**On WSL (Windows Subsystem for Linux)**, a PC's webcam isn't visible by default — `/dev/video*`
+is simply empty, even though Windows sees the camera fine — so `--webcam` won't find one.
+Either pass the camera through with `usbipd-win` (it then stops being usable from Windows
+while attached), or skip the webcam path and use `--video some-recording.mp4` or
+`tools/send_video.py --source some-recording.mp4` instead, which need no camera at all and
+exercise the same detection code (see [Try it yourself](#try-it-yourself) above and
+[Command-line flags](CONFIG.md#command-line-flags)).
+
+## Running: dev and prod mode
+
+`config.yaml` has one switch, `prod_mode`, which picks its `dev:` or `prod:` section.
+**Every option is documented in [CONFIG.md](CONFIG.md).**
+
+| | Dev (`prod_mode: false`, the default) | Prod (`prod_mode: true`) |
+|---|---|---|
+| Sources | webcam, video file, RTSP camera, stream-hub | IP cameras only: stream-hub (`tcp`) and `rtsp` |
+| Preview window | on | off |
+| Listens on | `127.0.0.1` | `0.0.0.0` |
+
+`--prod` / `--dev` or the `ML_PROD_MODE` environment variable override the file; the
+container sets `ML_PROD_MODE=true`. Prod refuses to start if a webcam or video file is
+listed. The first log line shows the mode and sources.
+
+Source types (see [CONFIG.md → sources](CONFIG.md#sources) for every field):
+
+| `type` | Video from | Allowed in |
+|---|---|---|
+| `tcp` | every camera stream-hub sends, port 9999 | dev, prod |
+| `rtsp` | an IP camera, read directly | dev, prod |
+| `webcam` | a camera plugged into this PC | dev |
+| `file` | a local video | dev |
+
+Every source becomes its own camera, all at the same time. Webcams and RTSP cameras that
+drop out are retried every few seconds, like stream-hub cameras.
+
+With `preview: true` a window shows the annotated video, so the VS Code Run button is enough.
+Command-line flags replace the source list for a quick test, and can be combined or repeated:
+
+```bash
+python main.py                                      # whatever config.yaml says
+python main.py --prod                               # try the prod settings
+python main.py --webcam 0 --tcp                     # a webcam next to the stream-hub cameras
+python main.py --rtsp rtsp://user:pw@10.0.0.21/s1   # an IP camera
+python main.py --video fall.mp4                     # a video file
+python main.py --no-show                            # no preview window
+```
+
+A mode flag (`--prod`/`--dev`) and a source flag can't fight: `--prod` with
+`--webcam`/`--video` is rejected, since production only watches IP cameras.
+
+Wait for `model ... ready` in the log (about 5–15 s), then step into view.
+Results go to `data/` (git-ignored), and, for stream-hub cameras, to stream-hub itself
+(live detections, clips, snapshots — see [Outputs](#6-outputs)). Press `q` in the preview
+window to quit.
+
+To test the TCP path without the Go services, `tools/send_video.py --source 0
+--tenant-id <slug>` plays the part of stream-hub (pass `--tenant-id` whenever
+`handshake.tenant_in_handshake` is on, which the shipped config always has).
 
 ## Architecture
 
 ```
-stream-hub (H.264 / H.265) ─► decode (PyAV) ─┐
-webcam / RTSP / file (OpenCV) ───────────────┴─► newest frame ─► YOLO26-pose + ByteTrack (≤ 10 fps)
-   ─► pose features ─► fall rules ─► incident state machine ─┐
-                                        (one per camera)      ├─► zone merge ─► data/*.jsonl
-                              other cameras' state machines ──┘
+stream-hub (H.264/H.265 + PTS) ──┐
+webcam / RTSP / file (OpenCV) ───┴─► decode (PyAV, grouped by PTS) ─► newest frame
+     ─► YOLO26-pose + ByteTrack (≤ 10 fps) ─► pose features ─► fall rules
+     ─► incident state machine (one per camera) ─┐
+                     other cameras' state machines ┴─► zone merge ─► reporting.py ─┬─► sinks (database, data/*.jsonl)
+                                                                                    └─► stream-hub, on the camera's
+                                                                                        connection: live detections,
+                                                                                        incident events, recording
+                                                                                        start/stop, snapshots
 ```
 
 Every source becomes a camera with its own tracker, fall state and outputs. A webcam goes
-through exactly the same steps as an IP camera, so prototyping results carry over.
+through exactly the same detection steps as an IP camera, so prototyping results carry
+over — the difference is only in what leaves the service (see the architecture diagram and
+[Outputs](#6-outputs)): a stream-hub camera has somewhere to send results back to; a webcam,
+RTSP or file source does not, so it only writes to the sinks.
 
-| Step | File | What it does |
-|---|---|---|
-| Entry point | `main.py` | Starts the sources, runs the model for every camera on the main thread, preview window |
-| Protocol | `ingest/protocol.py` | Length-prefixed handshake and NALUs, read without partial-read bugs |
-| Decode | `ingest/decoder.py` | One decoder per camera; H.264 or H.265, detected from the stream; frame-rate sampler |
-| Pipeline | `pipeline.py` | Per-camera chain: newest frame → pose → features → rules → incidents → sink |
-| Pose | `vision/pose.py` | People, 17 COCO keypoints, stable track IDs; picks GPU or CPU |
-| Features | `fall/features.py` | Torso angle, box aspect ratio, hip height, head below hips |
-| Rules | `fall/rules.py` | Labels each pose `upright`, `falling` or `lying` (Stage A, no training needed) |
-| Incidents | `fall/state_machine.py` | Down for `confirm_seconds` opens an incident; up for `recover_seconds` closes it |
-| Zones | `fall/zones.py` | Merges incidents from cameras of the same zone, so one fall gives one alert |
-| Output | `sinks/` | Shared record format and snapshots (`__init__.py`), JSONL files (`jsonl.py`), backend-module PostgreSQL on a background thread (`postgres.py`) |
-| Config | `config.py`, `config.yaml` | Typed settings with a dev and a prod section; documented in [CONFIG.md](CONFIG.md) |
-| Test sender | `tools/send_video.py` | Plays the part of stream-hub from a webcam or video file |
-| Webcam as IP camera | `tools/publish_webcam.py` | Publishes this PC's webcam to an RTSP server (the `test-camera` service), so it goes through the real gateway → hub → ML path |
-| Clips | `clips.py` | Dashcam-style incident clips: per-camera in-memory loop of compressed video, recordings, H.264 MP4 encoding and retention on a background thread |
-| Viewer | `viewer.py` | Browser view at :8000: annotated MJPEG video per camera, recent incidents, detection settings (used by the frontend through the backend API) |
+`main.py` is now a thin entry point; everything it used to do directly lives in the `app/`
+package, split by responsibility:
+
+| File | What it does |
+|---|---|
+| `main.py` | Builds the `Config` and the `Runtime`, starts everything, and waits |
+| `app/cli.py` | Command-line flags → the final `Config` |
+| `app/runtime.py` | The service's shared state: connected cameras, the zone aggregator, the detection-setting overrides — one object instead of module-level globals |
+| `app/sources.py` | Webcam, RTSP and video-file capture, read directly with OpenCV (outside the stream-hub protocol) |
+| `app/stream_hub.py` | Wires `ingest.server.StreamHubServer` to the runtime: each connection becomes one camera |
+| `app/db.py` | Output sinks, zones and detection-setting overrides from the database, refreshed without a restart |
+| `app/stats.py` | The periodic stats log line, the database status row (`ml_status`), and the Detection Settings payload they're both built from |
+| `app/loop.py` | The main loop (runs the model for every camera, in turn) and the preview window |
+| `app/model.py` | Loading the pose model and picking a device (GPU/CPU) |
+| `ingest/protocol.py` | Length-prefixed handshake and frames (`[length][PTS][NALU]`), read without partial-read bugs |
+| `ingest/decoder.py` | One decoder per camera; H.264 or H.265, detected from the stream; NALUs grouped into pictures by their PTS; frame-rate sampler |
+| `ingest/buffer.py` | One camera's newest decoded frame, plus the throughput counters behind `rates()` / `take_stats()` |
+| `ingest/server.py` | The stream-hub TCP server: one connection per camera, video in, results out on the same connection |
+| `ingest/results.py` | The JSON messages sent back to stream-hub (detections, incident events, recording commands, snapshots) and the background writer that sends them without blocking inference |
+| `pipeline.py` | Per-camera chain: newest frame → pose → features → rules → incidents |
+| `reporting.py` | Turns incident/zone events and per-frame detections into sink records (database) and stream-hub messages (recording commands, snapshots, live detections) |
+| `vision/pose.py` | People, 17 COCO keypoints, stable track IDs; picks GPU or CPU |
+| `vision/overlay.py` | Draws boxes and labels on a frame, for the local preview window only |
+| `fall/features.py` | Torso angle, box aspect ratio, hip height, head below hips |
+| `fall/rules.py` | Labels each pose `upright`, `falling` or `lying` (Stage A, no training needed) |
+| `fall/state_machine.py` | Down for `confirm_seconds` opens an incident; up for `recover_seconds` closes it |
+| `fall/zones.py` | Merges incidents from cameras of the same zone, so one fall gives one alert |
+| `sinks/` | Shared record format and local snapshots (`__init__.py`), JSONL files (`jsonl.py`), backend-module PostgreSQL on a background thread, including the `ml_status` row (`postgres.py`) |
+| `config.py`, `config.yaml` | Typed settings with a dev and a prod section; documented in [CONFIG.md](CONFIG.md) |
+| `tools/send_video.py` | Plays the part of stream-hub from a webcam or video file, including the PTS and tenant every real connection now sends |
+| `tools/publish_webcam.py` | Publishes this PC's webcam to an RTSP server (the `test-camera` service), so it goes through the real gateway → hub → ML path |
+
+What used to be `clips.py` and `viewer.py` are gone: stream-hub now records the clips and
+stores the snapshots this service sends it, and the backend reads what this service is
+doing from the database (`ml_status`, written by `sinks/postgres.py`) instead of calling an
+HTTP endpoint here.
 
 ## Detection logic in detail
 
@@ -202,7 +350,7 @@ Each tracked person has a small state machine. Being *down* means the label is `
 
 | Event | Triggered when | What happens |
 |---|---|---|
-| `incident_started` | The person has been down for `confirm_seconds` (3 s) **and** the current label is `lying` | A new incident opens with severity `medium`. Its start time is backdated to the first *down* frame, i.e. when the fall began. The current frame is saved as a snapshot |
+| `incident_started` | The person has been down for `confirm_seconds` (3 s) **and** the current label is `lying` | A new incident opens with severity `medium`. Its start time is backdated to the first *down* frame, i.e. when the fall began. The current frame is used for a snapshot |
 | `incident_updated` | The incident has lasted `high_after_seconds` (60 s), then `critical_after_seconds` (300 s) | Severity goes up to `high`, then `critical`. Highest confidence seen so far is kept as `peak_confidence` |
 | `incident_recovered` | The person has been `upright` for `recover_seconds` (3 s) | The incident closes with status `recovered`. `recovered_at` is set to the first upright frame, so the database can work out how long they were down |
 | `incident_unresolved` | The person hasn't been seen for `lost_track_seconds` (10 s) while an incident is open | The incident closes with status `unresolved`. This needs a human check, because the person may still be on the floor out of view |
@@ -237,7 +385,8 @@ people falling within the window, each on a different camera of one zone, become
 ### 6. Outputs
 
 Every result goes to each sink in `output.sinks` as the same record
-([CONFIG.md → output](CONFIG.md#output)). Snapshots are saved once, under `data/snapshots/`.
+([CONFIG.md → output](CONFIG.md#output)), via `reporting.py`
+([CONFIG.md → database](CONFIG.md#database)).
 
 **PostgreSQL** (`postgres` sink, the backend-module database; schema changes and details in
 [backend-module/db/README.md](../backend-module/db/README.md)):
@@ -245,94 +394,41 @@ Every result goes to each sink in `output.sinks` as the same record
 | Table | Written when |
 |---|---|
 | `incidents` | A fall is confirmed (insert); severity rises, a camera joins, or it closes (update) |
-| `incident_cameras` | Each camera and tracked person that saw the incident, with its snapshot key |
+| `incident_cameras` | Each camera and tracked person that saw the incident, with its snapshot key and (once stream-hub has saved it) its clip key |
 | `alerts` | One per incident, `open`, linked to the tenant's fall rule; severity and summary kept current, status left to staff |
 | `model_predictions` | At most once per second per person; `incident_id` set while the person is part of an incident |
+| `ml_status` | Rewritten every 10 s: what this service runs and how fast (model, device, analysed fps per camera, the `fall:` thresholds in use, zones) — platform-wide, not per tenant. This is what the frontend's Detection Settings page reads; see `app/stats.py` |
 
 Writes run on a background thread and never slow detection; if the database is down they
 are retried, and `tenant`/`camera` names are mapped to the schema's UUIDs
 ([CONFIG.md → database](CONFIG.md#database)).
 
-**JSONL files** (`jsonl` sink, `data/`, git-ignored) hold the same records:
+**JSONL files** (`jsonl` sink, `data/`, git-ignored) hold the same records, minus `ml_status`:
 
 | File | Written when | Contents |
 |---|---|---|
 | `model_predictions.jsonl` | At most once per second per person (`prediction_interval_s`) | Label, confidence, box, keypoints, torso angle, aspect ratio, hip speed, inference time, `incident_id` |
 | `incidents.jsonl` | On every zone-level incident event above | Incident ID, event, status (`active` / `recovered` / `unresolved`), severity, start and recovery times, peak confidence, snapshot key, `camera_id` (first camera), `camera_ids` (all), `zone`, `tracks` |
-| `snapshots/<incident id>.jpg` | When a camera confirms the fall | The frame at that moment; extra cameras of a zone incident add `<incident id>_<camera>.jpg` |
+| `clips.jsonl` | When stream-hub tells us it started recording a clip (webcam/RTSP/file sources only; see below) | Incident, camera, clip key |
 
-Each event is also logged, e.g. `incident_started track=1 severity=medium`, and the preview
-window draws every person's box with `#<track> <label> <confidence>`.
+**stream-hub** (a separate Go service, on the camera's own connection — see
+`ingest/results.py` for the exact messages):
 
-## Setup (Windows, Python 3.15, NVIDIA GPU)
-
-```powershell
-cd ml-service
-py -V:3.15 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
-$env:PYYAML_FORCE_LIBYAML = "0"
-pip install -r requirements.txt
-```
-
-Python 3.15 is new, so a few packages need workarounds until they publish 3.15 wheels:
-
-- **PyTorch** is only on the PyTorch CUDA index, not PyPI. The CUDA 13.0 build needs NVIDIA driver 580+.
-- **PyYAML** has no 3.15 wheel; `PYYAML_FORCE_LIBYAML=0` builds the pure-Python version
-  instead of failing for lack of a C++ compiler.
-- **lap**, which Ultralytics' ByteTrack imports, cannot be built without a C++ compiler.
-  `compat/lap.py` stands in for it using Ultralytics' own NumPy solver and is only used
-  when the real package is missing. Delete `compat/` once `pip install lap` works.
-
-The YOLO26 weights (`yolo26n-pose.pt`) download automatically on first run.
-
-## Running: dev and prod mode
-
-`config.yaml` has one switch, `prod_mode`, which picks its `dev:` or `prod:` section.
-**Every option is documented in [CONFIG.md](CONFIG.md).**
-
-| | Dev (`prod_mode: false`, the default) | Prod (`prod_mode: true`) |
+| Message | Sent when | What stream-hub does with it |
 |---|---|---|
-| Sources | webcam, video file, RTSP camera, stream-hub | IP cameras only: stream-hub (`tcp`) and `rtsp` |
-| Preview window | on | off |
-| Listens on | `127.0.0.1` | `0.0.0.0` |
+| `detections` | Every analysed frame, also with an empty list (so a live overlay clears) | Forwards it to whoever is watching that camera live |
+| `incident` | Every zone-level incident event above | Forwards it the same way |
+| `recording` (`start` / `stop`) | A camera's own incident starts / recovers or becomes unresolved | Starts or stops recording that camera's dashcam-style clip |
+| `snapshot` | A camera confirms a fall (one per camera per incident) | Stores the JPEG this service already encoded |
 
-`--prod` / `--dev` or the `ML_PROD_MODE` environment variable override the file; the
-container sets `ML_PROD_MODE=true`. Prod refuses to start if a webcam or video file is
-listed. The first log line shows the mode and sources.
+This is why clips and stream-hub-stored snapshots only exist for cameras that come through
+stream-hub: a webcam, RTSP or file source has no such connection, so `reporting.py` falls
+back to saving the snapshot locally (`sinks.SnapshotStore`, under `data/snapshots/`) and
+never asks for a clip.
 
-Source types (see [CONFIG.md → sources](CONFIG.md#sources) for every field):
-
-| `type` | Video from | Allowed in |
-|---|---|---|
-| `tcp` | every camera stream-hub sends, port 9999 | dev, prod |
-| `rtsp` | an IP camera, read directly | dev, prod |
-| `webcam` | a camera plugged into this PC | dev |
-| `file` | a local video | dev |
-
-Every source becomes its own camera, all at the same time. Webcams and RTSP cameras that
-drop out are retried every few seconds, like stream-hub cameras.
-
-With `preview: true` a window shows the annotated video, so the VS Code Run button is enough.
-Command-line flags replace the source list for a quick test, and can be combined or repeated:
-
-```powershell
-python main.py                                      # whatever config.yaml says
-python main.py --prod                               # try the prod settings
-python main.py --webcam 0 --tcp                     # a webcam next to the stream-hub cameras
-python main.py --rtsp rtsp://user:pw@10.0.0.21/s1   # an IP camera
-python main.py --video fall.mp4                     # a video file
-python main.py --no-show                            # no preview window
-```
-
-Wait for `model ... ready` in the log (about 5–15 s), then step into view.
-Results go to `data/` (git-ignored). Press `q` in the window to quit.
-
-With `viewer.enabled` (on in the shipped config), http://localhost:8000 shows each camera's
-annotated video and the recent incidents; see [CONFIG.md → viewer](CONFIG.md#viewer).
-
-To test the TCP path without the Go services, `tools/send_video.py --source 0` plays the
-part of stream-hub.
+Each incident event is also logged, e.g. `incident_started zone=... cameras=... severity=medium`,
+and the preview window (`vision/overlay.py`) draws every person's box with
+`#<track> <label> <confidence>`.
 
 ## Configuration
 
@@ -351,7 +447,8 @@ default. The ones to tune first:
 
 Production runs in a container on the on-prem Linux server with an NVIDIA GPU. It uses the
 same `config.yaml` in prod mode (`ML_PROD_MODE=true`): stream-hub cameras, no preview,
-listening on `0.0.0.0:9999`.
+listening on `0.0.0.0:9999` — the only port it exposes; there is no HTTP server here any
+more (see [Architecture](#architecture)).
 
 | File | Purpose |
 |---|---|
@@ -378,7 +475,7 @@ docker compose logs -f ml-service      # look for: model ... ready on GPU 0 (<se
 Then point stream-hub at it: `ai_server_addr` in `stream-hub/config.json` = `<server>:9999`.
 Details of the database setup: [backend-module/db/README.md](../backend-module/db/README.md).
 
-How the image differs from the Windows setup:
+How the image differs from the dev setup:
 
 - **No workarounds needed.** The build stage has a C compiler, so the real PyYAML and `lap`
   are built and `compat/lap.py` stays unused.
@@ -392,7 +489,7 @@ How the image differs from the Windows setup:
 - **No preview window.** It turns off automatically when there is no display.
 
 To change sources or thresholds without rebuilding, mount your own `config.yaml` over
-`/app/config.yaml` (commented example in `docker-compose.yml`).
+`/app/config.yaml` (commented example in `deploy/docker-compose.yml`).
 
 Port 9999 has no authentication, so keep it on the internal network.
 
@@ -451,16 +548,23 @@ design works either way.
 
 ## Tests
 
-```powershell
+```bash
 python -m pytest
 ```
 
+`tests/test_postgres.py` is skipped unless `ML_TEST_DATABASE_URL` is set (see
+[CONFIG.md → environment variables](CONFIG.md#environment-variables)); it runs the real
+pipeline against a real database loaded with `backend-module/db/schema.sql` + `seed.sql`.
+
 ## Known gaps
 
-- The Docker image has not been built yet: there is no Docker on the development PC.
-  Build it on the server (or any Linux machine with Docker) before relying on it.
-- Snapshots are stored on the ml-service disk; `snapshot_key` in the database is a path
-  relative to `output.dir`, not yet an object-storage key the web app can fetch.
+- Snapshots and clips stored by stream-hub have no local fallback: if stream-hub's disk is
+  unreachable or its recordings volume fills up, that photo or clip is simply lost (the
+  database record still exists; only the file doesn't). Model predictions and incident
+  records don't have this problem, because this service also writes them to local JSONL.
+- **No authentication.** Neither stream-hub's camera connection (port 9999) nor its
+  WebSocket to the frontend check who is connecting; both should stay on the internal
+  network until this is addressed.
 - gateway-back cameras live in gateway-back's own SQLite database and aren't registered in
   the backend `cameras` table, so their incidents have no camera name, location or DB zone
   until they are.
@@ -473,9 +577,5 @@ python -m pytest
   calibration), not built yet.
 - Throughput beyond ~4–6 cameras per machine needs batched inference and out-of-process
   decoding (see [Capacity and performance](#capacity-and-performance)).
-- stream-hub's `ai_worker.go` sends only `camera_id`, so `tenant_id` comes from
-  `handshake.default_tenant_id`. Set `tenant_in_handshake: true` once the hub sends it.
-- stream-hub drops NALUs when the AI buffer is full, which corrupts decoding until the
-  next keyframe. It should drop up to the next keyframe instead.
 
 Ultralytics YOLO is licensed AGPL-3.0.
