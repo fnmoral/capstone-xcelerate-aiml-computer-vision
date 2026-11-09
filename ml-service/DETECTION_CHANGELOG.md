@@ -25,8 +25,23 @@ service uses, with the settings in `config.yaml`, on two kinds of input:
   the model's eyesight.
 - **Recorded videos** listed in [eval/videos.yaml](eval/videos.yaml), with the real YOLO model
   and tracker. We have only two so far (`test-media/fall.mp4`, where the fall is staged by
-  rotating the picture, and `test.mp4`, which has no fall). **More real footage is the most
-  useful thing we can add.**
+  rotating the picture, and `test.mp4`, which has no fall).
+- **Multiple Cameras Fall Dataset** (optional, 3.6 GB, not in the repo; see
+  [eval/mcfd.py](eval/mcfd.py)): 24 scenarios × 8 ceiling cameras, one actor, 25 falls, plus
+  sitting, crouching and lying on a sofa. Scored per camera and per zone (the chosen cameras
+  run through the real incident aggregator, so we also see whether one fall gives one alert).
+  Download it from
+  [Kaggle](https://www.kaggle.com/datasets/soumicksarker/multiple-cameras-fall-dataset), keep it
+  outside the repo and outside OneDrive, and run:
+
+  ```powershell
+  .venv\Scripts\python -m eval.benchmark --mcfd "C:\datasets\Fall Dataset"          # cameras 3,5,8
+  .venv\Scripts\python -m eval.benchmark --mcfd "..." --mcfd-cameras 1-8 --mcfd-scenarios 1-5
+  ```
+
+  The first run takes about half an hour on a CPU (3 cameras); after that the model output
+  is cached. Falls where the actor stays down for less than `confirm_seconds` + 0.5 s are
+  reported as "short falls", not as misses, because the system is designed to wait that long.
 
 What the numbers mean:
 
