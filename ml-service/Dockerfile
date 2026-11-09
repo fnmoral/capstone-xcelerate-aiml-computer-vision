@@ -27,7 +27,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 COPY requirements.txt .
 # PyYAML and lap build from source here (with the compiler), so the image uses the
-# real packages and compat/lap.py stays unused.
+# real packages and vision/compat/lap.py stays unused.
 RUN pip install --no-cache-dir -r requirements.txt "lap>=0.5.12"
 
 # ---------- runtime ----------

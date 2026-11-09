@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "compat"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "vision" / "compat"))
 from lap import lapjv  # noqa: E402
 
 

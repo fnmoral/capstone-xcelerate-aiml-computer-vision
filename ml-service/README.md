@@ -108,7 +108,7 @@ for a while; the service keeps detecting and catches up when it's back.
 
 # Part 2 — Technical reference
 
-Replaces `mock/receiver.py` (kept as a reference) and speaks the same TCP protocol
+Speaks stream-hub's TCP protocol (it replaced the early `mock/receiver.py` prototype)
 on port `9999` (`ai_server_addr` in `stream-hub/config.json`). Runs on a Windows PC for
 prototyping and in a Linux container on the GPU server for production
 (see [Deployment](#deployment-linux-server-container)).
@@ -131,15 +131,16 @@ through exactly the same steps as an IP camera, so prototyping results carry ove
 | Entry point | `main.py` | Starts the sources, runs the model for every camera on the main thread, preview window |
 | Protocol | `ingest/protocol.py` | Length-prefixed handshake and NALUs, read without partial-read bugs |
 | Decode | `ingest/decoder.py` | One decoder per camera; H.264 or H.265, detected from the stream; frame-rate sampler |
-| Pipeline | `pipeline.py` | Per-camera chain: newest frame → pose → features → rules → incidents → sink |
-| Pose | `vision/pose.py` | People, 17 COCO keypoints, stable track IDs; picks GPU or CPU |
-| Features | `fall/features.py` | Torso angle, box aspect ratio, hip height, head below hips |
-| Rules | `fall/rules.py` | Labels each pose `upright`, `falling` or `lying` (Stage A, no training needed) |
+| Pipeline | `pipeline.py` | Per-camera chain: newest frame → pose → fall detector → zones → sink, plus the annotated preview |
+| Pose | `vision/pose.py` | People, 17 COCO keypoints, stable track IDs; picks GPU or CPU. `vision/compat/` stands in for the `lap` package on Python 3.15 |
+| Fall detector | `fall/detector.py` | One camera's fall logic in one place (used live and by the benchmark): features → rules → incidents, hip speed, track ID handoff |
+| Features | `fall/features.py` | Torso angle, box aspect ratio, legs upright, hip height, head below hips, visible points |
+| Rules | `fall/rules.py` | Labels each pose `upright`, `falling`, `lying` or `unclear` (Stage A, no training needed) |
 | Incidents | `fall/state_machine.py` | Down for `confirm_seconds` opens an incident; up for `recover_seconds` closes it |
 | Zones | `fall/zones.py` | Merges incidents from cameras of the same zone, so one fall gives one alert |
 | Output | `sinks/` | Shared record format and snapshots (`__init__.py`), JSONL files (`jsonl.py`), backend-module PostgreSQL on a background thread (`postgres.py`) |
 | Config | `config.py`, `config.yaml` | Typed settings with a dev and a prod section; documented in [CONFIG.md](CONFIG.md) |
-| Benchmark | `eval/` | Scores the fall logic on scripted scenarios and recorded videos (`python -m eval.benchmark`); results per change in [DETECTION_CHANGELOG.md](DETECTION_CHANGELOG.md) |
+| Benchmark | `eval/` | Scores the fall logic on scripted scenarios, recorded videos and the Multiple Cameras Fall Dataset (`python -m eval.benchmark`); results per change in [DETECTION_CHANGELOG.md](DETECTION_CHANGELOG.md). Not copied into the Docker image |
 | Test sender | `tools/send_video.py` | Plays the part of stream-hub from a webcam or video file |
 | Webcam as IP camera | `tools/publish_webcam.py` | Publishes this PC's webcam to an RTSP server (the `test-camera` service), so it goes through the real gateway → hub → ML path |
 | Clips | `clips.py` | Dashcam-style incident clips: per-camera in-memory loop of compressed video, recordings, H.264 MP4 encoding and retention on a background thread |
@@ -302,8 +303,8 @@ Python 3.15 is new, so a few packages need workarounds until they publish 3.15 w
 - **PyYAML** has no 3.15 wheel; `PYYAML_FORCE_LIBYAML=0` builds the pure-Python version
   instead of failing for lack of a C++ compiler.
 - **lap**, which Ultralytics' ByteTrack imports, cannot be built without a C++ compiler.
-  `compat/lap.py` stands in for it using Ultralytics' own NumPy solver and is only used
-  when the real package is missing. Delete `compat/` once `pip install lap` works.
+  `vision/compat/lap.py` stands in for it using Ultralytics' own NumPy solver and is only used
+  when the real package is missing. Delete `vision/compat/` once `pip install lap` works.
 
 The YOLO26 weights (`yolo26n-pose.pt`) download automatically on first run.
 
@@ -402,7 +403,7 @@ Details of the database setup: [backend-module/db/README.md](../backend-module/d
 How the image differs from the Windows setup:
 
 - **No workarounds needed.** The build stage has a C compiler, so the real PyYAML and `lap`
-  are built and `compat/lap.py` stays unused.
+  are built and `vision/compat/lap.py` stays unused.
 - **Works offline.** The weights are downloaded at build time
   (`--build-arg YOLO_WEIGHTS=yolo26s-pose.pt` for a bigger model). The build also runs the
   tracker once, so a missing package fails the build instead of Ultralytics trying to

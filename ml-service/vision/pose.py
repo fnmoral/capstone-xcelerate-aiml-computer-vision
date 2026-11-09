@@ -12,7 +12,7 @@ from ultralytics import YOLO
 try:
     import lap  # noqa: F401  needed by ByteTrack
 except ImportError:
-    sys.path.append(str(Path(__file__).resolve().parents[1] / "compat"))
+    sys.path.append(str(Path(__file__).resolve().parent / "compat"))
 
 log = logging.getLogger(__name__)
 
