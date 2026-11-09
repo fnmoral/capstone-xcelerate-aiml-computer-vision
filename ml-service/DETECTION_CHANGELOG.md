@@ -59,6 +59,50 @@ a fall or adds a false alarm fails the tests.
 
 ---
 
+## First results on real footage (2026-11-09, no change to the logic)
+
+The Multiple Cameras Fall Dataset, cameras 3, 5 and 8, all 24 scenarios, settings of 0.2.0
+(`eval/results/07-mcfd-first-run.json`):
+
+| | Each camera on its own | 3 cameras as one zone |
+|---|---|---|
+| Falls caught (person down ≥ 3.5 s) | 1/48 | **1/16** |
+| Short falls caught (down < 3.5 s) | 0/27 | 0/9 |
+| False alarms | 2 | 2 (lying on a sofa, sitting down) |
+
+**On this footage the system misses almost every fall.** The synthetic scenarios looked
+perfect because they test the logic, not the camera view. Why:
+
+1. **The model often doesn't see the person on the floor.** The person is detected in only
+   38% of the frames where they lie on the ground. From high ceiling cameras with wide
+   lenses, a person lying in dark clothes is outside what the COCO-trained model learned. On
+   sample frames even the largest model (`yolo26x-pose`) found them in only 2 of 5.
+2. **When the person is found, they look upright in the picture.** From a high camera,
+   someone lying along the camera's line of sight appears vertical in the image (median torso
+   angle 10°). All of our rules measure angles in the 2D picture, so they can't tell. This is
+   the "feet toward the camera" known limit, and in this room it's the normal case.
+3. **About half the staged falls are short:** the actor gets up within 2–4 s, less than our
+   3 s confirmation plus margin.
+
+What we checked, on the cached detections:
+
+| Variant | Zone falls caught | Zone false alarms | Synthetic false alarms |
+|---|---|---|---|
+| Settings as shipped | 1/16 | 2 | 0 |
+| Without the standing-legs rule (change 2) | 2/16 | 7 | 10 |
+| ... and `confirm_seconds: 2` | 4/21 | 7 | 10 |
+
+So tuning thresholds doesn't fix it, and the standing-legs rule is worth keeping. What would:
+
+- **Fine-tune YOLO26-pose on footage like this** (people lying, seen from above). The dataset
+  can provide training frames; keep some scenarios out of training for testing.
+- **Use 3D instead of picture angles.** The dataset ships each camera's calibration, so head
+  and hip *height above the floor in metres* can be computed. In a real install this means a
+  one-time calibration per camera (e.g. marking points on the floor).
+- **Stage B:** a learned classifier over keypoint sequences, trained on this dataset.
+
+---
+
 ## 0.2.0 (2026-11-09): fewer false alarms, steadier tracking
 
 ### Overall result
