@@ -11,6 +11,7 @@ from pathlib import Path
 import yaml
 
 from clips import ClipConfig
+from fall.detector import DetectorConfig
 from fall.rules import RuleThresholds
 from fall.state_machine import MonitorConfig
 
@@ -21,6 +22,7 @@ class InferenceConfig:
     device: str | int = "auto"
     half: bool = False            # FP16 on GPU: faster on modern NVIDIA cards, ignored on CPU
     conf: float = 0.4
+    track_conf: float = 0.1       # once reported, a person stays tracked down to this confidence
     imgsz: int = 640
     target_fps: float = 10.0
     tracker: str = "bytetrack.yaml"
@@ -55,7 +57,7 @@ class Config:
     default_tenant_id: str = "tenant_example"
     inference: InferenceConfig = field(default_factory=InferenceConfig)
     rules: RuleThresholds = field(default_factory=RuleThresholds)
-    rules_min_kpt_conf: float = 0.3
+    detector: DetectorConfig = field(default_factory=DetectorConfig)
     monitor: MonitorConfig = field(default_factory=MonitorConfig)
     zones: dict[str, list[str]] = field(default_factory=dict)  # zone name -> camera_ids seeing the same area
     merge_window_s: float = 10.0
@@ -199,11 +201,11 @@ def load(path: str | Path, prod_mode: bool | None = None) -> Config:
     output = raw.get("output", {})
     default_tenant = handshake.get("default_tenant_id", "tenant_example")
 
-    min_kpt_conf = fall.pop("min_keypoint_conf", 0.3)
     merge_window = float(fall.pop("merge_window_seconds", 10.0))
     rule_keys = RuleThresholds.__dataclass_fields__.keys()
     monitor_keys = MonitorConfig.__dataclass_fields__.keys()
-    unknown = set(fall) - set(rule_keys) - set(monitor_keys)
+    detector_keys = DetectorConfig.__dataclass_fields__.keys()
+    unknown = set(fall) - set(rule_keys) - set(monitor_keys) - set(detector_keys)
     if unknown:
         raise ValueError(f"unknown keys under fall: {sorted(unknown)}")
 
@@ -229,7 +231,7 @@ def load(path: str | Path, prod_mode: bool | None = None) -> Config:
         default_tenant_id=default_tenant,
         inference=inference,
         rules=RuleThresholds(**{k: v for k, v in fall.items() if k in rule_keys}),
-        rules_min_kpt_conf=float(min_kpt_conf),
+        detector=DetectorConfig(**{k: v for k, v in fall.items() if k in detector_keys}),
         monitor=MonitorConfig(**{k: v for k, v in fall.items() if k in monitor_keys}),
         zones=parse_zones(raw.get("zones")),
         merge_window_s=merge_window,

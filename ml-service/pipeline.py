@@ -16,9 +16,9 @@ import numpy as np
 
 from clips import ClipRecorder
 from config import Config
-from fall.features import extract
-from fall.rules import LYING, FALLING, RuleClassifier
-from fall.state_machine import RECOVERED, STARTED, UNRESOLVED, FallMonitor, IncidentEvent
+from fall.detector import FallDetector
+from fall.rules import FALLING, LYING, UNCLEAR
+from fall.state_machine import RECOVERED, STARTED, UNRESOLVED, IncidentEvent
 from fall.zones import IncidentAggregator
 from ingest.decoder import FrameSampler, VideoDecoder
 from sinks import Sink, SnapshotStore, incident_record, prediction_record
@@ -26,7 +26,7 @@ from vision.pose import Person, PoseTracker
 
 log = logging.getLogger(__name__)
 
-LABEL_COLORS = {LYING: (0, 0, 255), FALLING: (0, 165, 255)}
+LABEL_COLORS = {LYING: (0, 0, 255), FALLING: (0, 165, 255), UNCLEAR: (160, 160, 160)}
 RATE_WINDOW_S = 30.0  # rates() averages over this long
 
 
@@ -56,9 +56,9 @@ class CameraPipeline:
         self._convert_interval = 1.0 / (2 * target) if target > 0 else 0.0
         self._next_convert = 0.0
         self.pose: PoseTracker | None = None  # created by step(), on the main thread
-        self.classifier = RuleClassifier(cfg.rules)
+        self.detector = FallDetector(cfg.rules, cfg.monitor, cfg.detector)
+        self.classifier = self.detector.classifier
         self.model_name = f"{Path(cfg.inference.weights).name}+{self.classifier.name}"  # e.g. yolo26n-pose.pt+rules
-        self.monitor = FallMonitor(cfg.monitor)
         self._last_prediction: dict[int, float] = {}
         self._pending: np.ndarray | None = None
         self._pending_lock = threading.Lock()
@@ -119,7 +119,7 @@ class CameraPipeline:
     def close(self) -> None:
         """The camera disconnected: its open incidents become unresolved. Safe from any thread."""
         with self._monitor_lock:
-            for event in self.monitor.close_all(time.time()):
+            for event in self.detector.close_all(time.time()):
                 self._report(event, None)
         if self.clips is not None:
             self.clips.close()
@@ -152,8 +152,7 @@ class CameraPipeline:
                 return False
             frame, self._pending = self._pending, None
         if self.pose is None:
-            inf = self.cfg.inference
-            self.pose = PoseTracker(inf.weights, inf.device, inf.conf, inf.imgsz, inf.tracker, inf.half)
+            self.pose = PoseTracker.from_config(self.cfg.inference)
         # Minimum person confidence can be changed in the frontend (Detection Settings).
         self.pose.conf = self.overrides(self.tenant_id).get("person_confidence", self.cfg.inference.conf)
         with self._monitor_lock:
@@ -170,34 +169,31 @@ class CameraPipeline:
             self._analysed_times.append(time.monotonic())
             self.model_ms += elapsed_ms
 
+        results, events = self.detector.process(now, people, frame.shape)
+        for event in events:
+            self._report(event, frame)
+
         labels: dict[int, tuple[str, float]] = {}
-        for person in people:
-            features = extract(person.box, person.keypoints, frame.shape[0], self.cfg.rules_min_kpt_conf)
-            velocity = self.monitor.hip_velocity(person.track_id, now, features.hip_y)
-            label, confidence = self.classifier.classify(features, velocity)
-            labels[person.track_id] = (label, confidence)
-
-            for event in self.monitor.update(now, person.track_id, label, confidence):
-                self._report(event, frame)
-
-            if now - self._last_prediction.get(person.track_id, 0.0) >= self.cfg.prediction_interval_s:
-                self._last_prediction[person.track_id] = now
+        for person, r in zip(people, results):
+            labels[r.track_id] = (r.label, r.confidence)
+            if now - self._last_prediction.get(r.track_id, 0.0) >= self.cfg.prediction_interval_s:
+                self._last_prediction[r.track_id] = now
                 self.sink.prediction(prediction_record(
                     self.tenant_id, self.camera_id, now, self.model_name, self.classifier.version,
-                    label, confidence,
+                    r.label, r.confidence,
                     {
-                        "track_id": person.track_id,
+                        "track_id": r.track_id,
                         "box": person.box.round(1).tolist(),
                         "keypoints": person.keypoints.round(3).tolist(),
-                        "torso_angle_deg": features.torso_angle_deg,
-                        "aspect_ratio": features.aspect_ratio,
-                        "hip_velocity": velocity,
+                        "torso_angle_deg": r.features.torso_angle_deg,
+                        "aspect_ratio": r.features.aspect_ratio,
+                        "hip_velocity": r.hip_velocity,
                     },
                     inference_ms,
-                    self.aggregator.incident_id_for(self.monitor.incident_of(person.track_id)),
+                    self.aggregator.incident_id_for(self.detector.incident_of(r.track_id)),
                 ))
 
-        for event in self.monitor.expire(now):
+        for event in self.detector.expire(now):
             self._report(event, None)
 
         self.latest_people = [{"track": t, "label": label, "confidence": round(conf, 2)}

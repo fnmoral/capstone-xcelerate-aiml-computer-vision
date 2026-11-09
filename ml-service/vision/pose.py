@@ -50,16 +50,31 @@ class PoseTracker:
     """Detects people, their 17 COCO keypoints and a stable track ID.
 
     The tracker keeps state between calls, so create one instance per camera.
+
+    Two confidence levels: a person is reported once their detection reaches `conf`, and
+    after that they stay tracked down to `track_conf`. People lying on the floor often get
+    lower scores than people standing (the model saw fewer of them in training), so a single
+    threshold would lose someone exactly when they fall.
     """
 
+    FORGET_AFTER_FRAMES = 300  # drop a confirmed ID not seen for this many calls
+
     def __init__(self, weights: str, device: str | int, conf: float, imgsz: int, tracker: str,
-                 half: bool = False):
+                 half: bool = False, track_conf: float = 0.1):
         self.model = YOLO(weights)
         self.device = resolve_device(device)
         self.half = half and self.device != "cpu"  # FP16 is GPU-only
         self.conf = conf
+        self.track_conf = track_conf
         self.imgsz = imgsz
         self.tracker = tracker
+        self._frame = 0
+        self._confirmed: dict[int, int] = {}  # track ID -> frame it was last seen
+
+    @classmethod
+    def from_config(cls, inf) -> "PoseTracker":
+        """Build from config.InferenceConfig."""
+        return cls(inf.weights, inf.device, inf.conf, inf.imgsz, inf.tracker, inf.half, inf.track_conf)
 
     def __call__(self, frame: np.ndarray) -> list[Person]:
         # Ultralytics 8.4 replaced the `half` argument with `quantize` (16 = FP16).
@@ -68,7 +83,7 @@ class PoseTracker:
             frame,
             persist=True,
             tracker=self.tracker,
-            conf=self.conf,
+            conf=min(self.track_conf, self.conf),  # weak detections go to the tracker too
             imgsz=self.imgsz,
             device=self.device,
             classes=[0],
@@ -84,7 +99,18 @@ class PoseTracker:
         xyxy = boxes.xyxy.cpu().numpy()
         confs = boxes.conf.cpu().numpy()
         kpts = result.keypoints.data.cpu().numpy()
-        return [
-            Person(int(ids[i]), xyxy[i], float(confs[i]), kpts[i])
-            for i in range(len(ids))
-        ]
+        return [Person(int(ids[i]), xyxy[i], float(confs[i]), kpts[i])
+                for i in self._keep(ids, confs)]
+
+    def _keep(self, ids: np.ndarray, confs: np.ndarray) -> list[int]:
+        """Indexes of the people to report: those whose track has reached `conf` at least once."""
+        self._frame += 1
+        keep = []
+        for i, (track_id, conf) in enumerate(zip(ids.tolist(), confs.tolist())):
+            if conf >= self.conf or track_id in self._confirmed:
+                self._confirmed[track_id] = self._frame
+                keep.append(i)
+        if self._frame % 100 == 0:
+            cutoff = self._frame - self.FORGET_AFTER_FRAMES
+            self._confirmed = {k: v for k, v in self._confirmed.items() if v >= cutoff}
+        return keep

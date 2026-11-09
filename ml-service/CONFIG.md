@@ -193,6 +193,7 @@ The person and pose detection model.
 | `inference.device` | `auto` | `auto` = GPU 0 if CUDA is available, otherwise CPU. Or a GPU number (`0`, `1`), or `cpu`. A GPU number on a machine without CUDA falls back to CPU with a warning |
 | `inference.half` | `false` | FP16 on GPU. Can be faster on data-center GPUs, but was slower on an RTX 3060 laptop with the nano model, so measure first. Ignored on CPU |
 | `inference.conf` | `0.4` | Minimum confidence for a person detection, 0–1. Lower finds more people but more false detections (e.g. plush toys or pillows taken for a person). **Can be changed in the frontend** (Detection Settings), which wins over this value; ml-service picks it up within 15 s |
+| `inference.track_conf` | `0.1` | Once a person has been detected at `conf`, they stay tracked down to this confidence. People lying on the floor score lower than people standing, so one threshold would lose someone just as they fall. New people still need `conf` to be reported |
 | `inference.imgsz` | `640` | Size the image is resized to for the model. Larger sees small/distant people better but is slower |
 | `inference.target_fps` | `10` | Most frames per second analysed, per camera. Lower it to handle more cameras; 5 is still enough to see a fall |
 | `inference.tracker` | `bytetrack.yaml` | Tracker that follows each person between frames. Ultralytics ships others (`botsort.yaml`, `ocsort.yaml`, ...), but only `bytetrack.yaml` has been tested with this service |
@@ -211,15 +212,21 @@ Thresholds for the fall rules and incident timing. See *Detection logic in detai
 | `fall.lying_torso_angle_deg` | `60` | Torso angle from vertical that counts fully as lying |
 | `fall.falling_torso_angle_deg` | `35` | Minimum torso tilt for the `falling` label |
 | `fall.lying_aspect_ratio` | `1.3` | Box width ÷ height that counts fully as lying (wider than tall) |
-| `fall.fall_velocity` | `0.6` | Hip drop speed for `falling`, in frame heights per second |
+| `fall.fall_velocity` | `1.2` | Hip drop speed for `falling`, in the person's own torso lengths per second (so near and far people are treated alike) |
+| `fall.standing_legs` | `0.6` | How straight the legs must be under the hips (0 = flat, 1 = straight down) to count as standing; then the person is never `lying`, however far they bend over |
+| `fall.min_visible_keypoints` | `6` | Fewer visible body points than this, or no hips/legs at all, gives the label `unclear` instead of a guess |
 | `fall.confirm_seconds` | `3` | How long someone must stay down before an incident opens |
+| `fall.confirm_ratio` | `0.8` | Share of the frames in those `confirm_seconds` that must show the person down. Stops stray misdetections seconds apart from adding up to an alarm |
 | `fall.recover_seconds` | `3` | How long someone must stay up before the incident closes as recovered |
+| `fall.handoff_seconds` | `2` | A new tracker ID that appears near where a person was lost this recently carries on that person's fall (trackers often renumber someone as they fall). `0` = off |
 | `fall.lost_track_seconds` | `10` | A person not seen for this long is forgotten; an open incident becomes `unresolved` |
 | `fall.high_after_seconds` | `60` | Incident severity becomes `high` after this long |
 | `fall.critical_after_seconds` | `300` | Incident severity becomes `critical` after this long |
 | `fall.merge_window_seconds` | `10` | See [zones](#zones) |
 
 Tune `confirm_seconds` first if you get false alarms (raise it) or late alerts (lower it).
+Check any change with `python -m eval.benchmark --compare <last saved run>` (see
+[DETECTION_CHANGELOG.md](DETECTION_CHANGELOG.md)).
 
 ### output
 

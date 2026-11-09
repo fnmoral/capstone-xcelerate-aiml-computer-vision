@@ -99,7 +99,8 @@ inference:
   weights: yolo26n-pose.pt   # n = fastest; s/m are more accurate but slower
   device: auto               # auto = GPU 0 if CUDA is available, else CPU; or a GPU index, or cpu
   half: false                # FP16 on GPU; measure first, it was slower on an RTX 3060 laptop
-  conf: 0.4
+  conf: 0.4                  # a person is reported once detected this confidently
+  track_conf: 0.1            # ...and then stays tracked down to this (people lying down score lower)
   imgsz: 640
   target_fps: 10             # frames per second sent to the model, per camera
   tracker: bytetrack.yaml
@@ -109,9 +110,13 @@ fall:
   lying_torso_angle_deg: 60
   falling_torso_angle_deg: 35
   lying_aspect_ratio: 1.3
-  fall_velocity: 0.6         # hip drop, frame heights per second
+  standing_legs: 0.6         # legs this straight under the hips = on their feet, never lying (0-1)
+  min_visible_keypoints: 6   # fewer visible body points (or no hips/legs) = 'unclear', not a guess
+  fall_velocity: 1.2         # hip drop, in the person's torso lengths per second
   confirm_seconds: 3         # must stay down this long to open an incident
+  confirm_ratio: 0.8         # ...with at least this share of those frames showing them down
   recover_seconds: 3         # must stay up this long to close it
+  handoff_seconds: 2         # a new tracker ID where someone was just lost carries on their fall
   lost_track_seconds: 10
   high_after_seconds: 60
   critical_after_seconds: 300   # 5min=300 Seconds; if the person is still down after this long, mark the incident as critical

@@ -6,3 +6,4 @@ runs/
 *.pt
 *.onnx
 *.engine
+eval/.cache/

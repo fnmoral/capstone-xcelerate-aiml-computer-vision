@@ -139,6 +139,7 @@ through exactly the same steps as an IP camera, so prototyping results carry ove
 | Zones | `fall/zones.py` | Merges incidents from cameras of the same zone, so one fall gives one alert |
 | Output | `sinks/` | Shared record format and snapshots (`__init__.py`), JSONL files (`jsonl.py`), backend-module PostgreSQL on a background thread (`postgres.py`) |
 | Config | `config.py`, `config.yaml` | Typed settings with a dev and a prod section; documented in [CONFIG.md](CONFIG.md) |
+| Benchmark | `eval/` | Scores the fall logic on scripted scenarios and recorded videos (`python -m eval.benchmark`); results per change in [DETECTION_CHANGELOG.md](DETECTION_CHANGELOG.md) |
 | Test sender | `tools/send_video.py` | Plays the part of stream-hub from a webcam or video file |
 | Webcam as IP camera | `tools/publish_webcam.py` | Publishes this PC's webcam to an RTSP server (the `test-camera` service), so it goes through the real gateway → hub → ML path |
 | Clips | `clips.py` | Dashcam-style incident clips: per-camera in-memory loop of compressed video, recordings, H.264 MP4 encoding and retention on a background thread |
@@ -159,18 +160,20 @@ For each frame, YOLO26-pose returns every person with:
 - a **track ID** from ByteTrack (`#1`, `#2`, ...) that follows the same person across frames,
   so each person gets their own labels and incidents
 
-### 2. Measurements (`fall/features.py`)
+A person is reported once detected with confidence `inference.conf` (0.4). After that they
+stay tracked down to `inference.track_conf` (0.1), because people lying on the floor get
+lower scores than people standing, and we must not lose someone just as they fall.
+
+### 2. Measurements (`fall/features.py`, `fall/detector.py`)
 
 | Measurement | How it is computed | What it tells us |
 |---|---|---|
-| Torso angle | Angle between the shoulder midpoint → hip midpoint line and vertical | 0° = upright, 90° = horizontal |
-| Aspect ratio | Box width ÷ box height | Above 1 means wider than tall, typical of lying |
-| Hip height | Hip midpoint y ÷ frame height | Used to measure how fast the hips drop |
-| Hip drop speed | Change in hip height over the last ~8 samples, per second | Fast downward motion = a fall in progress |
+| Torso angle | Angle between the shoulder midpoint → hip midpoint line and vertical. Without shoulders or hips: head/shoulders → hips/knees/ankles instead | 0° = upright, 90° = horizontal |
+| Aspect ratio | Box width ÷ box height. Ignored when the box touches the frame edge (the person is cut off) | Above 1 means wider than tall, typical of lying |
+| Legs upright | How far the ankles are below the hips, ÷ the leg's length along hip → knee → ankle | ~1 standing or bending over, ~0.5 sitting on a chair, ~0 lying |
+| Hip drop speed | Straight-line fit of the hip height over the last 0.5 s, ÷ the person's torso length | Fast downward motion = a fall in progress. In body lengths, so near and far people are treated alike |
 | Head below hips | Nose lower in the image than the hip midpoint | Strong hint the person is on the floor |
-
-If the shoulders or hips aren't visible with enough confidence, the torso angle is unknown
-and only the box shape is used.
+| Visible points | Keypoints at or above `min_keypoint_conf` | Too few = not enough to decide |
 
 ### 3. Labels (`fall/rules.py`)
 
@@ -178,43 +181,61 @@ Each person in each frame gets exactly one label and a confidence between 0 and 
 
 | Label | Meaning | Preview colour |
 |---|---|---|
-| `upright` | Standing, walking, sitting: not on the way down and not lying | green |
+| `upright` | Standing, walking, sitting, bending: not on the way down and not lying | green |
 | `falling` | Going down fast right now | orange |
 | `lying` | On the floor, or horizontal | red |
+| `unclear` | Too little of the person is visible to tell | grey |
 
 The rules are checked in this order:
 
-1. **Lying score.** Two scores from 0 to 1 are combined:
+1. **Enough evidence?** Fewer than `min_visible_keypoints` (6) visible points, or no hip, knee
+   or ankle at all (e.g. someone sitting behind a table), gives **`unclear`**. The box shape
+   alone is never taken as proof of lying.
+2. **Lying score.** Two scores from 0 to 1 are combined:
    - *angle score* rises from 0 at a 30° torso angle to 1 at `lying_torso_angle_deg` (60°)
    - *shape score* rises from 0 at aspect ratio 0.8 to 1 at `lying_aspect_ratio` (1.3)
-   - lying score = 0.7 × angle score + 0.3 × shape score, plus 0.15 if the head is below the
-     hips. With no torso angle, the shape score is used on its own.
+   - lying score = 0.7 × angle score + 0.3 × shape score (angle score alone if the box touches
+     the frame edge), plus 0.15 if the head is below the hips
+   - **on their feet:** if *legs upright* is `standing_legs` (0.6) or more, the score is capped at
+     0.5. Someone bent over on straight legs has a horizontal torso but isn't lying.
 
    If the lying score is **0.75 or more**, the label is **`lying`**, with the score as its confidence.
-2. **Falling.** Otherwise, if the hips are dropping at **`fall_velocity` (0.6 frame heights/s)
+3. **Falling.** Otherwise, if the hips are dropping at **`fall_velocity` (1.2 torso lengths/s)
    or faster** and the torso is tilted **`falling_torso_angle_deg` (35°) or more**, the label is
    **`falling`**. Faster drops give higher confidence.
-3. **Upright.** Anything else is **`upright`**, with confidence 1 − lying score.
+4. **Upright.** Anything else is **`upright`**, with confidence 1 − lying score.
 
 ### 4. Decisions: incidents (`fall/state_machine.py`)
 
-Each tracked person has a small state machine. Being *down* means the label is `falling` or `lying`.
+Each tracked person has a small state machine. Being *down* means the label is `falling` or
+`lying`. An `unclear` frame changes nothing: it neither confirms nor recovers.
 
 | Event | Triggered when | What happens |
 |---|---|---|
-| `incident_started` | The person has been down for `confirm_seconds` (3 s) **and** the current label is `lying` | A new incident opens with severity `medium`. Its start time is backdated to the first *down* frame, i.e. when the fall began. The current frame is saved as a snapshot |
+| `incident_started` | The person has been down for `confirm_seconds` (3 s), **at least `confirm_ratio` (80%) of their frames in those 3 s were down**, and the current label is `lying` | A new incident opens with severity `medium`. Its start time is backdated to when the fall began (the first frame of the mostly-down run, so a stray frame earlier is skipped). The current frame is saved as a snapshot |
 | `incident_updated` | The incident has lasted `high_after_seconds` (60 s), then `critical_after_seconds` (300 s) | Severity goes up to `high`, then `critical`. Highest confidence seen so far is kept as `peak_confidence` |
 | `incident_recovered` | The person has been `upright` for `recover_seconds` (3 s) | The incident closes with status `recovered`. `recovered_at` is set to the first upright frame, so the database can work out how long they were down |
 | `incident_unresolved` | The person hasn't been seen for `lost_track_seconds` (10 s) while an incident is open | The incident closes with status `unresolved`. This needs a human check, because the person may still be on the floor out of view |
 
+**Renumbered people.** Trackers often give someone a new ID as they fall, because their box
+suddenly changes shape. A new ID that appears near where a person was lost within
+`handoff_seconds` (2 s) takes over that person's state, so the 3-second timer doesn't restart
+and an open incident stays with them (`fall/detector.py`).
+
 What this filters out:
 
 - **Bending over, crouching or sitting down quickly** may produce `falling` or `lying` for a
-  moment. It only becomes an incident if it lasts 3 seconds.
+  moment. It only becomes an incident if it lasts 3 seconds, and bending on straight legs is
+  never `lying` at all.
 - **A `falling` label alone never opens an incident.** The person has to end up `lying`.
+- **Stray misdetected frames** don't add up to an alarm: 80% of the frames in the 3 s must agree.
 - **One misdetected frame** doesn't close an incident either. Recovery needs 3 seconds of `upright`.
 
 A camera that disconnects with an incident still open closes it as `unresolved`.
+
+**Measuring changes:** `python -m eval.benchmark` scores the logic on scripted scenarios and
+recorded videos; [DETECTION_CHANGELOG.md](DETECTION_CHANGELOG.md) records each change and
+what it did to the numbers.
 
 ### 5. Zones: one alert per fall across overlapping cameras (`fall/zones.py`)
 

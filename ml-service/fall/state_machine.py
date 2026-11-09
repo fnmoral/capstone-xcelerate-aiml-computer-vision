@@ -1,14 +1,15 @@
 """Turns per-frame labels into fall incidents for each tracked person.
 
-A person must stay down for confirm_seconds before an incident opens, and stay
-up for recover_seconds before it closes. This filters out bending, sitting down
-and single-frame misdetections.
+An incident opens when a person has been down (falling or lying) for confirm_seconds
+AND at least confirm_ratio of their frames in that time were down; it closes when they
+stay up for recover_seconds. The ratio check stops a few stray "lying" frames, seconds
+apart, from adding up to an alarm.
 """
 
 from collections import deque
 from dataclasses import dataclass, field
 
-from fall.rules import FALLING, LYING, UPRIGHT
+from fall.rules import FALLING, LYING, UNCLEAR, UPRIGHT
 
 STARTED = "incident_started"
 UPDATED = "incident_updated"
@@ -19,6 +20,7 @@ UNRESOLVED = "incident_unresolved"
 @dataclass(slots=True)
 class MonitorConfig:
     confirm_seconds: float = 3.0
+    confirm_ratio: float = 0.8   # share of frames in the last confirm_seconds that must be down
     recover_seconds: float = 3.0
     lost_track_seconds: float = 10.0
     high_after_seconds: float = 60.0
@@ -44,7 +46,7 @@ class IncidentEvent:
 @dataclass(slots=True)
 class _Track:
     last_seen: float
-    hip_history: deque = field(default_factory=lambda: deque(maxlen=8))
+    recent: deque = field(default_factory=deque)  # (time, is_down) over the last 2 x confirm_seconds
     down_since: float | None = None
     up_since: float | None = None
     incident: Incident | None = None
@@ -55,31 +57,25 @@ class FallMonitor:
         self.cfg = cfg
         self._tracks: dict[int, _Track] = {}
 
-    def hip_velocity(self, track_id: int, t: float, hip_y: float | None) -> float | None:
-        """Record a hip position and return its downward speed in frame heights per second."""
-        track = self._tracks.setdefault(track_id, _Track(last_seen=t))
-        if hip_y is None:
-            return None
-        track.hip_history.append((t, hip_y))
-        if len(track.hip_history) < 2:
-            return None
-        t0, y0 = track.hip_history[0]
-        return (hip_y - y0) / (t - t0) if t > t0 else None
-
     def update(self, t: float, track_id: int, label: str, confidence: float) -> list[IncidentEvent]:
         track = self._tracks.setdefault(track_id, _Track(last_seen=t))
         track.last_seen = t
         events: list[IncidentEvent] = []
+        if label == UNCLEAR:  # no evidence either way: keep the person, change nothing
+            return events
+        down = label in (FALLING, LYING)
+        track.recent.append((t, down))
+        while track.recent[0][0] < t - 2 * self.cfg.confirm_seconds:
+            track.recent.popleft()
 
-        if label in (FALLING, LYING):
+        if down:
             track.up_since = None
             if track.down_since is None:
                 track.down_since = t
-            if track.incident is None:
-                if label == LYING and t - track.down_since >= self.cfg.confirm_seconds:
-                    track.incident = Incident(track_id, track.down_since, confidence)
-                    events.append(IncidentEvent(STARTED, track.incident, t))
-            else:
+            if track.incident is None and label == LYING and self._confirmed(track, t):
+                track.incident = Incident(track_id, self._run_start(track), confidence)
+                events.append(IncidentEvent(STARTED, track.incident, t))
+            elif track.incident is not None:
                 track.incident.peak_confidence = max(track.incident.peak_confidence, confidence)
 
         elif label == UPRIGHT:
@@ -100,6 +96,23 @@ class FallMonitor:
 
         return events
 
+    def _confirmed(self, track: _Track, t: float) -> bool:
+        if t - track.down_since < self.cfg.confirm_seconds:
+            return False
+        window = [d for ts, d in track.recent if ts >= t - self.cfg.confirm_seconds]
+        return len(window) >= 3 and sum(window) >= self.cfg.confirm_ratio * len(window)
+
+    def _run_start(self, track: _Track) -> float:
+        """When the person went down: the earliest down frame from which on they were down for
+        at least confirm_ratio of the frames. A stray frame long before the fall is skipped."""
+        start, down, n = track.recent[-1][0], 0, 0
+        for ts, d in reversed(track.recent):
+            n += 1
+            down += d
+            if d and down >= self.cfg.confirm_ratio * n:
+                start = ts
+        return max(start, track.down_since)
+
     def expire(self, t: float) -> list[IncidentEvent]:
         """Drop tracks not seen recently. An open incident on a lost track becomes unresolved."""
         events: list[IncidentEvent] = []
@@ -110,6 +123,14 @@ class FallMonitor:
                 events.append(IncidentEvent(UNRESOLVED, track.incident, t))
             del self._tracks[track_id]
         return events
+
+    def rename(self, old_id: int, new_id: int) -> None:
+        """The tracker renumbered a person: carry their state (and any open incident) over."""
+        if old_id in self._tracks:
+            self._tracks[new_id] = self._tracks.pop(old_id)
+
+    def has_track(self, track_id: int) -> bool:
+        return track_id in self._tracks
 
     def incident_of(self, track_id: int) -> Incident | None:
         track = self._tracks.get(track_id)

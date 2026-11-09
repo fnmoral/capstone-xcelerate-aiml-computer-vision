@@ -20,10 +20,14 @@ LYING = np.zeros((17, 3), dtype=np.float32)
 LYING[0] = (300, 400, 0.9)                       # nose
 LYING[5], LYING[6] = (270, 395, 0.9), (270, 405, 0.9)    # shoulders
 LYING[11], LYING[12] = (170, 395, 0.9), (170, 405, 0.9)  # hips
+LYING[13], LYING[14] = (110, 395, 0.9), (110, 405, 0.9)  # knees
+LYING[15], LYING[16] = (55, 395, 0.9), (55, 405, 0.9)    # ankles
 STANDING = np.zeros((17, 3), dtype=np.float32)
 STANDING[0] = (100, 50, 0.9)
 STANDING[5], STANDING[6] = (90, 80, 0.9), (110, 80, 0.9)
 STANDING[11], STANDING[12] = (92, 180, 0.9), (108, 180, 0.9)
+STANDING[13], STANDING[14] = (92, 240, 0.9), (108, 240, 0.9)
+STANDING[15], STANDING[16] = (92, 295, 0.9), (108, 295, 0.9)
 
 
 class StubPose:
@@ -32,7 +36,7 @@ class StubPose:
 
     def __call__(self, frame):
         if self.lying:
-            return [Person(1, np.array([150, 380, 320, 420], dtype=np.float32), 0.9, LYING)]
+            return [Person(1, np.array([40, 380, 320, 420], dtype=np.float32), 0.9, LYING)]
         return [Person(1, np.array([80, 40, 120, 300], dtype=np.float32), 0.9, STANDING)]
 
 
