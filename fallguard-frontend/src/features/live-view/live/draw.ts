@@ -4,6 +4,7 @@ const LABEL_COLORS: Record<string, string> = {
   upright: "#22c55e",
   falling: "#f97316",
   lying: "#ef4444",
+  unclear: "#9ca3af",
 };
 const DEFAULT_COLOR = "#22c55e";
 

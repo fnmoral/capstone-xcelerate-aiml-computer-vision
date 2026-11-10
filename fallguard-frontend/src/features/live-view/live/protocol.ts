@@ -10,7 +10,7 @@
 
 export interface DetectedPerson {
   track: number;
-  label: string; // "upright" | "falling" | "lying"
+  label: string; // "upright" | "falling" | "lying" | "unclear"
   confidence: number;
   /** [x1, y1, x2, y2] normalised to 0..1 of the frame. */
   box: [number, number, number, number];
