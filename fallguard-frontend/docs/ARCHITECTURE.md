@@ -185,12 +185,17 @@ header, navigation, main and footer present; no horizontal scroll; no JavaScript
 ## 9. Supported browsers
 
 [TEAM CONFIRMATION REQUIRED] The list below is a proposal, set by what live video needs.
+The team still has to agree which browsers count as "supported" for CAP-29.
 
-| Browser | Layout and data pages | Live video |
+| Browser | Layout and data pages | Live video, alerts, clips |
 |---|---|---|
-| Chrome / Edge (current) | Verified in Chromium (layout) | [TO BE VERIFIED] with a running stack |
-| Safari (current, macOS and iOS) | [TO BE VERIFIED] | [TO BE VERIFIED]; needs WebCodecs support |
-| Firefox (current) | [TO BE VERIFIED] | [TO BE VERIFIED]; needs WebCodecs support |
+| Chrome (current, macOS) | Verified manually, 2026-11-09 | Verified manually, 2026-11-09 |
+| Safari (current, macOS) | Verified manually, 2026-11-09 | Verified manually, 2026-11-09 |
+| Edge, Firefox, iOS Safari | [TO BE VERIFIED] | [TO BE VERIFIED] |
+
+Manual check on 2026-11-09 (full Docker stack, MacBook built-in camera): live video with
+detection boxes, fall alert with alarm tone, incident photo and clip playback, and the
+frozen-video notice and reconnect after stopping and starting stream-hub.
 
 Live video and desktop notifications only work on `https://` or `http://localhost`. Opening
 the app as `http://<ip-address>` from another device shows the pages but not live video.
