@@ -65,6 +65,11 @@ class StreamHubServer:
             threading.Thread(target=self._handle, args=(conn, addr), daemon=True).start()
 
     def _handle(self, conn: socket.socket, addr) -> None:
+        # Disable Nagle's algorithm: this connection carries many small, latency-sensitive
+        # messages (one write per NALU, one per result), not a big bulk transfer. Without
+        # this, Python (unlike Go) leaves Nagle on, which can add tens to hundreds of ms of
+        # delay per write and shows up as video arriving in bursts instead of steadily.
+        conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         camera_id = "?"
         consumer: FrameConsumer | None = None
         writer: ResultWriter | None = None

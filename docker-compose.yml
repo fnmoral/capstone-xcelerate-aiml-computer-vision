@@ -11,9 +11,14 @@
 # Each module also has its own compose file to run it alone. They all declare the same
 # fixed-name Docker network "fallguard", so they can be started in any order.
 #
-#   camera (RTSP) ─► gateway-back :8080 ─► stream-hub :8090 ─► ml-service :9999 ─► db :5432
-#                                              └─► browsers over WebSocket :9000
-#   browser ─► fallguard-frontend :3000 ─► api :8000 ─► db, gateway-back, ml-service (video :8000)
+#   camera (RTSP) ─► gateway-back :8080 ─► stream-hub :8090 (video in) ─► ml-service :9999 ─► db :5432
+#                                              └─► ml-service's live detections, recording
+#                                                  commands and snapshots come back on the
+#                                                  same connection; stream-hub records the
+#                                                  clips and stores the snapshots itself
+#   browser ─► fallguard-frontend :3000 ─┬─► api :8000 ─► db, gateway-back
+#                                        └─► stream-hub :9000 directly: live video (WebSocket)
+#                                            and recorded clips/snapshots (HTTP)
 name: fallguard
 
 include:

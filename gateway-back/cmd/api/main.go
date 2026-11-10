@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -84,10 +85,10 @@ func main() {
 		log.Fatalf("ERROR setting up embedded frontend filesystem: %v", err)
 	}
 
-	// Serve static assets (JS, CSS, images)
+	// Serve static assets (JS, CSS): hashed build output under /assets/.
 	r.StaticFS("/assets", http.FS(mustSub(subFS, "assets")))
 
-	// Serve index.html for root and fallback to support SPA routing if needed
+	// Serve index.html for the root route.
 	r.GET("/", func(c *gin.Context) {
 		indexHTML, err := fs.ReadFile(subFS, "index.html")
 		if err != nil {
@@ -97,8 +98,20 @@ func main() {
 		c.Data(http.StatusOK, "text/html; charset=utf-8", indexHTML)
 	})
 
-	// Optional: Handle SPA client-side routing fallback if routes change in React
+	// Everything else: root-level static files Vite copies as-is from public/ (favicon,
+	// icons, logo, ...) are served from the embedded FS if they actually exist there;
+	// anything that isn't a real file falls back to index.html, for React's client-side
+	// routing. Without the existence check, every one of those files would silently come
+	// back as index.html instead of the image/icon itself.
+	staticFileServer := http.FileServer(http.FS(subFS))
 	r.NoRoute(func(c *gin.Context) {
+		path := strings.TrimPrefix(c.Request.URL.Path, "/")
+		if f, err := subFS.Open(path); err == nil {
+			f.Close()
+			staticFileServer.ServeHTTP(c.Writer, c.Request)
+			return
+		}
+
 		indexHTML, err := fs.ReadFile(subFS, "index.html")
 		if err != nil {
 			c.Status(http.StatusNotFound)

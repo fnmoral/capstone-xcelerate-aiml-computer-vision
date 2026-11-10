@@ -1,7 +1,8 @@
 #!/bin/bash
 # First start only: create the ml_service login role with only what ml-service needs
 # (see "ML SERVICE ROLE" at the end of schema.sql). ml-service sets app.tenant_id per
-# transaction, so row-level security applies to it.
+# transaction, so row-level security applies to it. ml_status is the exception: it has
+# no tenant_id and no row-level security (it's ml-service's own platform-wide status row).
 set -euo pipefail
 
 if [[ -z "${ML_SERVICE_PASSWORD:-}" ]]; then
@@ -20,5 +21,6 @@ GRANT CONNECT ON DATABASE :"DBNAME" TO ml_service;
 GRANT SELECT ON tenants, cameras, zones, rules TO ml_service;
 GRANT SELECT, INSERT, UPDATE ON incidents, incident_cameras, alerts TO ml_service;
 GRANT INSERT ON model_predictions TO ml_service;
+GRANT SELECT, INSERT, UPDATE ON ml_status TO ml_service;
 GRANT EXECUTE ON FUNCTION create_monthly_partitions(date, int) TO ml_service;
 EOSQL
