@@ -27,7 +27,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 COPY requirements.txt .
 # PyYAML and lap build from source here (with the compiler), so the image uses the
-# real packages and vision/compat/lap.py stays unused.
+# real packages and detection/lap_compat/lap.py stays unused.
 RUN pip install --no-cache-dir -r requirements.txt "lap>=0.5.12"
 
 # ---------- runtime ----------
@@ -52,22 +52,25 @@ COPY --chown=app:app . .
 USER app
 
 # Bake the weights into the image so the server needs no internet access at runtime.
-# Change with --build-arg YOLO_WEIGHTS=yolo26s-pose.pt, and set the same name under
-# prod: inference: weights in config.yaml.
+# A file in models/ (e.g. a fine-tuned model) is copied in; a standard name like
+# yolo26s-pose.pt is downloaded into models/ here. Change with
+# --build-arg YOLO_WEIGHTS=..., and set models/<the same name> under prod: inference: weights.
 ARG YOLO_WEIGHTS=yolo26n-pose.pt
-RUN python - <<EOF
+RUN mkdir -p /app/models && cd /app/models && python - <<EOF
 import os
+import sys
 
 import numpy as np
 from ultralytics import YOLO, settings
 
+sys.path.insert(0, "/app")
 import config
 
 # The real database URL is only given at runtime; the check below just needs one present.
 os.environ.setdefault("ML_DATABASE_URL", "postgresql://build-check@localhost/none")
 
 settings.update({"sync": False})  # no usage analytics from an on-prem install
-model = YOLO("/app/${YOLO_WEIGHTS}")
+model = YOLO("${YOLO_WEIGHTS}")  # in /app/models: uses the copied file, or downloads it here
 # Run the tracker once (on CPU, no GPU at build time). Fails the build if anything is
 # missing, instead of Ultralytics trying to pip-install it at runtime.
 model.track(np.zeros((640, 640, 3), dtype=np.uint8), device="cpu", verbose=False)
@@ -75,7 +78,7 @@ model.track(np.zeros((640, 640, 3), dtype=np.uint8), device="cpu", verbose=False
 # Fail the build if config.yaml is not valid in prod mode (e.g. a webcam under prod:),
 # or if it expects different weights than the ones baked in.
 cfg = config.load("/app/config.yaml", prod_mode=True)
-assert cfg.inference.weights.endswith("${YOLO_WEIGHTS}"), (
+assert cfg.inference.weights == "/app/models/${YOLO_WEIGHTS}", (
     f"config.yaml prod mode uses {cfg.inference.weights}, image has ${YOLO_WEIGHTS}")
 print("image check OK:", "${YOLO_WEIGHTS}", [s.type for s in cfg.sources])
 EOF

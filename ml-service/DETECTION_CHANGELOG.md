@@ -3,7 +3,7 @@
 Every change to how falls are detected, why we made it, and what it did to the benchmark
 numbers. Newest first.
 
-The version is `RuleClassifier.version` in `fall/rules.py`. It is stored with every
+The version is `RuleClassifier.version` in `detection/fall_detection.py`. It is stored with every
 prediction (`model_predictions.model_version`), so any stored result can be traced back to
 the logic that produced it.
 
@@ -11,23 +11,23 @@ the logic that produced it.
 
 ```powershell
 cd ml-service
-.venv\Scripts\python -m eval.benchmark --compare 06-keep-low-conf-tracks   # compare with the latest saved run
-.venv\Scripts\python -m eval.benchmark --save 07-my-change                # keep a new run in eval/results/
+.venv\Scripts\python -m evaluation.evaluate --compare 06-keep-low-conf-tracks   # compare with the latest saved run
+.venv\Scripts\python -m evaluation.evaluate --save 07-my-change                # keep a new run in evaluation/results/
 ```
 
-The benchmark ([eval/benchmark.py](eval/benchmark.py)) runs the same `FallDetector` the live
+The benchmark ([evaluation/evaluate.py](evaluation/evaluate.py)) runs the same `FallDetector` the live
 service uses, with the settings in `config.yaml`, on two kinds of input:
 
-- **20 synthetic scenarios** ([eval/scenarios.py](eval/scenarios.py)), each run with 5 random
+- **20 synthetic scenarios** ([evaluation/datasets.py](evaluation/datasets.py)), each run with 5 random
   seeds. They are scripted body-point sequences: 8 falls, and 12 everyday activities that can
   look like a fall (bending over, sitting down fast, squatting, sitting at a table, detector
   glitches...). They're fast and repeatable and need no GPU, but they test the *logic* only, not
   the model's eyesight.
-- **Recorded videos** listed in [eval/videos.yaml](eval/videos.yaml), with the real YOLO model
+- **Recorded videos** listed in [evaluation/videos.yaml](evaluation/videos.yaml), with the real YOLO model
   and tracker. We have only two so far (`test-media/fall.mp4`, where the fall is staged by
   rotating the picture, and `test.mp4`, which has no fall).
 - **Multiple Cameras Fall Dataset** (optional, 3.6 GB, not in the repo; see
-  [eval/mcfd.py](eval/mcfd.py)): 24 scenarios × 8 ceiling cameras, one actor, 25 falls, plus
+  [evaluation/datasets.py](evaluation/datasets.py)): 24 scenarios × 8 ceiling cameras, one actor, 25 falls, plus
   sitting, crouching and lying on a sofa. Scored per camera and per zone (the chosen cameras
   run through the real incident aggregator, so we also see whether one fall gives one alert).
   Download it from
@@ -35,8 +35,8 @@ service uses, with the settings in `config.yaml`, on two kinds of input:
   outside the repo and outside OneDrive, and run:
 
   ```powershell
-  .venv\Scripts\python -m eval.benchmark --mcfd "C:\datasets\Fall Dataset"          # cameras 3,5,8
-  .venv\Scripts\python -m eval.benchmark --mcfd "..." --mcfd-cameras 1-8 --mcfd-scenarios 1-5
+  .venv\Scripts\python -m evaluation.evaluate --mcfd "C:\datasets\Fall Dataset"          # cameras 3,5,8
+  .venv\Scripts\python -m evaluation.evaluate --mcfd "..." --mcfd-cameras 1-8 --mcfd-scenarios 1-5
   ```
 
   The first run takes about half an hour on a CPU (3 cameras); after that the model output
@@ -54,7 +54,7 @@ What the numbers mean:
 | 'falling' label shown | Falls where the orange `falling` label appeared while going down | higher |
 | Known-limit scenarios | Cases we *know* fail until a planned feature exists (listed below) | higher |
 
-`tests/test_benchmark.py` runs the synthetic part with every `pytest`, so a change that misses
+`tests/test_evaluation.py` runs the synthetic part with every `pytest`, so a change that misses
 a fall or adds a false alarm fails the tests.
 
 ---
@@ -62,7 +62,7 @@ a fall or adds a false alarm fails the tests.
 ## First results on real footage (2026-11-09, no change to the logic)
 
 The Multiple Cameras Fall Dataset, cameras 3, 5 and 8, all 24 scenarios, settings of 0.2.0
-(`eval/results/07-mcfd-first-run.json`):
+(`evaluation/results/07-mcfd-first-run.json`):
 
 | | Each camera on its own | 3 cameras as one zone |
 |---|---|---|
@@ -117,7 +117,7 @@ So tuning thresholds doesn't fix it, and the standing-legs rule is worth keeping
 | 'falling' label shown during the fall | 0/35 | 31/35 |
 | Video falls caught / false alarms | 1/1, 0 | 1/1, 0 |
 
-Results of every step are in [eval/results/](eval/results/) (`00-baseline.json` to
+Results of every step are in [evaluation/results/](evaluation/results/) (`00-baseline.json` to
 `06-keep-low-conf-tracks.json`).
 
 ### 6. Keep tracking people whose detection score drops
@@ -132,7 +132,7 @@ Results of every step are in [eval/results/](eval/results/) (`00-baseline.json` 
 - **Result:** no change on the benchmark: the synthetic scenarios don't run the model, and in our
   two videos the person's score never drops below 0.66. **Not yet verified**: needs footage
   of a real fall, ideally a dim room or an unusual angle.
-- **Files:** `vision/pose.py`, `config.py`, `config.yaml`
+- **Files:** `detection/pose_model.py`, `config.py`, `config.yaml`
 
 ### 5. A renumbered person keeps their fall
 
@@ -144,7 +144,7 @@ Results of every step are in [eval/results/](eval/results/) (`00-baseline.json` 
 - **Result:** the `fall_id_switch` scenario (renumbered three times while lying) alerted after
   6.3 s on average, now 3.3 s, the same as a normal fall. Mean time to alert 3.77 → 3.34 s;
   error in recorded fall start 0.71 → 0.30 s.
-- **Files:** `fall/detector.py`, `fall/state_machine.py`
+- **Files:** `detection/fall_detection.py`, `detection/fall_detection.py`
 
 ### 4. Measure fall speed in body lengths, not screen size
 
@@ -161,7 +161,7 @@ Results of every step are in [eval/results/](eval/results/) (`00-baseline.json` 
   too late: by the time the speed was measured, the person was already lying.
 - **Not done:** smoothing each body point over time. The fit already smooths the speed, and
   smoothing the points adds lag; worth revisiting with real noisy footage.
-- **Files:** `fall/detector.py` (speed moved here from `state_machine.py`), `fall/rules.py`,
+- **Files:** `detection/fall_detection.py` (speed moved here from `state_machine.py`), `detection/fall_detection.py`,
   `config.yaml`. The frontend's Detection Settings page shows the new unit.
 
 ### 3. Don't guess from too little evidence: the new `unclear` label
@@ -175,7 +175,7 @@ Results of every step are in [eval/results/](eval/results/) (`00-baseline.json` 
   `lying`, so after 3 s it became an alarm. A person cut off by the frame edge has a misleading box
   too.
 - **Result:** the `at_table` false alarm is gone (5 → 0). No falls lost.
-- **Files:** `fall/features.py`, `fall/rules.py`, `fall/state_machine.py`, `pipeline.py` (grey box);
+- **Files:** `detection/fall_detection.py`, `detection/fall_detection.py`, `detection/fall_detection.py`, `camera_service/camera_pipeline.py` (grey box);
   frontend `CameraGrid.tsx` now counts only `lying`/`falling` as down; badges and legends show
   `Unclear`.
 
@@ -189,7 +189,7 @@ Results of every step are in [eval/results/](eval/results/) (`00-baseline.json` 
   3 s, that was an alarm. Legs tell the difference: a bent-over person still stands on them.
 - **Result:** both bending scenarios went from a false alarm every time (5/5 and 5/5) to none.
   No falls lost.
-- **Files:** `fall/features.py`, `fall/rules.py`
+- **Files:** `detection/fall_detection.py`, `detection/fall_detection.py`
 
 ### 1. Most of the 3 seconds must actually show the person down
 
@@ -202,13 +202,13 @@ Results of every step are in [eval/results/](eval/results/) (`00-baseline.json` 
 - **Result:** the `detector_glitches` scenario had false alarms in 3 of 5 runs; now none.
   The "feet toward the camera" scenario was being caught 4/5 times only by that same flaw
   (stray frames adding up), so it now shows 0/5, which is its real state (see known limits).
-- **Files:** `fall/state_machine.py`
+- **Files:** `detection/fall_detection.py`
 
 ### 0. Groundwork (no change in behaviour)
 
-- Moved the per-person logic from `pipeline.py` into `fall/detector.py` (`FallDetector`),
+- Moved the per-person logic from `camera_service/camera_pipeline.py` into `detection/fall_detection.py` (`FallDetector`),
   so the live service and the benchmark run exactly the same code.
-- Added the benchmark (`eval/`) and recorded the baseline (`eval/results/00-baseline.json`).
+- Added the benchmark (`evaluation/`) and recorded the baseline (`evaluation/results/00-baseline.json`).
 
 ---
 
@@ -228,4 +228,4 @@ These scenarios are in the benchmark so we can see when they get fixed:
 - **Stage B:** a small learned model over ~2 s of body points, trained on `model_predictions`
   (keypoints are already stored once per second) and on staff feedback.
 - **"Confirmed fall / false alarm" button** on incidents, to collect real labels.
-- **More real videos** in `eval/videos.yaml`: this is what makes the benchmark trustworthy.
+- **More real videos** in `evaluation/videos.yaml`: this is what makes the benchmark trustworthy.

@@ -14,7 +14,7 @@ analytics, cameras, detection settings, system status.
 | `frontend` | `fallguard-frontend/` | `3000` | React app (nginx); forwards `/api` to the backend API |
 | `api` | `backend-module/api/` | `127.0.0.1:8100` | Core backend REST API: incidents, alerts, stats, cameras (via the gateway) |
 | `db`, `partitions` | `backend-module/` | `127.0.0.1:5432` | PostgreSQL 17 + pgvector |
-| `ml-service` | `ml-service/deploy/` | `9999`, `127.0.0.1:8000` (viewer) | Needs an NVIDIA GPU; prod mode (IP cameras only) |
+| `ml-service` | `ml-service/setup_and_tools/docker_server/` | `9999`, `127.0.0.1:8000` (viewer) | Needs an NVIDIA GPU; prod mode (IP cameras only) |
 | `stream-hub` | `stream-hub/` | `9000` (HTTP/WS), `8090` (gateways) | Forwards every camera to `ml-service:9999` |
 | `gateway-back` | `gateway-back/` | `8080` (web UI + API) | Cameras and settings kept in the `gateway-data` volume |
 | `test-camera` (dev; profile `test-camera`) | root | `8554` | RTSP relay: accepts published streams (this PC's webcam as `rtsp://test-camera:8554/webcam`), and plays `test-media/test.mp4` as `/test` while something watches it. Starts with the stack in dev (`COMPOSE_PROFILES=test-camera` in the root `.env`) |
@@ -50,7 +50,7 @@ slower for Docker, and OneDrive can lock files mid-build):
 rsync -a --delete --exclude .git --exclude .venv --exclude node_modules --exclude __pycache__ \
     --exclude ml-service/data --exclude '*.pt' \
     "/mnt/d/<path to>/capstone-xcelerate-aiml-computer-vision/" ~/fallguard/
-chmod 600 ~/fallguard/backend-module/.env ~/fallguard/ml-service/deploy/.env
+chmod 600 ~/fallguard/backend-module/.env ~/fallguard/ml-service/setup_and_tools/docker_server/.env
 cd ~/fallguard
 ```
 
@@ -62,7 +62,7 @@ clone the repo inside Ubuntu and work there directly.)
 ```bash
 cp .env.example .env                                         # mode: PROD_MODE, COMPOSE_PROFILES (dev / prod)
 cp backend-module/.env.example backend-module/.env           # POSTGRES_PASSWORD, ML_SERVICE_PASSWORD
-cp ml-service/deploy/.env.example ml-service/deploy/.env     # ML_DATABASE_URL with the same ML_SERVICE_PASSWORD
+cp ml-service/setup_and_tools/docker_server/.env.example ml-service/setup_and_tools/docker_server/.env     # ML_DATABASE_URL with the same ML_SERVICE_PASSWORD
 ```
 
 All three are git-ignored. Use letters and digits only, or URL-encode the password in `ML_DATABASE_URL`.

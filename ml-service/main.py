@@ -28,14 +28,14 @@ import cv2
 import numpy as np
 
 import config
-from clips import ClipRecorder, ClipWriter
-from fall.zones import IncidentAggregator
-from ingest.protocol import MAX_NALU_LEN, ProtocolError, read_handshake, read_message
-from pipeline import CameraPipeline
-from sinks import FanoutSink, SnapshotStore, clip_record
-from sinks.jsonl import JsonlSink
-from viewer import Viewer, ViewerSink
-from vision.pose import PoseTracker, describe_device
+from camera_service.clips import ClipRecorder, ClipWriter
+from camera_service.camera_pipeline import IncidentAggregator
+from camera_service.video_input import MAX_NALU_LEN, ProtocolError, read_handshake, read_message
+from camera_service.camera_pipeline import CameraPipeline
+from camera_service.results import FanoutSink, SnapshotStore, clip_record
+from camera_service.results import JsonlSink
+from camera_service.viewer import Viewer, ViewerSink
+from detection.pose_model import PoseTracker, describe_device
 
 log = logging.getLogger("ml-service")
 
@@ -69,7 +69,7 @@ def build_sink(cfg: config.Config):
     if "jsonl" in cfg.sinks:
         sinks.append(JsonlSink(cfg.output_dir))
     if "postgres" in cfg.sinks:
-        from sinks.postgres import PostgresSink  # psycopg only needed when the database is used
+        from camera_service.database import PostgresSink  # psycopg only needed when the database is used
 
         pg = PostgresSink(cfg.database_url, cfg.database_connect_timeout_s)
         sinks.append(pg)

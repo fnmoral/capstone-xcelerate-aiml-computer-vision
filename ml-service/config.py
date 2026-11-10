@@ -10,15 +10,15 @@ from pathlib import Path
 
 import yaml
 
-from clips import ClipConfig
-from fall.detector import DetectorConfig
-from fall.rules import RuleThresholds
-from fall.state_machine import MonitorConfig
+from camera_service.clips import ClipConfig
+from detection.fall_detection import DetectorConfig
+from detection.fall_detection import RuleThresholds
+from detection.fall_detection import MonitorConfig
 
 
 @dataclass(slots=True)
 class InferenceConfig:
-    weights: str = "yolo26n-pose.pt"
+    weights: str = "models/yolo26n-pose.pt"
     device: str | int = "auto"
     half: bool = False            # FP16 on GPU: faster on modern NVIDIA cards, ignored on CPU
     conf: float = 0.4
@@ -211,6 +211,10 @@ def load(path: str | Path, prod_mode: bool | None = None) -> Config:
 
     inference = InferenceConfig(**raw.get("inference", {}))
     inference.weights = str(base / inference.weights)
+    if "learned_model" in fall:
+        fall["learned_model"] = str(base / fall["learned_model"])
+    if fall.get("classifier", "rules") not in ("rules", "learned"):
+        raise ValueError(f"fall.classifier must be rules or learned, got {fall['classifier']!r}")
 
     if "sources" in raw:
         raw_sources = raw["sources"] or []

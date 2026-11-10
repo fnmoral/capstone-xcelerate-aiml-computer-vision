@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 import pytest
 
-from viewer import Viewer, ViewerSink
+from camera_service.viewer import Viewer, ViewerSink
 
 
 def free_port() -> int:

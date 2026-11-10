@@ -189,7 +189,7 @@ The person and pose detection model.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `inference.weights` | `yolo26n-pose.pt` | Model file. Sizes from fastest to most accurate: `yolo26n-pose.pt`, `yolo26s-pose.pt`, `yolo26m-pose.pt`, `yolo26l-pose.pt`, `yolo26x-pose.pt`. Downloads automatically on a PC; baked into the container image |
+| `inference.weights` | `models/yolo26n-pose.pt` | Model file, relative to this file; a standard name downloads into `models/` automatically. Sizes from fastest to most accurate: `yolo26n-pose.pt`, `yolo26s-pose.pt`, `yolo26m-pose.pt`, `yolo26l-pose.pt`, `yolo26x-pose.pt`. Downloads automatically on a PC; baked into the container image |
 | `inference.device` | `auto` | `auto` = GPU 0 if CUDA is available, otherwise CPU. Or a GPU number (`0`, `1`), or `cpu`. A GPU number on a machine without CUDA falls back to CPU with a warning |
 | `inference.half` | `false` | FP16 on GPU. Can be faster on data-center GPUs, but was slower on an RTX 3060 laptop with the nano model, so measure first. Ignored on CPU |
 | `inference.conf` | `0.4` | Minimum confidence for a person detection, 0–1. Lower finds more people but more false detections (e.g. plush toys or pillows taken for a person). **Can be changed in the frontend** (Detection Settings), which wins over this value; ml-service picks it up within 15 s |
@@ -209,6 +209,9 @@ Thresholds for the fall rules and incident timing. See *Detection logic in detai
 | Option | Default | Meaning |
 |---|---|---|
 | `fall.min_keypoint_conf` | `0.3` | Body points (shoulders, hips, ...) below this confidence are ignored |
+| `fall.classifier` | `rules` | What decides "down": `rules` (picture angles, `detection/fall_detection.py`, the thresholds below) or `learned` (a small trained model, `detection/fall_detection.py`, made by `python -m model_finetuning.finetune stage-b`). See [DETECTION_CHANGELOG.md](DETECTION_CHANGELOG.md) for how each scores |
+| `fall.learned_model` | `models/stage_b.npz` | The trained model for `classifier: learned`, relative to this file. Train it with the same `inference.weights` you run it with |
+| `fall.learned_min_keypoints` | `3` | With `learned`: fewer visible body points than this gives `unclear` |
 | `fall.lying_torso_angle_deg` | `60` | Torso angle from vertical that counts fully as lying |
 | `fall.falling_torso_angle_deg` | `35` | Minimum torso tilt for the `falling` label |
 | `fall.lying_aspect_ratio` | `1.3` | Box width ÷ height that counts fully as lying (wider than tall) |
@@ -225,7 +228,7 @@ Thresholds for the fall rules and incident timing. See *Detection logic in detai
 | `fall.merge_window_seconds` | `10` | See [zones](#zones) |
 
 Tune `confirm_seconds` first if you get false alarms (raise it) or late alerts (lower it).
-Check any change with `python -m eval.benchmark --compare <last saved run>` (see
+Check any change with `python -m evaluation.evaluate --compare <last saved run>` (see
 [DETECTION_CHANGELOG.md](DETECTION_CHANGELOG.md)).
 
 ### output
@@ -347,7 +350,7 @@ python main.py --prod                  # try the prod settings on your PC
 | `ML_PROD_MODE` | `true` forces prod mode, `false` forces dev. Overrides `prod_mode` in the file; `--prod`/`--dev` override it. Set to `true` in the container |
 | `ML_CONFIG` | Path to the config file, instead of `config.yaml` next to `main.py` |
 | `ML_DATABASE_URL` | Database connection URL; overrides `database.url`. Required in prod mode with the shipped config |
-| `ML_TEST_DATABASE_URL`, `ML_TEST_ADMIN_URL` | Only for `tests/test_postgres.py`: a database loaded with `schema.sql` + `seed.sql` (use a non-superuser role so row-level security applies), and an admin URL for cleanup |
+| `ML_TEST_DATABASE_URL`, `ML_TEST_ADMIN_URL` | Only for `tests/test_database.py`: a database loaded with `schema.sql` + `seed.sql` (use a non-superuser role so row-level security applies), and an admin URL for cleanup |
 | `OPENCV_FFMPEG_CAPTURE_OPTIONS` | Advanced RTSP options. Defaults to `rtsp_transport;tcp`, which avoids broken frames on busy networks |
 
 ---
@@ -380,7 +383,7 @@ dev:
 **Replay a recorded fall** to tune thresholds: a `file` source with `loop: true`, then
 watch `incidents.jsonl` while changing `fall:` values.
 
-**Production**: set `ML_DATABASE_URL` (e.g. in `deploy/.env`). The container sets
+**Production**: set `ML_DATABASE_URL` (e.g. in `setup_and_tools/docker_server/.env`). The container sets
 `ML_PROD_MODE=true`, which uses the `prod:` section: stream-hub cameras, no preview,
 listening on all interfaces, results to JSONL and the database.
 
@@ -408,7 +411,7 @@ prod:
 
 and build the image with the same weights:
 `docker build --build-arg YOLO_WEIGHTS=yolo26s-pose.pt .` (or `YOLO_WEIGHTS` in
-`deploy/docker-compose.yml`). The build fails if the two don't match.
+`setup_and_tools/docker_server/docker-compose.yml`). The build fails if the two don't match.
 
 **Overlapping cameras in production**: start the service, note each camera's ID from the
 `camera [...] connected` log lines, then group the ones that see the same room under

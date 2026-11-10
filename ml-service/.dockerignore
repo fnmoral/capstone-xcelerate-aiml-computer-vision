@@ -3,13 +3,17 @@ __pycache__/
 .pytest_cache/
 data/
 runs/
-*.pt
 *.onnx
 *.engine
+# Model files: only the ones in models/ go into the image (see Dockerfile).
+*.pt
+!models/*.pt
+# Not needed to run the service:
 tests/
+evaluation/
+setup_and_tools/
 Dockerfile
 .dockerignore
 .env
 **/.env
-deploy/
-eval/
+model_finetuning/
