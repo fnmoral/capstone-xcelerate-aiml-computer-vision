@@ -35,6 +35,9 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		cams.POST("/:id/resume", h.ResumeCamera)
 	}
 	router.GET("/health", h.HealthCheck)
+	router.GET("/health-cloud", func(c *gin.Context) {
+		h.HealthCloudCheck(c, h.cfg.BackEndAddress)
+	})
 	router.GET("/limits", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"max_streaming": MaxStreaming, "max_saved": MaxSaved})
 	})
@@ -117,5 +120,25 @@ func (h *Handler) respondCamera(c *gin.Context, action func(id string) (*Camera,
 
 // HealthCheck verifies service status.
 func (h *Handler) HealthCheck(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// HealthCheck verifies service status of cloud server.
+func (h *Handler) HealthCloudCheck(c *gin.Context, backEndAddress string) {
+	url := "http://" + backEndAddress + "/api/health-cloud"
+
+	resp, err := http.Get(url)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"Error": "Failed to communicate with the main backend"})
+		return
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		c.JSON(http.StatusBadGateway, gin.H{"Error": "Failed to communicate with the main backend or tenant not found"})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }

@@ -51,6 +51,7 @@ func New(cfg Config, db *store.Store) *Server {
 func (s *Server) Register(r *gin.Engine) {
 	a := r.Group("/api")
 	a.GET("/health", s.health)
+	a.GET("/health-cloud", s.HealthCheck)
 
 	a.GET("/cameras", s.listCameras)
 	a.POST("/cameras", s.addCamera)
@@ -129,6 +130,10 @@ func RequestLog() gin.HandlerFunc {
 }
 
 // ---------- health ----------
+
+func (s *Server) HealthCheck(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
 
 func (s *Server) health(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
