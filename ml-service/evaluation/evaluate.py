@@ -141,6 +141,9 @@ def _fingerprint(cfg: config.Config, video: Path, extra: str = "") -> str:
     parts = [
         video.name, str(video.stat().st_size), str(int(video.stat().st_mtime)),
         Path(inf.weights).name, str(inf.imgsz), str(inf.conf), str(inf.target_fps),
+        # the model file itself, so a retrained model saved under the same name isn't served old results
+        *([str(Path(inf.weights).stat().st_size), str(int(Path(inf.weights).stat().st_mtime))]
+          if Path(inf.weights).is_file() else []),
         json.dumps(asdict(inf), sort_keys=True, default=str),
         tracker.read_text() if tracker.is_file() else inf.tracker,
         (ROOT / "app" / "detection" / "pose_model.py").read_text(encoding="utf-8"),

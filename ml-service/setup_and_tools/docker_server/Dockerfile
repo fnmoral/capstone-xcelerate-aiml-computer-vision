@@ -55,7 +55,7 @@ USER app
 # A file in models/ (e.g. a fine-tuned model) is copied in; a standard name like
 # yolo26s-pose.pt is downloaded into models/ here. Change with
 # --build-arg YOLO_WEIGHTS=..., and set models/<the same name> under prod: inference: weights.
-ARG YOLO_WEIGHTS=yolo26n-pose.pt
+ARG YOLO_WEIGHTS=yolo26n-pose-finetuned-mcfDataset-111026.pt
 RUN mkdir -p /app/models && cd /app/models && python - <<EOF
 import os
 import sys

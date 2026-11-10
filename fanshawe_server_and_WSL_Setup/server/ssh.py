@@ -5,6 +5,7 @@ the command line. The server's host key is pinned in fanshawe_server_and_WSL_Set
 
     python fanshawe_server_and_WSL_Setup/server/ssh.py "<command>"             run a command, print its output
     python fanshawe_server_and_WSL_Setup/server/ssh.py --put <local> <remote>  upload a file (remote: relative to home)
+    python fanshawe_server_and_WSL_Setup/server/ssh.py --get <remote> <local>  download a file
     python fanshawe_server_and_WSL_Setup/server/ssh.py --tunnel 9999:9999 8000:8000 --reverse 15432:db:5432
         forward localhost:9999 to the server's 127.0.0.1:9999 (and so on), and the server's
         127.0.0.1:15432 back to db:5432 on this side, until Ctrl+C or the connection drops.
@@ -110,6 +111,9 @@ def main() -> None:
     if sys.argv[1] == "--put":
         client.open_sftp().put(sys.argv[2], sys.argv[3])
         print(f"uploaded {sys.argv[2]} -> {sys.argv[3]}")
+    elif sys.argv[1] == "--get":
+        client.open_sftp().get(sys.argv[2], sys.argv[3])
+        print(f"downloaded {sys.argv[2]} -> {sys.argv[3]}")
     elif sys.argv[1] == "--tunnel":
         bind = os.environ.get("TUNNEL_BIND", "127.0.0.1")
         args = sys.argv[2:]

@@ -61,6 +61,43 @@ a fall or adds a false alarm fails the tests.
 
 ---
 
+## 15 epochs, Stage B, and the fine-tuned model as default (2026-11-10)
+
+The pose model finished all 15 epochs (epochs 3-15 on the course server's CPU: ~8 min each,
+the container is limited to 8 CPUs; its GPU is assigned but unusable, "Failed to initialize
+NVML"). `models/yolo26n-pose-finetuned-mcfDataset-111026.pt` is now this 15-epoch model and is
+**the default in `config.yaml`**; the standard `models/yolo26n-pose.pt` stays available.
+Validation body points (mAP50) 0.64 -> 0.81, boxes 0.97 -> 0.995; validation loss levels off
+after epoch 10, so more epochs on this data would add little. Per-epoch charts and all numbers:
+[model_finetuning/reports/fine_tuning_report.xlsx](model_finetuning/reports/fine_tuning_report.xlsx).
+
+Held-out test scenarios and cameras:
+
+| | Standard + rules (09) | 2 epochs + rules (10) | **15 epochs + rules (11)** | 15 epochs + Stage B (12) |
+|---|---|---|---|---|
+| Falls caught, zone | 1/6 | 5/6 | **5/6** | 6/6 |
+| Falls caught, each camera | 1/18 | 13/18 | 12/18 | 16/18 |
+| False alarms, zone | 1 | 3 | **2** | 4 |
+| Extra alerts for one fall | 0 | 2 | **0** | 0 |
+| Walking/standing labelled down | 0.2% | 16.9% | **0.2%** | 8.0% |
+| Lying on the ground labelled down | 8% | 70% | 69% | 91% |
+| Lying on a sofa labelled down | - | 22% | 48% | 100% |
+| Synthetic scenarios | 35/35, 0 FA | 35/35, 0 FA | **35/35, 0 FA** | 22/35, 6 FA |
+
+- **15 epochs vs 2:** same falls caught, but it no longer mistakes people standing for people
+  down (16.9% -> 0.2%), so fewer false alarms and no double alerts. This is the default now.
+- **Stage B** (the learned classifier, `fall.classifier: learned`): catches every test fall
+  and alerts ~1 s sooner, but doubles the false alarms, reads every sofa as a fall and fails
+  the synthetic scenarios. Its validation scenarios (3, 20) have no sitting or sofa, so
+  nothing taught it where "not down" ends, and it over-fits after epoch 7 (chart in the
+  report). **Kept as an option, not the default.** Next: validation with sitting/sofa, a
+  threshold tuned on false alarms, and bed/sofa areas in the UI.
+- **Fixed:** the benchmark's cache key used the model's file name only, so a retrained model
+  saved under the same name was served the old model's results. It now includes the file's
+  size and date (`setup_and_tools/tests/test_evaluation.py` checks it).
+
+---
+
 ## Fine-tuned pose model (2026-11-10): falls caught 1/6 -> 5/6
 
 `models/yolo26n-pose-finetuned-mcfDataset-111026.pt`: the standard YOLO26n-pose fine-tuned on

@@ -9,8 +9,8 @@ Every model file ml-service can run with. Two kinds, chosen separately in `confi
 
 | File | Kind | Where it comes from |
 |---|---|---|
-| `yolo26n-pose.pt` | pose model | Ultralytics' standard model (the default in `config.yaml`) |
-| `yolo26n-pose-finetuned-mcfDataset-111026.pt` | pose model | `python -m model_finetuning.finetune finetune`: the standard model fine-tuned on the Multiple Cameras Fall Dataset (people lying on the floor, ceiling cameras), trained 10 Nov 2026 |
+| `yolo26n-pose.pt` | pose model | Ultralytics' standard model |
+| `yolo26n-pose-finetuned-mcfDataset-111026.pt` | pose model | `python -m model_finetuning.finetune finetune`: the standard model fine-tuned on the Multiple Cameras Fall Dataset (people lying on the floor, ceiling cameras), trained 10 Nov 2026. **The default in `config.yaml`** |
 | `stage_b.npz` | fall classifier | `python -m model_finetuning.finetune stage-b`: the learned classifier, trained on the pose model's output |
 | (none) | fall classifier | `fall.classifier: rules`: the hand-written rules in `app/detection/fall_detection.py`, no file needed |
 

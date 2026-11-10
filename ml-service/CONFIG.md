@@ -189,7 +189,7 @@ The person and pose detection model.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `inference.weights` | `models/yolo26n-pose.pt` | Model file, relative to this file; a standard name downloads into `models/` automatically. Sizes from fastest to most accurate: `yolo26n-pose.pt`, `yolo26s-pose.pt`, `yolo26m-pose.pt`, `yolo26l-pose.pt`, `yolo26x-pose.pt`. Downloads automatically on a PC; baked into the container image |
+| `inference.weights` | `models/yolo26n-pose-finetuned-mcfDataset-111026.pt` | Model file, relative to this file (the files available are listed in [models/README.md](models/README.md)). The fine-tuned fall model is the default; `models/yolo26n-pose.pt` is the standard one. A standard name downloads into `models/` automatically. Sizes from fastest to most accurate: `yolo26n-pose.pt`, `yolo26s-pose.pt`, `yolo26m-pose.pt`, `yolo26l-pose.pt`, `yolo26x-pose.pt`. Downloads automatically on a PC; baked into the container image |
 | `inference.device` | `auto` | `auto` = GPU 0 if CUDA is available, otherwise CPU. Or a GPU number (`0`, `1`), or `cpu`. A GPU number on a machine without CUDA falls back to CPU with a warning |
 | `inference.half` | `false` | FP16 on GPU. Can be faster on data-center GPUs, but was slower on an RTX 3060 laptop with the nano model, so measure first. Ignored on CPU |
 | `inference.conf` | `0.4` | Minimum confidence for a person detection, 0–1. Lower finds more people but more false detections (e.g. plush toys or pillows taken for a person). **Can be changed in the frontend** (Detection Settings), which wins over this value; ml-service picks it up within 15 s |

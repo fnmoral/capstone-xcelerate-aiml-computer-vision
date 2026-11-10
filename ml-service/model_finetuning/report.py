@@ -33,7 +33,7 @@ STAGE_B_CARD = ML / "models" / "stage_b.json"
 
 # Chart style (validated categorical slots 1-3; text in ink colours, never series colours).
 SURFACE, INK, INK_2, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e6e5e1"
-SERIES = ["#2a78d6", "#eb6834", "#1baf7a"]
+SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"]  # validated in this order (adjacent pairs)
 
 
 # --------------------------------------------------------------------------- reading
@@ -172,8 +172,7 @@ def stage_b_rows() -> tuple[list[dict], list[dict]]:
     return hist, acts
 
 
-def before_after(results: list[dict]) -> tuple[list[dict], list[dict], list[dict]]:
-    names = [variant_name(r) for r in results]
+def before_after(results: list[dict], names: list[str]) -> tuple[list[dict], list[dict], list[dict]]:
     metrics = [
         ("Falls caught, cameras as one zone (%)", lambda m: _pct(m["zone"]["caught"], m["zone"]["expected"])),
         ("Falls caught, cameras as one zone", lambda m: f"{m['zone']['caught']}/{m['zone']['expected']}"),
@@ -290,14 +289,14 @@ def chart_stage_b(hist: list[dict], path: Path) -> Path | None:
     return path
 
 
-def chart_before_after(results: list[dict], path: Path) -> Path | None:
-    results = [r for r in results if r.get("mcfd")][:3]
+def chart_before_after(results: list[dict], names: list[str], path: Path) -> Path | None:
+    keep = [(r, n) for r, n in zip(results, names) if r.get("mcfd")][:4]
+    results, names = [r for r, _ in keep], [n for _, n in keep]
     if not results:
         return None
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    names = [variant_name(r) for r in results]
     panels = [
         ("Falls caught (zone, %)", "%", [_pct(r["mcfd"]["zone"]["caught"], r["mcfd"]["zone"]["expected"]) or 0 for r in results]),
         ("False alarms (zone)", "count", [r["mcfd"]["zone"]["false_alarm_count"] for r in results]),
@@ -313,7 +312,7 @@ def chart_before_after(results: list[dict], path: Path) -> Path | None:
             ax.annotate(f"{v:g}", (b.get_x() + b.get_width() / 2, b.get_height()), textcoords="offset points",
                         xytext=(0, 3), ha="center", fontsize=9, color=INK)
         ax.set_xticks([])
-        ax.set_xlim(-0.6, 2.6)          # room for 3 bars, so bar width doesn't depend on how many
+        ax.set_xlim(-0.6, 3.6)          # room for 4 bars, so bar width doesn't depend on how many
         ax.margins(y=0.15)
         if ylabel == "count":
             from matplotlib.ticker import MaxNLocator
@@ -384,16 +383,19 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--mcfd", default=os.environ.get("ML_MCFD_DIR"), required=not os.environ.get("ML_MCFD_DIR"))
     ap.add_argument("--run", default="mcfd", help="pose fine-tuning run name in <dataset>/work/runs")
-    ap.add_argument("--results", nargs="*", default=[], help="saved benchmark runs to compare; the first is 'before'")
+    ap.add_argument("--results", nargs="*", default=[], help="saved benchmark runs to compare, as NAME or NAME=label; the first is 'before'")
     args = ap.parse_args()
     root = Path(args.mcfd)
     run = root / "work" / "runs" / args.run
     OUT.mkdir(parents=True, exist_ok=True)
 
-    results = [json.loads((RESULTS / f"{n}.json").read_text(encoding="utf-8")) for n in args.results]
+    # each entry: a saved run name, optionally "=label" for the charts and tables
+    runs = [r.split("=", 1) for r in args.results]
+    results = [json.loads((RESULTS / f"{r[0]}.json").read_text(encoding="utf-8")) for r in runs]
+    names = [r[1] if len(r) > 1 else variant_name(res) for r, res in zip(runs, results)]
     epochs = pose_epochs(run)
     hist, acts = stage_b_rows()
-    summary, per_scenario, labels = before_after(results) if results else ([], [], [])
+    summary, per_scenario, labels = before_after(results, names) if results else ([], [], [])
     sheets = {
         "Before vs after": summary,
         "Per scenario": per_scenario,
@@ -406,14 +408,14 @@ def main() -> None:
     }
     for name, rows in sheets.items():
         write_csv(OUT / (name.lower().replace(" ", "_").replace("/", "_") + ".csv"), rows)
-    charts = [p for p in (chart_before_after(results, OUT / "before_after.png"),
+    charts = [p for p in (chart_before_after(results, names, OUT / "before_after.png"),
                           chart_pose(epochs, OUT / "pose_finetuning_progress.png"),
                           chart_stage_b(hist, OUT / "stage_b_training.png")) if p]
     notes = [
         "Fall detection: fine-tuning report",
         "",
         "Before vs after: the held-out test scenarios and cameras of the Multiple Cameras Fall Dataset (never used for training).",
-        "Variants, in order: " + "; ".join(f"{n} ({variant_name(r)})" for n, r in zip(args.results, results)),
+        "Variants, in order: " + "; ".join(f"{n} = saved run {r[0]}" for n, r in zip(names, runs)),
         "A fall counts when the person stays down at least confirm_seconds + 0.5 s; shorter ones are 'short falls'.",
         "Per scenario: 'zone' = the test cameras together, as one alert per fall would be raised.",
         "Pose fine-tuning per epoch: Ultralytics' training log. mAP50 = how well boxes / body points match the labels (0-1).",

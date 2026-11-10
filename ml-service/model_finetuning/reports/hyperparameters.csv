@@ -1,11 +1,11 @@
 part,setting,value,meaning
-pose fine-tuning,model,yolo26n-pose.pt,starting point (the standard model)
+pose fine-tuning,model,last.pt,starting point (the standard model)
 pose fine-tuning,epochs,15,passes over the training images
 pose fine-tuning,patience,6,stop after this many epochs without improvement
 pose fine-tuning,batch,8,images per step
 pose fine-tuning,imgsz,640,image size the model sees
-pose fine-tuning,optimizer,auto,how weights are updated (auto = chosen by Ultralytics)
-pose fine-tuning,lr0,0.01,starting learning rate
+pose fine-tuning,optimizer,AdamW,how weights are updated (auto = chosen by Ultralytics)
+pose fine-tuning,lr0,0.002,starting learning rate
 pose fine-tuning,lrf,0.01,"final learning rate, as a fraction of lr0"
 pose fine-tuning,cos_lr,True,learning rate follows a cosine curve
 pose fine-tuning,momentum,0.937,optimizer momentum
@@ -35,3 +35,15 @@ data split,validation scenarios,"3, 20",used during training to pick the best ep
 data split,test scenarios,"2, 5, 7, 10, 13, 19, 21, 24",never seen in training; all before/after numbers
 data split,training cameras,"1, 2, 4, 6, 7",
 data split,test cameras,"3, 5, 8",camera positions never seen in training
+Stage B classifier,hidden_layers,"[64, 32]",
+Stage B classifier,learning_rate,0.001,
+Stage B classifier,weight_decay,0.0001,
+Stage B classifier,dropout,0.2,
+Stage B classifier,batch_size,256,
+Stage B classifier,epochs,40,
+Stage B classifier,window_frames,10,
+Stage B classifier,optimizer,Adam,
+Stage B classifier,loss,"binary cross-entropy, weighted for class balance",
+Stage B classifier,augmentation,left-right mirroring,
+Stage B classifier,decision threshold,0.3,picked on validation for balanced accuracy
+Stage B classifier,trained on pose model,yolo26n-pose-finetuned-mcfDataset-111026.pt,

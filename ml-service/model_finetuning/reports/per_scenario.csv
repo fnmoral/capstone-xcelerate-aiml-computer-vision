@@ -1,65 +1,129 @@
 variant,scenario,camera,falls expected,caught,short falls,short caught,false alarms
-standard pose model + rules,2,cam3,1,0,0,0,0
-standard pose model + rules,2,cam5,1,0,0,0,0
-standard pose model + rules,2,cam8,1,0,0,0,0
-standard pose model + rules,2,zone,1,0,0,0,0
-standard pose model + rules,5,cam3,1,1,0,0,0
-standard pose model + rules,5,cam5,1,0,0,0,0
-standard pose model + rules,5,cam8,1,0,0,0,0
-standard pose model + rules,5,zone,1,1,0,0,0
-standard pose model + rules,7,cam3,1,0,0,0,0
-standard pose model + rules,7,cam5,1,0,0,0,0
-standard pose model + rules,7,cam8,1,0,0,0,0
-standard pose model + rules,7,zone,1,0,0,0,0
-standard pose model + rules,10,cam3,1,0,0,0,0
-standard pose model + rules,10,cam5,1,0,0,0,0
-standard pose model + rules,10,cam8,1,0,0,0,0
-standard pose model + rules,10,zone,1,0,0,0,0
-standard pose model + rules,13,cam3,0,0,1,0,0
-standard pose model + rules,13,cam5,0,0,1,0,1
-standard pose model + rules,13,cam8,0,0,1,0,0
-standard pose model + rules,13,zone,0,0,1,0,1
-standard pose model + rules,19,cam3,1,0,0,0,0
-standard pose model + rules,19,cam5,1,0,0,0,0
-standard pose model + rules,19,cam8,1,0,0,0,0
-standard pose model + rules,19,zone,1,0,0,0,0
-standard pose model + rules,21,cam3,1,0,0,0,0
-standard pose model + rules,21,cam5,1,0,0,0,0
-standard pose model + rules,21,cam8,1,0,0,0,0
-standard pose model + rules,21,zone,1,0,0,0,0
-standard pose model + rules,24,cam3,0,0,0,0,0
-standard pose model + rules,24,cam5,0,0,0,0,0
-standard pose model + rules,24,cam8,0,0,0,0,0
-standard pose model + rules,24,zone,0,0,0,0,0
-fine-tuned pose model + rules,2,cam3,1,1,0,0,0
-fine-tuned pose model + rules,2,cam5,1,1,0,0,0
-fine-tuned pose model + rules,2,cam8,1,1,0,0,0
-fine-tuned pose model + rules,2,zone,1,1,0,0,0
-fine-tuned pose model + rules,5,cam3,1,1,0,0,0
-fine-tuned pose model + rules,5,cam5,1,0,0,0,0
-fine-tuned pose model + rules,5,cam8,1,1,0,0,0
-fine-tuned pose model + rules,5,zone,1,1,0,0,0
-fine-tuned pose model + rules,7,cam3,1,1,0,0,0
-fine-tuned pose model + rules,7,cam5,1,1,0,0,0
-fine-tuned pose model + rules,7,cam8,1,1,0,0,0
-fine-tuned pose model + rules,7,zone,1,1,0,0,0
-fine-tuned pose model + rules,10,cam3,1,0,0,0,0
-fine-tuned pose model + rules,10,cam5,1,0,0,0,0
-fine-tuned pose model + rules,10,cam8,1,0,0,0,0
-fine-tuned pose model + rules,10,zone,1,0,0,0,0
-fine-tuned pose model + rules,13,cam3,0,0,1,1,0
-fine-tuned pose model + rules,13,cam5,0,0,1,1,2
-fine-tuned pose model + rules,13,cam8,0,0,1,1,0
-fine-tuned pose model + rules,13,zone,0,0,1,1,2
-fine-tuned pose model + rules,19,cam3,1,1,0,0,0
-fine-tuned pose model + rules,19,cam5,1,1,0,0,0
-fine-tuned pose model + rules,19,cam8,1,1,0,0,0
-fine-tuned pose model + rules,19,zone,1,1,0,0,0
-fine-tuned pose model + rules,21,cam3,1,1,0,0,0
-fine-tuned pose model + rules,21,cam5,1,0,0,0,0
-fine-tuned pose model + rules,21,cam8,1,1,0,0,0
-fine-tuned pose model + rules,21,zone,1,1,0,0,0
-fine-tuned pose model + rules,24,cam3,0,0,0,0,1
-fine-tuned pose model + rules,24,cam5,0,0,0,0,0
-fine-tuned pose model + rules,24,cam8,0,0,0,0,0
-fine-tuned pose model + rules,24,zone,0,0,0,0,1
+Standard model + rules,2,cam3,1,0,0,0,0
+Standard model + rules,2,cam5,1,0,0,0,0
+Standard model + rules,2,cam8,1,0,0,0,0
+Standard model + rules,2,zone,1,0,0,0,0
+Standard model + rules,5,cam3,1,1,0,0,0
+Standard model + rules,5,cam5,1,0,0,0,0
+Standard model + rules,5,cam8,1,0,0,0,0
+Standard model + rules,5,zone,1,1,0,0,0
+Standard model + rules,7,cam3,1,0,0,0,0
+Standard model + rules,7,cam5,1,0,0,0,0
+Standard model + rules,7,cam8,1,0,0,0,0
+Standard model + rules,7,zone,1,0,0,0,0
+Standard model + rules,10,cam3,1,0,0,0,0
+Standard model + rules,10,cam5,1,0,0,0,0
+Standard model + rules,10,cam8,1,0,0,0,0
+Standard model + rules,10,zone,1,0,0,0,0
+Standard model + rules,13,cam3,0,0,1,0,0
+Standard model + rules,13,cam5,0,0,1,0,1
+Standard model + rules,13,cam8,0,0,1,0,0
+Standard model + rules,13,zone,0,0,1,0,1
+Standard model + rules,19,cam3,1,0,0,0,0
+Standard model + rules,19,cam5,1,0,0,0,0
+Standard model + rules,19,cam8,1,0,0,0,0
+Standard model + rules,19,zone,1,0,0,0,0
+Standard model + rules,21,cam3,1,0,0,0,0
+Standard model + rules,21,cam5,1,0,0,0,0
+Standard model + rules,21,cam8,1,0,0,0,0
+Standard model + rules,21,zone,1,0,0,0,0
+Standard model + rules,24,cam3,0,0,0,0,0
+Standard model + rules,24,cam5,0,0,0,0,0
+Standard model + rules,24,cam8,0,0,0,0,0
+Standard model + rules,24,zone,0,0,0,0,0
+Fine-tuned 2 epochs + rules,2,cam3,1,1,0,0,0
+Fine-tuned 2 epochs + rules,2,cam5,1,1,0,0,0
+Fine-tuned 2 epochs + rules,2,cam8,1,1,0,0,0
+Fine-tuned 2 epochs + rules,2,zone,1,1,0,0,0
+Fine-tuned 2 epochs + rules,5,cam3,1,1,0,0,0
+Fine-tuned 2 epochs + rules,5,cam5,1,0,0,0,0
+Fine-tuned 2 epochs + rules,5,cam8,1,1,0,0,0
+Fine-tuned 2 epochs + rules,5,zone,1,1,0,0,0
+Fine-tuned 2 epochs + rules,7,cam3,1,1,0,0,0
+Fine-tuned 2 epochs + rules,7,cam5,1,1,0,0,0
+Fine-tuned 2 epochs + rules,7,cam8,1,1,0,0,0
+Fine-tuned 2 epochs + rules,7,zone,1,1,0,0,0
+Fine-tuned 2 epochs + rules,10,cam3,1,0,0,0,0
+Fine-tuned 2 epochs + rules,10,cam5,1,0,0,0,0
+Fine-tuned 2 epochs + rules,10,cam8,1,0,0,0,0
+Fine-tuned 2 epochs + rules,10,zone,1,0,0,0,0
+Fine-tuned 2 epochs + rules,13,cam3,0,0,1,1,0
+Fine-tuned 2 epochs + rules,13,cam5,0,0,1,1,2
+Fine-tuned 2 epochs + rules,13,cam8,0,0,1,1,0
+Fine-tuned 2 epochs + rules,13,zone,0,0,1,1,2
+Fine-tuned 2 epochs + rules,19,cam3,1,1,0,0,0
+Fine-tuned 2 epochs + rules,19,cam5,1,1,0,0,0
+Fine-tuned 2 epochs + rules,19,cam8,1,1,0,0,0
+Fine-tuned 2 epochs + rules,19,zone,1,1,0,0,0
+Fine-tuned 2 epochs + rules,21,cam3,1,1,0,0,0
+Fine-tuned 2 epochs + rules,21,cam5,1,0,0,0,0
+Fine-tuned 2 epochs + rules,21,cam8,1,1,0,0,0
+Fine-tuned 2 epochs + rules,21,zone,1,1,0,0,0
+Fine-tuned 2 epochs + rules,24,cam3,0,0,0,0,1
+Fine-tuned 2 epochs + rules,24,cam5,0,0,0,0,0
+Fine-tuned 2 epochs + rules,24,cam8,0,0,0,0,0
+Fine-tuned 2 epochs + rules,24,zone,0,0,0,0,1
+Fine-tuned 15 epochs + rules,2,cam3,1,1,0,0,0
+Fine-tuned 15 epochs + rules,2,cam5,1,1,0,0,0
+Fine-tuned 15 epochs + rules,2,cam8,1,1,0,0,0
+Fine-tuned 15 epochs + rules,2,zone,1,1,0,0,0
+Fine-tuned 15 epochs + rules,5,cam3,1,1,0,0,0
+Fine-tuned 15 epochs + rules,5,cam5,1,0,0,0,0
+Fine-tuned 15 epochs + rules,5,cam8,1,1,0,0,0
+Fine-tuned 15 epochs + rules,5,zone,1,1,0,0,0
+Fine-tuned 15 epochs + rules,7,cam3,1,1,0,0,0
+Fine-tuned 15 epochs + rules,7,cam5,1,1,0,0,0
+Fine-tuned 15 epochs + rules,7,cam8,1,1,0,0,0
+Fine-tuned 15 epochs + rules,7,zone,1,1,0,0,0
+Fine-tuned 15 epochs + rules,10,cam3,1,0,0,0,0
+Fine-tuned 15 epochs + rules,10,cam5,1,0,0,0,0
+Fine-tuned 15 epochs + rules,10,cam8,1,0,0,0,0
+Fine-tuned 15 epochs + rules,10,zone,1,0,0,0,0
+Fine-tuned 15 epochs + rules,13,cam3,0,0,1,1,0
+Fine-tuned 15 epochs + rules,13,cam5,0,0,1,1,2
+Fine-tuned 15 epochs + rules,13,cam8,0,0,1,1,0
+Fine-tuned 15 epochs + rules,13,zone,0,0,1,1,2
+Fine-tuned 15 epochs + rules,19,cam3,1,1,0,0,0
+Fine-tuned 15 epochs + rules,19,cam5,1,1,0,0,0
+Fine-tuned 15 epochs + rules,19,cam8,1,1,0,0,0
+Fine-tuned 15 epochs + rules,19,zone,1,1,0,0,0
+Fine-tuned 15 epochs + rules,21,cam3,1,1,0,0,0
+Fine-tuned 15 epochs + rules,21,cam5,1,0,0,0,0
+Fine-tuned 15 epochs + rules,21,cam8,1,0,0,0,0
+Fine-tuned 15 epochs + rules,21,zone,1,1,0,0,0
+Fine-tuned 15 epochs + rules,24,cam3,0,0,0,0,0
+Fine-tuned 15 epochs + rules,24,cam5,0,0,0,0,0
+Fine-tuned 15 epochs + rules,24,cam8,0,0,0,0,0
+Fine-tuned 15 epochs + rules,24,zone,0,0,0,0,0
+Fine-tuned 15 epochs + Stage B,2,cam3,1,1,0,0,0
+Fine-tuned 15 epochs + Stage B,2,cam5,1,1,0,0,0
+Fine-tuned 15 epochs + Stage B,2,cam8,1,1,0,0,0
+Fine-tuned 15 epochs + Stage B,2,zone,1,1,0,0,0
+Fine-tuned 15 epochs + Stage B,5,cam3,1,1,0,0,0
+Fine-tuned 15 epochs + Stage B,5,cam5,1,1,0,0,0
+Fine-tuned 15 epochs + Stage B,5,cam8,1,1,0,0,0
+Fine-tuned 15 epochs + Stage B,5,zone,1,1,0,0,0
+Fine-tuned 15 epochs + Stage B,7,cam3,1,1,0,0,0
+Fine-tuned 15 epochs + Stage B,7,cam5,1,1,0,0,0
+Fine-tuned 15 epochs + Stage B,7,cam8,1,1,0,0,0
+Fine-tuned 15 epochs + Stage B,7,zone,1,1,0,0,0
+Fine-tuned 15 epochs + Stage B,10,cam3,1,1,0,0,0
+Fine-tuned 15 epochs + Stage B,10,cam5,1,1,0,0,0
+Fine-tuned 15 epochs + Stage B,10,cam8,1,0,0,0,0
+Fine-tuned 15 epochs + Stage B,10,zone,1,1,0,0,0
+Fine-tuned 15 epochs + Stage B,13,cam3,0,0,1,0,1
+Fine-tuned 15 epochs + Stage B,13,cam5,0,0,1,0,1
+Fine-tuned 15 epochs + Stage B,13,cam8,0,0,1,0,1
+Fine-tuned 15 epochs + Stage B,13,zone,0,0,1,0,1
+Fine-tuned 15 epochs + Stage B,19,cam3,1,1,0,0,0
+Fine-tuned 15 epochs + Stage B,19,cam5,1,1,0,0,0
+Fine-tuned 15 epochs + Stage B,19,cam8,1,1,0,0,0
+Fine-tuned 15 epochs + Stage B,19,zone,1,1,0,0,0
+Fine-tuned 15 epochs + Stage B,21,cam3,1,1,0,0,0
+Fine-tuned 15 epochs + Stage B,21,cam5,1,0,0,0,0
+Fine-tuned 15 epochs + Stage B,21,cam8,1,1,0,0,0
+Fine-tuned 15 epochs + Stage B,21,zone,1,1,0,0,0
+Fine-tuned 15 epochs + Stage B,24,cam3,0,0,0,0,0
+Fine-tuned 15 epochs + Stage B,24,cam5,0,0,0,0,3
+Fine-tuned 15 epochs + Stage B,24,cam8,0,0,0,0,0
+Fine-tuned 15 epochs + Stage B,24,zone,0,0,0,0,3

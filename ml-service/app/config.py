@@ -18,7 +18,7 @@ from app.detection.fall_detection import MonitorConfig
 
 @dataclass(slots=True)
 class InferenceConfig:
-    weights: str = "models/yolo26n-pose.pt"
+    weights: str = "models/yolo26n-pose-finetuned-mcfDataset-111026.pt"
     device: str | int = "auto"
     half: bool = False            # FP16 on GPU: faster on modern NVIDIA cards, ignored on CPU
     conf: float = 0.4

@@ -84,3 +84,21 @@ def test_parse_list(text, expected):
 def test_parse_list_rejects_out_of_range():
     with pytest.raises(ValueError):
         mcfd.parse_list("0,9", 1, 8)
+
+
+def test_cache_key_changes_when_the_model_file_is_replaced(tmp_path):
+    """A retrained model saved under the same name must not be served the old model's cached results."""
+    import dataclasses
+    import os
+
+    from evaluation.evaluate import _fingerprint
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"video")
+    weights = tmp_path / "model.pt"
+    weights.write_bytes(b"old model")
+    cfg = Config()
+    cfg = dataclasses.replace(cfg, inference=dataclasses.replace(cfg.inference, weights=str(weights)))
+    before = _fingerprint(cfg, video)
+    weights.write_bytes(b"new, retrained model")
+    os.utime(weights, (1_900_000_000, 1_900_000_000))
+    assert _fingerprint(cfg, video) != before

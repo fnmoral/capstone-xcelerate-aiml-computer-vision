@@ -96,7 +96,7 @@ handshake:
   default_tenant_id: demo-facility
 
 inference:
-  weights: models/yolo26n-pose.pt   # n = fastest; s/m are more accurate but slower (downloads into models/)
+  weights: models/yolo26n-pose-finetuned-mcfDataset-111026.pt   # fine-tuned for falls (models/README.md); the standard model: models/yolo26n-pose.pt
   device: auto               # auto = GPU 0 if CUDA is available, else CPU; or a GPU index, or cpu
   half: false                # FP16 on GPU; measure first, it was slower on an RTX 3060 laptop
   conf: 0.4                  # a person is reported once detected this confidently
