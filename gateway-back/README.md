@@ -117,6 +117,27 @@ gateway-back/
 
 ---
 
+# Frontend Assets (gateway-ui)
+
+The Go backend serves the frontend Single Page Application (SPA) directly from the `cmd/api/dist/` directory.
+
+Whenever you update the frontend project (`gateway-ui`), you must rebuild it and update the `dist` folder inside the backend before running or compiling the Go application.
+
+## Steps
+
+1. Navigate to your frontend project directory (`gateway-ui`).
+
+2. Run the build command:
+
+   ```bash
+   pnpm build
+
+3. Copy or output the generated production files into:
+   ```bash
+   gateway-back/cmd/api/dist/
+
+---
+
 ## Configuration
 
 The gateway reads its configuration from `config.json` in the working directory.

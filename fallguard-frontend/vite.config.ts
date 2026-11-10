@@ -65,14 +65,17 @@ export default defineConfig({
     "import.meta.env.VITE_APP_VERSION": JSON.stringify(appVersion()),
   },
   server: {
-    // `npm run dev`: forward /api to the backend API (backend-module, published on 127.0.0.1:8100).
+    // `npm run dev`: forward /api to the backend API (backend-module, published on 127.0.0.1:8100)
+    // and /stream-hub to stream-hub (published on 127.0.0.1:9000). Separate override
+    // variables, so redirecting one proxy (e.g. VITE_API_PROXY to a remote backend) never
+    // silently drags the other along with it.
     proxy: {
       "/api": {
         target: process.env.VITE_API_PROXY ?? "http://localhost:8000",
         changeOrigin: true,
       },
       "/stream-hub": {
-        target: process.env.VITE_API_PROXY ?? "http://localhost:9000",
+        target: process.env.VITE_STREAM_HUB_PROXY ?? "http://localhost:9000",
         changeOrigin: true,
         ws: true,
       },
