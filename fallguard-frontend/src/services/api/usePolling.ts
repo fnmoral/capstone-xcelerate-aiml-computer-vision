@@ -4,7 +4,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * Fetches data now and every `intervalMs` while the page is visible.
  * Live data (cameras, incidents, alerts) is polled; there is no push channel yet.
  */
-export function usePolling<T>(fetcher: () => Promise<T>, intervalMs: number, deps: unknown[] = []) {
+export function usePolling<T>(
+  fetcher: () => Promise<T>,
+  intervalMs: number,
+  deps: unknown[] = [],
+  { whenHidden = false }: { whenHidden?: boolean } = {},
+) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -27,7 +32,7 @@ export function usePolling<T>(fetcher: () => Promise<T>, intervalMs: number, dep
     let timer: number | undefined;
     let cancelled = false;
     const tick = async () => {
-      if (!document.hidden) await reload();
+      if (whenHidden || !document.hidden) await reload();
       if (!cancelled && intervalMs > 0) timer = window.setTimeout(tick, intervalMs);
     };
     setLoading(true);
@@ -37,7 +42,7 @@ export function usePolling<T>(fetcher: () => Promise<T>, intervalMs: number, dep
       window.clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reload, intervalMs, ...deps]);
+  }, [reload, intervalMs, whenHidden, ...deps]);
 
   return { data, error, loading, reload };
 }

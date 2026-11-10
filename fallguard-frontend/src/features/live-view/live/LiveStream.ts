@@ -15,7 +15,16 @@ export interface LiveStreamOptions {
   delayMs: number;
   labelText: (label: string) => string;
   onResult?: (message: ResultMessage) => void;
+  /** "connecting" until the first frame, "live" while frames arrive, "stalled" when they stop. */
+  onStatus?: (status: LiveStatus) => void;
 }
+
+export type LiveStatus = "connecting" | "live" | "stalled";
+
+/** No new frame for this long = the picture on screen is frozen; say so instead of pretending. */
+const STALL_MS = 5000;
+const RETRY_MIN_MS = 1000;
+const RETRY_MAX_MS = 10000;
 
 export function supportsLiveStream(): boolean {
   return typeof window !== "undefined" && "VideoDecoder" in window;
@@ -43,6 +52,10 @@ export class LiveStream {
   private raf = 0;
   private resizeObserver: ResizeObserver | null = null;
   private disposed = false;
+  private retryTimer: number | undefined;
+  private retryDelay = RETRY_MIN_MS;
+  private lastFrameAt = 0;
+  private status: LiveStatus = "connecting";
   private readonly options: LiveStreamOptions;
 
   constructor(options: LiveStreamOptions) {
@@ -54,23 +67,57 @@ export class LiveStream {
   }
 
   start(): void {
-    const ws = new WebSocket(this.options.url);
-    ws.binaryType = "arraybuffer";
-    ws.onmessage = (event) => this.onMessage(event);
-    ws.onerror = () => {
-      if (!this.disposed)
-        console.error("Live video WebSocket error:", this.options.url);
-    };
-    this.ws = ws;
-
+    this.lastFrameAt = performance.now();
+    this.setStatus("connecting");
+    this.connect();
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(this.options.canvas);
     this.resize();
     this.raf = requestAnimationFrame(this.render);
   }
 
+  /** Opens the WebSocket. If it closes (stream-hub restart, network drop), retries with backoff. */
+  private connect(): void {
+    const ws = new WebSocket(this.options.url);
+    ws.binaryType = "arraybuffer";
+    ws.onopen = () => {
+      this.retryDelay = RETRY_MIN_MS;
+    };
+    ws.onmessage = (event) => this.onMessage(event);
+    ws.onerror = () => {
+      if (!this.disposed)
+        console.error("Live video WebSocket error:", this.options.url);
+    };
+    ws.onclose = () => {
+      if (this.disposed || this.ws !== ws) return;
+      this.resetDecoding();
+      this.retryTimer = window.setTimeout(() => this.connect(), this.retryDelay);
+      this.retryDelay = Math.min(this.retryDelay * 2, RETRY_MAX_MS);
+    };
+    this.ws = ws;
+  }
+
+  /** A new connection starts a new stream: wait for its first keyframe. */
+  private resetDecoding(): void {
+    this.assembler.reset();
+    this.detections.clear();
+    this.scheduler.clear();
+    if (this.decoder && this.decoder.state !== "closed") this.decoder.close();
+    this.decoder = null;
+    this.codec = null;
+    this.ptsOrigin = null;
+    this.waitingForKey = true;
+  }
+
+  private setStatus(status: LiveStatus): void {
+    if (status === this.status && status !== "connecting") return;
+    this.status = status;
+    this.options.onStatus?.(status);
+  }
+
   stop(): void {
     this.disposed = true;
+    window.clearTimeout(this.retryTimer);
     cancelAnimationFrame(this.raf);
     this.resizeObserver?.disconnect();
     this.ws?.close();
@@ -158,11 +205,16 @@ export class LiveStream {
     if (this.disposed) return;
     this.raf = requestAnimationFrame(this.render);
 
-    const next = this.scheduler.take();
+    const now = performance.now();
+    const next = this.scheduler.take(now);
     if (next) {
       this.current?.image.close();
       this.current = next;
       this.dirty = true;
+      this.lastFrameAt = now;
+      this.setStatus("live");
+    } else if (this.status === "live" && now - this.lastFrameAt > STALL_MS) {
+      this.setStatus("stalled");
     }
     if (!this.dirty || !this.current) return;
     this.dirty = false;

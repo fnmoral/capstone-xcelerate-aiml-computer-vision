@@ -60,10 +60,9 @@ export function CameraTile({
   onSelect?: (id: string) => void;
 }) {
   const watching = cam.on_gateway && cam.status !== "paused";
-  const down = cam.people.filter((p) => p.label !== "upright");
-  // Uncomment this part for the test without ml module
-  const broken = false;
-  // const broken = cam.health === "not_working";
+  // Only lying/falling count as down; "unclear" (too little visible) is not a fall.
+  const down = cam.people.filter((p) => p.label === "lying" || p.label === "falling");
+  const broken = cam.health === "not_working";
   const flagged = broken && cam.alert_offline;
 
   const placeholder = broken
@@ -97,9 +96,9 @@ export function CameraTile({
         tabIndex={select ? 0 : undefined}
         aria-label={select ? `Show ${cam.name} larger` : undefined}
       >
-        {/* uncomment this part for test without ml module */}
+        {/* Video comes straight from stream-hub, so it is shown even when the detector is
+            down; the tile is then outlined as not working, because nobody is being watched. */}
         {watching ? (
-          // {watching && cam.live ? (
           <Video cam={cam} live={live} />
         ) : (
           <p className="cam-tile__placeholder">{placeholder}</p>
