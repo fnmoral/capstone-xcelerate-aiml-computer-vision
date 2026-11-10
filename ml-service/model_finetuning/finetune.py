@@ -2,7 +2,7 @@
 
     python -m model_finetuning.finetune pose-labels --mcfd "C:/datasets/Fall Dataset"   # 1. label frames (hours on CPU)
     python -m model_finetuning.finetune finetune    --mcfd "..." --epochs 20            # 2. fine-tune the pose model
-    python -m model_finetuning.finetune stage-b     --mcfd "..." --weights models/yolo26n-pose-mcfd.pt  # 3. Stage B
+    python -m model_finetuning.finetune stage-b     --mcfd "..." --weights models/yolo26n-pose-finetuned-mcfDataset-<mmddyy>.pt  # 3. Stage B
 
 Then test with python -m evaluation.evaluate (see evaluate.py). Only the training scenarios and
 cameras of datasets.py are used, so the test scenarios and cameras stay unseen.
@@ -12,6 +12,7 @@ import argparse
 import collections
 import dataclasses
 import json
+from datetime import date
 import os
 import shutil
 import sys
@@ -174,7 +175,7 @@ def pose_labels_main() -> None:
 FINETUNE_DOC = """Fine-tune the pose model on the training set made by model_finetuning/finetune.py.
 
     python -m model_finetuning.finetune finetune --mcfd "C:/datasets/Fall Dataset" --epochs 20
-    -> models/yolo26n-pose-mcfd.pt (then set inference.weights in config.yaml)
+    -> models/yolo26n-pose-finetuned-mcfDataset-<mmddyy>.pt (then set inference.weights in config.yaml)
 
 Starts from the shipped yolo26n-pose.pt, so it keeps what it knows and learns people lying on
 the floor seen from ceiling cameras. On a CPU this takes hours; on a CUDA GPU minutes
@@ -183,7 +184,8 @@ the floor seen from ceiling cameras. On a CPU this takes hours; on a CUDA GPU mi
 
 sys.path.insert(0, str(ROOT))
 
-POSE_OUTPUT = ROOT / "models" / "yolo26n-pose-mcfd.pt"
+# Dated, so each fine-tuning run is kept as its own model (e.g. ...-mcfDataset-111026.pt for 10 Nov 2026).
+POSE_OUTPUT = ROOT / "models" / f"yolo26n-pose-finetuned-mcfDataset-{date.today():%m%d%y}.pt"
 
 
 def finetune_main() -> None:
@@ -195,6 +197,8 @@ def finetune_main() -> None:
     ap.add_argument("--batch", type=int, default=8)
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--name", default="mcfd")
+    ap.add_argument("--resume", action="store_true",
+                    help="continue a stopped run from its last epoch (same --name), instead of starting over")
     args = ap.parse_args()
 
     work = Path(args.mcfd) / "work"
@@ -203,14 +207,19 @@ def finetune_main() -> None:
         sys.exit(f"{data} not found: run python -m model_finetuning.finetune pose-labels first")
 
     from ultralytics import YOLO
-    model = YOLO(args.base)
-    model.train(
-        data=str(data), epochs=args.epochs, imgsz=args.imgsz, batch=args.batch, device=args.device,
-        project=str(work / "runs"), name=args.name, exist_ok=True,
-        workers=2, patience=6, plots=False, cos_lr=True,
-        # A fallen person can lie at any angle in the picture: let training see some rotation.
-        degrees=15.0, fliplr=0.5, mosaic=1.0, close_mosaic=3,
-    )
+    if args.resume:
+        last = work / "runs" / args.name / "weights" / "last.pt"
+        if not last.exists():
+            sys.exit(f"{last} not found: nothing to resume")
+        YOLO(str(last)).train(resume=True)  # keeps the run's own settings and epoch count
+    else:
+        YOLO(args.base).train(
+            data=str(data), epochs=args.epochs, imgsz=args.imgsz, batch=args.batch, device=args.device,
+            project=str(work / "runs"), name=args.name, exist_ok=True,
+            workers=2, patience=6, plots=False, cos_lr=True,
+            # A fallen person can lie at any angle in the picture: let training see some rotation.
+            degrees=15.0, fliplr=0.5, mosaic=1.0, close_mosaic=3,
+        )
     best = work / "runs" / args.name / "weights" / "best.pt"
     POSE_OUTPUT.parent.mkdir(exist_ok=True)
     shutil.copy2(best, POSE_OUTPUT)
@@ -223,7 +232,7 @@ def finetune_main() -> None:
 
 STAGE_B_DOC = """Train the Stage B classifier (app/detection/fall_detection.py) on the Multiple Cameras Fall Dataset.
 
-    python -m model_finetuning.finetune stage-b --mcfd "C:/datasets/Fall Dataset" --weights models/yolo26n-pose-mcfd.pt
+    python -m model_finetuning.finetune stage-b --mcfd "C:/datasets/Fall Dataset" --weights models/yolo26n-pose-finetuned-mcfDataset-<mmddyy>.pt
     -> models/stage_b.npz  (then set fall.classifier: learned in config.yaml)
 
 Examples come from the pose model's own output (the same detections the live service would
@@ -238,7 +247,11 @@ sys.path.insert(0, str(ROOT))
 
 STAGE_B_OUTPUT = ROOT / "models" / "stage_b.npz"
 VERSION = "0.1.0"
-HIDDEN = (64, 32)
+HIDDEN = (64, 32)        # hidden layer sizes of the small network
+LEARNING_RATE = 1e-3
+WEIGHT_DECAY = 1e-4
+DROPOUT = 0.2
+BATCH_SIZE = 256
 
 
 def flip(frame: np.ndarray) -> np.ndarray:
@@ -284,32 +297,37 @@ def train(x_tr, y_tr, x_va, y_va, epochs: int, seed: int = 0):
     for i in range(len(dims) - 1):
         layers.append(torch.nn.Linear(dims[i], dims[i + 1]))
         if i < len(dims) - 2:
-            layers += [torch.nn.ReLU(), torch.nn.Dropout(0.2)]
+            layers += [torch.nn.ReLU(), torch.nn.Dropout(DROPOUT)]
     net = torch.nn.Sequential(*layers)
     pos = max(float(y_tr.sum()), 1.0)
     loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor((len(y_tr) - pos) / pos))
-    opt = torch.optim.Adam(net.parameters(), lr=1e-3, weight_decay=1e-4)
+    opt = torch.optim.Adam(net.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
     xt, yt = torch.tensor(x_tr), torch.tensor(y_tr)
     xv, yv = torch.tensor(x_va), torch.tensor(y_va)
-    best, best_state = float("inf"), None
+    best, best_state, history = float("inf"), None, []
     for epoch in range(epochs):
         net.train()
-        for idx in torch.randperm(len(xt)).split(256):
+        losses = []
+        for idx in torch.randperm(len(xt)).split(BATCH_SIZE):
             opt.zero_grad()
-            loss_fn(net(xt[idx]).squeeze(1), yt[idx]).backward()
+            loss = loss_fn(net(xt[idx]).squeeze(1), yt[idx])
+            loss.backward()
             opt.step()
+            losses.append(float(loss))
         net.eval()
         with torch.no_grad():
             val = float(loss_fn(net(xv).squeeze(1), yv))
         if val < best:
             best, best_state = val, {k: v.clone() for k, v in net.state_dict().items()}
-        print(f"epoch {epoch + 1:2d}  validation loss {val:.4f}", flush=True)
+        history.append({"epoch": epoch + 1, "train_loss": round(float(np.mean(losses)), 5),
+                        "val_loss": round(val, 5), "best_so_far": val <= best})
+        print(f"epoch {epoch + 1:2d}  training loss {np.mean(losses):.4f}  validation loss {val:.4f}", flush=True)
     net.load_state_dict(best_state)
     net.eval()
     with torch.no_grad():
         p_va = torch.sigmoid(net(xv).squeeze(1)).numpy()
     linears = [m for m in net if isinstance(m, torch.nn.Linear)]
-    return [(m.weight.detach().numpy().T.copy(), m.bias.detach().numpy().copy()) for m in linears], p_va
+    return [(m.weight.detach().numpy().T.copy(), m.bias.detach().numpy().copy()) for m in linears], p_va, history
 
 
 def pick_threshold(p: np.ndarray, y: np.ndarray) -> float:
@@ -347,13 +365,15 @@ def stage_b_main() -> None:
     mean, std = x_tr.mean(0), np.maximum(x_tr.std(0), 1e-3)
     print(f"{len(y_tr)} training windows ({int(y_tr.sum())} down), {len(y_va)} validation ({int(y_va.sum())} down)")
 
-    layers, p_va = train(((x_tr - mean) / std).astype(np.float32), y_tr2, ((x_va - mean) / std).astype(np.float32),
+    layers, p_va, history = train(((x_tr - mean) / std).astype(np.float32), y_tr2, ((x_va - mean) / std).astype(np.float32),
                          y_va, args.epochs)
     threshold = pick_threshold(p_va, y_va)
     pred = p_va >= threshold
     print(f"threshold {threshold}: validation labelled down by activity:")
+    by_activity = {}
     for code in sorted(set(c_va.tolist())):
         m = c_va == code
+        by_activity[mcfd.ACTIVITY[code]] = {"windows": int(m.sum()), "labelled_down_pct": round(100 * float(pred[m].mean()), 1)}
         print(f"  {mcfd.ACTIVITY[code]:20s} {100 * pred[m].mean():5.1f}%  ({m.sum()} windows)")
 
     out = Path(args.output)
@@ -361,7 +381,24 @@ def stage_b_main() -> None:
     arrays = {f"w{i}": w for i, (w, _) in enumerate(layers)} | {f"b{i}": b for i, (_, b) in enumerate(layers)}
     np.savez(out, n_layers=len(layers), mean=mean.astype(np.float32), std=std.astype(np.float32),
              threshold=threshold, version=f"{VERSION}+{Path(cfg.inference.weights).stem}", **arrays)
-    print(f"saved {out}")
+    # A readable "model card" next to the model: settings, data and results (used by the report).
+    card = {
+        "version": f"{VERSION}+{Path(cfg.inference.weights).stem}",
+        "pose_weights": Path(cfg.inference.weights).name,
+        "hyperparameters": {"hidden_layers": list(HIDDEN), "learning_rate": LEARNING_RATE,
+                            "weight_decay": WEIGHT_DECAY, "dropout": DROPOUT, "batch_size": BATCH_SIZE,
+                            "epochs": args.epochs, "window_frames": WINDOW, "optimizer": "Adam",
+                            "loss": "binary cross-entropy, weighted for class balance",
+                            "augmentation": "left-right mirroring"},
+        "data": {"train_scenarios": train_s, "val_scenarios": list(mcfd.VAL_SCENARIOS),
+                 "cameras": list(mcfd.TRAIN_CAMERAS), "train_windows": int(len(y_tr)),
+                 "train_down": int(y_tr.sum()), "val_windows": int(len(y_va)), "val_down": int(y_va.sum())},
+        "threshold": threshold,
+        "validation_by_activity": by_activity,
+        "history": history,
+    }
+    out.with_suffix(".json").write_text(json.dumps(card, indent=2), encoding="utf-8")
+    print(f"saved {out} and {out.with_suffix('.json').name}")
 
 
 # ================================================================================================

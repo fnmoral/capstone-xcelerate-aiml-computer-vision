@@ -1,0 +1,695 @@
+{
+  "name": "10-test-finetuned-rules",
+  "date": "2026-11-10 13:05",
+  "commit": "ff5901e+uncommitted",
+  "settings": {
+    "rules": {
+      "lying_torso_angle_deg": 60,
+      "falling_torso_angle_deg": 35,
+      "lying_aspect_ratio": 1.3,
+      "fall_velocity": 1.2,
+      "standing_legs": 0.6,
+      "min_visible_keypoints": 6
+    },
+    "monitor": {
+      "confirm_seconds": 3,
+      "confirm_ratio": 0.8,
+      "recover_seconds": 3,
+      "lost_track_seconds": 10,
+      "high_after_seconds": 60,
+      "critical_after_seconds": 300
+    },
+    "detector": {
+      "min_keypoint_conf": 0.3,
+      "handoff_seconds": 2,
+      "classifier": "rules",
+      "learned_model": "C:\\Users\\Francis Neil Moral\\OneDrive\\12) Fanshawe College\\5) Level 3\\Capstone Project\\Project Code\\capstone-xcelerate-aiml-computer-vision\\ml-service\\models\\stage_b.npz",
+      "learned_min_keypoints": 3
+    },
+    "inference": {
+      "device": "auto",
+      "half": false,
+      "conf": 0.4,
+      "track_conf": 0.1,
+      "imgsz": 640,
+      "target_fps": 10,
+      "tracker": "bytetrack.yaml",
+      "weights": "yolo26n-pose-finetuned-mcfDataset-111026.pt"
+    }
+  },
+  "summary": {
+    "synthetic_falls_caught": "35/35",
+    "synthetic_recall_pct": 100.0,
+    "synthetic_false_alarms": 0,
+    "synthetic_false_alarm_scenarios": "0/10",
+    "synthetic_time_to_alert_s": 3.34,
+    "synthetic_start_error_s": 0.3,
+    "synthetic_falling_label_seen": "31/35",
+    "known_limits_passed": "0/3",
+    "video_falls_caught": "2/2",
+    "video_false_alarms": 0,
+    "mcfd_camera_falls_caught": "13/18",
+    "mcfd_camera_recall_pct": 72.2,
+    "mcfd_camera_false_alarms": 3,
+    "mcfd_zone_falls_caught": "5/6",
+    "mcfd_zone_false_alarms": 3,
+    "mcfd_zone_duplicate_alerts": 2,
+    "mcfd_zone_short_falls_caught": "1/1",
+    "mcfd_time_to_alert_s": 4.27
+  },
+  "synthetic": {
+    "fall_side": {
+      "description": "Falls sideways in front of the camera, lies 12 s, gets up",
+      "fall": true,
+      "known_limit": false,
+      "runs": 5,
+      "caught": 5,
+      "falls": 5,
+      "false_alarms": 0,
+      "time_to_alert_s": 3.32,
+      "start_error_s": 0.3,
+      "falling_seen": 5,
+      "wrong_down_pct": 0.0
+    },
+    "fall_front": {
+      "description": "Falls over facing the camera",
+      "fall": true,
+      "known_limit": false,
+      "runs": 5,
+      "caught": 5,
+      "falls": 5,
+      "false_alarms": 0,
+      "time_to_alert_s": 3.3,
+      "start_error_s": 0.22,
+      "falling_seen": 4,
+      "wrong_down_pct": 0.0
+    },
+    "fall_far": {
+      "description": "Falls far from the camera (person 110 px tall)",
+      "fall": true,
+      "known_limit": false,
+      "runs": 5,
+      "caught": 5,
+      "falls": 5,
+      "false_alarms": 0,
+      "time_to_alert_s": 3.3,
+      "start_error_s": 0.26,
+      "falling_seen": 5,
+      "wrong_down_pct": 0.0
+    },
+    "fall_noisy": {
+      "description": "Falls with jittery keypoints and many missed points",
+      "fall": true,
+      "known_limit": false,
+      "runs": 5,
+      "caught": 5,
+      "falls": 5,
+      "false_alarms": 0,
+      "time_to_alert_s": 3.3,
+      "start_error_s": 0.26,
+      "falling_seen": 5,
+      "wrong_down_pct": 0.0
+    },
+    "fall_legs_hidden": {
+      "description": "Falls behind furniture: hips visible, legs hidden",
+      "fall": true,
+      "known_limit": false,
+      "runs": 5,
+      "caught": 5,
+      "falls": 5,
+      "false_alarms": 0,
+      "time_to_alert_s": 3.34,
+      "start_error_s": 0.3,
+      "falling_seen": 5,
+      "wrong_down_pct": 0.0
+    },
+    "fall_detection_gaps": {
+      "description": "Falls; the detector misses the person in 40% of frames once down",
+      "fall": true,
+      "known_limit": false,
+      "runs": 5,
+      "caught": 5,
+      "falls": 5,
+      "false_alarms": 0,
+      "time_to_alert_s": 3.52,
+      "start_error_s": 0.46,
+      "falling_seen": 2,
+      "wrong_down_pct": 0.0
+    },
+    "fall_id_switch": {
+      "description": "Falls; the tracker gives the person a new ID on landing and twice more",
+      "fall": true,
+      "known_limit": false,
+      "runs": 5,
+      "caught": 5,
+      "falls": 5,
+      "false_alarms": 0,
+      "time_to_alert_s": 3.32,
+      "start_error_s": 0.3,
+      "falling_seen": 5,
+      "wrong_down_pct": 0.0
+    },
+    "fall_toward_camera": {
+      "description": "Falls with the feet toward the camera (body looks short, upright)",
+      "fall": true,
+      "known_limit": true,
+      "runs": 5,
+      "caught": 0,
+      "falls": 5,
+      "false_alarms": 0,
+      "time_to_alert_s": null,
+      "start_error_s": null,
+      "falling_seen": 1,
+      "wrong_down_pct": 0.0
+    },
+    "walk": {
+      "description": "Stands and walks around",
+      "fall": false,
+      "known_limit": false,
+      "runs": 5,
+      "caught": 0,
+      "falls": 0,
+      "false_alarms": 0,
+      "time_to_alert_s": null,
+      "start_error_s": null,
+      "falling_seen": 0,
+      "wrong_down_pct": 0.0
+    },
+    "arms_out": {
+      "description": "Stretches with both arms out wide",
+      "fall": false,
+      "known_limit": false,
+      "runs": 5,
+      "caught": 0,
+      "falls": 0,
+      "false_alarms": 0,
+      "time_to_alert_s": null,
+      "start_error_s": null,
+      "falling_seen": 0,
+      "wrong_down_pct": 0.0
+    },
+    "bend_tie_shoes": {
+      "description": "Bends over for 6 s (tying shoes, making a bed)",
+      "fall": false,
+      "known_limit": false,
+      "runs": 5,
+      "caught": 0,
+      "falls": 0,
+      "false_alarms": 0,
+      "time_to_alert_s": null,
+      "start_error_s": null,
+      "falling_seen": 0,
+      "wrong_down_pct": 0.3
+    },
+    "bend_deep": {
+      "description": "Bends over deeply, head below the hips, for 5 s",
+      "fall": false,
+      "known_limit": false,
+      "runs": 5,
+      "caught": 0,
+      "falls": 0,
+      "false_alarms": 0,
+      "time_to_alert_s": null,
+      "start_error_s": null,
+      "falling_seen": 0,
+      "wrong_down_pct": 0.2
+    },
+    "pick_up": {
+      "description": "Quickly bends to pick something up",
+      "fall": false,
+      "known_limit": false,
+      "runs": 5,
+      "caught": 0,
+      "falls": 0,
+      "false_alarms": 0,
+      "time_to_alert_s": null,
+      "start_error_s": null,
+      "falling_seen": 0,
+      "wrong_down_pct": 0.0
+    },
+    "sit_chair_fast": {
+      "description": "Drops quickly into a chair and sits 12 s",
+      "fall": false,
+      "known_limit": false,
+      "runs": 5,
+      "caught": 0,
+      "falls": 0,
+      "false_alarms": 0,
+      "time_to_alert_s": null,
+      "start_error_s": null,
+      "falling_seen": 0,
+      "wrong_down_pct": 0.0
+    },
+    "squat": {
+      "description": "Squats down for 6 s",
+      "fall": false,
+      "known_limit": false,
+      "runs": 5,
+      "caught": 0,
+      "falls": 0,
+      "false_alarms": 0,
+      "time_to_alert_s": null,
+      "start_error_s": null,
+      "falling_seen": 0,
+      "wrong_down_pct": 0.0
+    },
+    "sit_floor": {
+      "description": "Sits down on the floor with legs out for 12 s",
+      "fall": false,
+      "known_limit": false,
+      "runs": 5,
+      "caught": 0,
+      "falls": 0,
+      "false_alarms": 0,
+      "time_to_alert_s": null,
+      "start_error_s": null,
+      "falling_seen": 0,
+      "wrong_down_pct": 0.0
+    },
+    "at_table": {
+      "description": "Sits at a table: only the upper body is visible, arms spread",
+      "fall": false,
+      "known_limit": false,
+      "runs": 5,
+      "caught": 0,
+      "falls": 0,
+      "false_alarms": 0,
+      "time_to_alert_s": null,
+      "start_error_s": null,
+      "falling_seen": 0,
+      "wrong_down_pct": 0.0
+    },
+    "detector_glitches": {
+      "description": "Stands; two single-frame lying misdetections 3 s apart",
+      "fall": false,
+      "known_limit": false,
+      "runs": 5,
+      "caught": 0,
+      "falls": 0,
+      "false_alarms": 0,
+      "time_to_alert_s": null,
+      "start_error_s": null,
+      "falling_seen": 0,
+      "wrong_down_pct": 1.7
+    },
+    "kneel_look_under": {
+      "description": "Kneels and looks under furniture for 6 s, torso flat",
+      "fall": false,
+      "known_limit": true,
+      "runs": 5,
+      "caught": 0,
+      "falls": 0,
+      "false_alarms": 5,
+      "time_to_alert_s": null,
+      "start_error_s": null,
+      "falling_seen": 0,
+      "wrong_down_pct": 47.7
+    },
+    "lie_on_bed": {
+      "description": "Lies down slowly on a bed for 15 s",
+      "fall": false,
+      "known_limit": true,
+      "runs": 5,
+      "caught": 0,
+      "falls": 0,
+      "false_alarms": 5,
+      "time_to_alert_s": null,
+      "start_error_s": null,
+      "falling_seen": 0,
+      "wrong_down_pct": 74.1
+    }
+  },
+  "videos": {
+    "test.mp4": {
+      "note": "Real fall (dataset scenario 5, camera 3): falls, lies 3.8 s, gets up.",
+      "falls": 1,
+      "caught": 1,
+      "false_alarms": 0,
+      "time_to_alert_s": 4.47,
+      "start_error_s": 1.47,
+      "alerts": [
+        [
+          15.0,
+          12.0
+        ]
+      ],
+      "wrong_down_pct": 0.9,
+      "down_during_fall_pct": 43.1
+    },
+    "fall.mp4": {
+      "note": "Real fall (dataset scenario 2, camera 3): falls, lies 6.7 s.",
+      "falls": 1,
+      "caught": 1,
+      "false_alarms": 0,
+      "time_to_alert_s": 3.8,
+      "start_error_s": 0.8,
+      "alerts": [
+        [
+          16.3,
+          13.3
+        ],
+        [
+          16.8,
+          13.8
+        ]
+      ],
+      "wrong_down_pct": 20.3,
+      "down_during_fall_pct": 72.7
+    }
+  },
+  "mcfd": {
+    "cameras": [
+      3,
+      5,
+      8
+    ],
+    "scenarios": [
+      2,
+      5,
+      7,
+      10,
+      13,
+      19,
+      21,
+      24
+    ],
+    "need_down_s": 3.5,
+    "camera": {
+      "expected": 18,
+      "caught": 13,
+      "short": 3,
+      "short_caught": 3,
+      "duplicates": 3,
+      "time_to_alert_s": 4.27,
+      "start_error_s": 1.21,
+      "false_alarms": {
+        "moving down": 2,
+        "unannotated": 1
+      },
+      "false_alarm_count": 3
+    },
+    "zone": {
+      "expected": 6,
+      "caught": 5,
+      "short": 1,
+      "short_caught": 1,
+      "duplicates": 2,
+      "time_to_alert_s": 3.94,
+      "start_error_s": 0.92,
+      "false_alarms": {
+        "moving down": 2,
+        "unannotated": 1
+      },
+      "false_alarm_count": 3
+    },
+    "labels": {
+      "crouching": {
+        "frames": 346,
+        "down_pct": 20.8,
+        "unclear_pct": 0.0
+      },
+      "falling": {
+        "frames": 324,
+        "down_pct": 22.2,
+        "unclear_pct": 0.0
+      },
+      "lying on a sofa": {
+        "frames": 153,
+        "down_pct": 21.6,
+        "unclear_pct": 0.0
+      },
+      "lying on the ground": {
+        "frames": 1323,
+        "down_pct": 70.4,
+        "unclear_pct": 0.0
+      },
+      "moving down": {
+        "frames": 636,
+        "down_pct": 19.7,
+        "unclear_pct": 0.0
+      },
+      "moving up": {
+        "frames": 417,
+        "down_pct": 16.3,
+        "unclear_pct": 0.0
+      },
+      "sitting": {
+        "frames": 239,
+        "down_pct": 20.9,
+        "unclear_pct": 0.0
+      },
+      "unannotated": {
+        "frames": 232,
+        "down_pct": 9.9,
+        "unclear_pct": 0.0
+      },
+      "walking/standing": {
+        "frames": 4469,
+        "down_pct": 16.9,
+        "unclear_pct": 0.0
+      }
+    },
+    "per_scenario": {
+      "2": {
+        "cam3": {
+          "expected": 1,
+          "caught": 1,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 0
+        },
+        "cam5": {
+          "expected": 1,
+          "caught": 1,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 0
+        },
+        "cam8": {
+          "expected": 1,
+          "caught": 1,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 0
+        },
+        "zone": {
+          "expected": 1,
+          "caught": 1,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 0
+        }
+      },
+      "5": {
+        "cam3": {
+          "expected": 1,
+          "caught": 1,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 0
+        },
+        "cam5": {
+          "expected": 1,
+          "caught": 0,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 0
+        },
+        "cam8": {
+          "expected": 1,
+          "caught": 1,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 0
+        },
+        "zone": {
+          "expected": 1,
+          "caught": 1,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 0
+        }
+      },
+      "7": {
+        "cam3": {
+          "expected": 1,
+          "caught": 1,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 0
+        },
+        "cam5": {
+          "expected": 1,
+          "caught": 1,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 0
+        },
+        "cam8": {
+          "expected": 1,
+          "caught": 1,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 0
+        },
+        "zone": {
+          "expected": 1,
+          "caught": 1,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 0
+        }
+      },
+      "10": {
+        "cam3": {
+          "expected": 1,
+          "caught": 0,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 0
+        },
+        "cam5": {
+          "expected": 1,
+          "caught": 0,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 0
+        },
+        "cam8": {
+          "expected": 1,
+          "caught": 0,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 0
+        },
+        "zone": {
+          "expected": 1,
+          "caught": 0,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 0
+        }
+      },
+      "13": {
+        "cam3": {
+          "expected": 0,
+          "caught": 0,
+          "short": 1,
+          "short_caught": 1,
+          "false_alarms": 0
+        },
+        "cam5": {
+          "expected": 0,
+          "caught": 0,
+          "short": 1,
+          "short_caught": 1,
+          "false_alarms": 2
+        },
+        "cam8": {
+          "expected": 0,
+          "caught": 0,
+          "short": 1,
+          "short_caught": 1,
+          "false_alarms": 0
+        },
+        "zone": {
+          "expected": 0,
+          "caught": 0,
+          "short": 1,
+          "short_caught": 1,
+          "false_alarms": 2
+        }
+      },
+      "19": {
+        "cam3": {
+          "expected": 1,
+          "caught": 1,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 0
+        },
+        "cam5": {
+          "expected": 1,
+          "caught": 1,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 0
+        },
+        "cam8": {
+          "expected": 1,
+          "caught": 1,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 0
+        },
+        "zone": {
+          "expected": 1,
+          "caught": 1,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 0
+        }
+      },
+      "21": {
+        "cam3": {
+          "expected": 1,
+          "caught": 1,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 0
+        },
+        "cam5": {
+          "expected": 1,
+          "caught": 0,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 0
+        },
+        "cam8": {
+          "expected": 1,
+          "caught": 1,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 0
+        },
+        "zone": {
+          "expected": 1,
+          "caught": 1,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 0
+        }
+      },
+      "24": {
+        "cam3": {
+          "expected": 0,
+          "caught": 0,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 1
+        },
+        "cam5": {
+          "expected": 0,
+          "caught": 0,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 0
+        },
+        "cam8": {
+          "expected": 0,
+          "caught": 0,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 0
+        },
+        "zone": {
+          "expected": 0,
+          "caught": 0,
+          "short": 0,
+          "short_caught": 0,
+          "false_alarms": 1
+        }
+      }
+    }
+  }
+}

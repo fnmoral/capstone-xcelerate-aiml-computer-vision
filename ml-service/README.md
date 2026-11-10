@@ -142,7 +142,9 @@ ml-service/
 │       ├── results.py · database.py   JSONL files and snapshots · the PostgreSQL database
 │       └── clips.py · viewer.py       incident video clips · live view in the browser
 ├── model_finetuning/   ★ IMPROVING THE MODEL
-│   └── finetune.py          1 pose labels · 2 fine-tune the pose model · 3 Stage B classifier
+│   ├── finetune.py          1 pose labels · 2 fine-tune the pose model · 3 Stage B classifier
+│   ├── report.py            Excel/CSV/charts: per-epoch progress, hyperparameters, before vs after
+│   └── reports/             the latest report (fine_tuning_report.xlsx)
 ├── evaluation/         ★ TESTING THE MODEL
 │   ├── datasets.py          1 synthetic scenarios · 2 Multiple Cameras Fall Dataset (+ train/test split)
 │   ├── evaluate.py          the benchmark: falls caught, false alarms

@@ -1,0 +1,3 @@
+epoch,train box loss,train pose loss,train keypoint-visibility loss,train class loss,train body-point L1 loss,train body-point RLE loss,val box loss,val pose loss,val keypoint-visibility loss,val class loss,val body-point L1 loss,val body-point RLE loss,box precision,box recall,box mAP50,box mAP50-95,pose precision,pose recall,pose mAP50,pose mAP50-95,learning rate,time (s)
+1,1.83535,2.32523,0.27791,1.0921,0.01799,2.7625,2.20569,3.26981,0.25269,0.7927,0.02774,0,0.94583,0.97143,0.97416,0.42303,0.76887,0.61143,0.63853,0.33592,0.00066,1281.31
+2,1.78547,2.31076,0.2687,1.04327,0.01713,3.41477,2.23932,3.01421,0.26216,0.85134,0.0303,0,0.87945,0.95883,0.97919,0.46258,0.7753,0.7,0.70256,0.33922,0.00132,3049.23

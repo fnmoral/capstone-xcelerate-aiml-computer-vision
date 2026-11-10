@@ -61,6 +61,35 @@ a fall or adds a false alarm fails the tests.
 
 ---
 
+## Fine-tuned pose model (2026-11-10): falls caught 1/6 -> 5/6
+
+`models/yolo26n-pose-finetuned-mcfDataset-111026.pt`: the standard YOLO26n-pose fine-tuned on
+the Multiple Cameras Fall Dataset (training scenarios and cameras only), **2 of 15 planned
+epochs** (stopped for time; continue with `finetune --resume`). Labels came from a large
+teacher model, rotating frames when it couldn't find someone lying down (2,610 training images;
+81% of lying-on-floor frames labelled). Full numbers, per-epoch charts and every
+hyperparameter: [model_finetuning/reports/fine_tuning_report.xlsx](model_finetuning/reports/fine_tuning_report.xlsx).
+
+Held-out test scenarios and cameras (`09-test-standard-rules` -> `10-test-finetuned-rules`):
+
+| | Standard model | Fine-tuned (2 epochs) |
+|---|---|---|
+| Falls caught, cameras as one zone | 1/6 | **5/6** |
+| Falls caught, each camera on its own | 1/18 | **13/18** |
+| Lying-on-floor frames labelled down | 8% | **70%** |
+| False alarms (zone) | 1 | 3 |
+| Walking/standing frames wrongly labelled down | 0.2% | 16.9% |
+| Test videos caught | 1/2 | 2/2 |
+| Synthetic scenarios | 35/35, 0 false alarms | 35/35, 0 false alarms |
+
+**Why:** the model now sees people lying on the floor from ceiling cameras (70% of those
+frames, was 8%), so the rules finally get the body points they need.
+**Cost:** it also reads more standing and sitting people as down, so false alarms went up
+(1 -> 3) and some falls raise a second alert. **Next:** the remaining 13 epochs, then Stage B,
+which learns from examples which poses are really "down", to win the false alarms back.
+
+---
+
 ## First results on real footage (2026-11-09, no change to the logic)
 
 The Multiple Cameras Fall Dataset, cameras 3, 5 and 8, all 24 scenarios, settings of 0.2.0

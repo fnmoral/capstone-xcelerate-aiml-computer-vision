@@ -4,6 +4,7 @@ __pycache__/
 data/
 runs/
 *.pt
+!models/*.pt
 *.onnx
 *.engine
 evaluation/.cache/
