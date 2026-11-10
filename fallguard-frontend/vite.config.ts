@@ -72,7 +72,7 @@ export default defineConfig({
         changeOrigin: true,
       },
       "/stream-hub": {
-        target: process.env.VITE_API_PROXY ?? "http://localhost:9000",
+        target: process.env.VITE_STREAM_PROXY ?? "http://localhost:9000",
         changeOrigin: true,
         ws: true,
       },

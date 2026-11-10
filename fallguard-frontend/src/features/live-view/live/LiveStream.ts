@@ -78,7 +78,10 @@ export class LiveStream {
 
   /** Opens the WebSocket. If it closes (stream-hub restart, network drop), retries with backoff. */
   private connect(): void {
-    const ws = new WebSocket(this.options.url);
+    // Older browsers reject relative or http(s) WebSocket URLs: make it absolute ws(s)://.
+    const target = new URL(this.options.url, window.location.href);
+    target.protocol = target.protocol === "https:" ? "wss:" : target.protocol === "http:" ? "ws:" : target.protocol;
+    const ws = new WebSocket(target);
     ws.binaryType = "arraybuffer";
     ws.onopen = () => {
       this.retryDelay = RETRY_MIN_MS;
