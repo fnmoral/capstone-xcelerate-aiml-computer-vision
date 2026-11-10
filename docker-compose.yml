@@ -25,7 +25,7 @@ include:
 
 services:
   # An RTSP relay for testing without real cameras: this PC's webcam is published to it
-  # as /webcam (ml-service/setup_and_tools/fake_cameras/publish_webcam.py), and /test plays test-media/test.mp4 on
+  # as /webcam (ml-service/setup_and_tools/fake_cameras/publish_webcam.py), and /test plays test_videos/test.mp4 on
   # a loop while something watches it. Add them as rtsp://test-camera:8554/webcam or /test.
   test-camera:
     image: bluenviron/mediamtx:1.21.2-ffmpeg
@@ -38,7 +38,7 @@ services:
         -f rtsp -rtsp_transport tcp rtsp://localhost:$$RTSP_PORT/$$MTX_PATH
       MTX_PATHS_TEST_RUNONDEMANDRESTART: "yes"
     volumes:
-      - ./test-media:/media:ro
+      - ./test_videos:/media:ro
     ports:
       - "8554:8554"                      # also playable from the host: rtsp://localhost:8554/test
     networks: [fallguard]

@@ -24,8 +24,10 @@ service uses, with the settings in `config.yaml`, on two kinds of input:
   glitches...). They're fast and repeatable and need no GPU, but they test the *logic* only, not
   the model's eyesight.
 - **Recorded videos** listed in [evaluation/videos.yaml](evaluation/videos.yaml), with the real YOLO model
-  and tracker. We have only two so far (`test-media/fall.mp4`, where the fall is staged by
-  rotating the picture, and `test.mp4`, which has no fall).
+  and tracker: two real falls from the dataset's test scenarios, `test_videos/test.mp4` and
+  `fall.mp4` (made by `setup_and_tools/fake_cameras/make_test_videos.py`). Until run 07 these
+  were a staged clip (picture rotated) and a clip without a fall, so video numbers before
+  `08-real-fall-test-videos` aren't comparable with later ones.
 - **Multiple Cameras Fall Dataset** (optional, 3.6 GB, not in the repo; see
   [evaluation/datasets.py](evaluation/datasets.py)): 24 scenarios × 8 ceiling cameras, one actor, 25 falls, plus
   sitting, crouching and lying on a sofa. Scored per camera and per zone (the chosen cameras

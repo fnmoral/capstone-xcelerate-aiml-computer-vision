@@ -2,7 +2,7 @@
 # One-time setup of Docker Engine + NVIDIA GPU support inside WSL 2 Ubuntu (also works on
 # a plain Ubuntu server). Run as root:
 #
-#   wsl -d Ubuntu-24.04 -u root bash scripts/wsl-docker-setup.sh <linux-user>
+#   wsl -d Ubuntu-24.04 -u root bash fanshawe_server_and_WSL_Setup/wsl-docker-setup.sh <linux-user>
 #
 # Installs from the official Docker and NVIDIA apt repositories, enables systemd (WSL),
 # creates <linux-user> if missing and adds it to the docker group.

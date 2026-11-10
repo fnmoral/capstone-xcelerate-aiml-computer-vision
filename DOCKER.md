@@ -17,7 +17,7 @@ analytics, cameras, detection settings, system status.
 | `ml-service` | `ml-service/setup_and_tools/docker_server/` | `9999`, `127.0.0.1:8000` (viewer) | Needs an NVIDIA GPU; prod mode (IP cameras only) |
 | `stream-hub` | `stream-hub/` | `9000` (HTTP/WS), `8090` (gateways) | Forwards every camera to `ml-service:9999` |
 | `gateway-back` | `gateway-back/` | `8080` (web UI + API) | Cameras and settings kept in the `gateway-data` volume |
-| `test-camera` (dev; profile `test-camera`) | root | `8554` | RTSP relay: accepts published streams (this PC's webcam as `rtsp://test-camera:8554/webcam`), and plays `test-media/test.mp4` as `/test` while something watches it. Starts with the stack in dev (`COMPOSE_PROFILES=test-camera` in the root `.env`) |
+| `test-camera` (dev; profile `test-camera`) | root | `8554` | RTSP relay: accepts published streams (this PC's webcam as `rtsp://test-camera:8554/webcam`), and plays `test_videos/test.mp4` as `/test` while something watches it. Starts with the stack in dev (`COMPOSE_PROFILES=test-camera` in the root `.env`) |
 
 The root [`docker-compose.yml`](docker-compose.yml) runs everything; each folder's own
 compose file runs that module alone. All of them declare the same fixed-name Docker network
@@ -27,7 +27,7 @@ other by name (`db`, `ml-service`, `stream-hub`, `gateway-back`) and can start i
 ## 1. One-time machine setup
 
 **Linux server:** Docker Engine, the NVIDIA driver 580+ and the NVIDIA Container Toolkit;
-`sudo bash scripts/wsl-docker-setup.sh <user>` installs the Docker parts on Ubuntu.
+`sudo bash fanshawe_server_and_WSL_Setup/wsl-docker-setup.sh <user>` installs the Docker parts on Ubuntu.
 
 **Windows PC (WSL 2):**
 
@@ -35,7 +35,7 @@ other by name (`db`, `ml-service`, `stream-hub`, `gateway-back`) and can start i
 2. After the reboot, run the same command again if `wsl -l -v` shows no distribution:
    the first run only enables WSL itself.
 3. From the repo folder in PowerShell:
-   `wsl -d Ubuntu-24.04 -u root --cd "$PWD" -- bash scripts/wsl-docker-setup.sh <your-linux-user>`.
+   `wsl -d Ubuntu-24.04 -u root --cd "$PWD" -- bash fanshawe_server_and_WSL_Setup/wsl-docker-setup.sh <your-linux-user>`.
    It installs Docker Engine, the Compose plugin and the NVIDIA Container Toolkit, and makes
    `<your-linux-user>` the default WSL user.
 4. `wsl --terminate Ubuntu-24.04` so the default user takes effect.
@@ -109,7 +109,7 @@ ml-service\.venv\Scripts\python.exe ml-service\tools\publish_webcam.py --index 0
 and label on each person. Lie down in view for 3 seconds: an incident and an alert appear
 under **Fall Events** (with the photo), and the header shows "1 person down".
 
-**With a video file:** put a clip with people in it at `test-media/test.mp4` and add the
+**With a video file:** put a clip with people in it at `test_videos/test.mp4` and add the
 camera `rtsp://test-camera:8554/test` instead.
 
 A real IP camera works the same way: add its `rtsp://<ip>:554/...` URL with its username

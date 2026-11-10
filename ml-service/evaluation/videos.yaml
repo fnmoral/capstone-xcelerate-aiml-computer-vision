@@ -1,10 +1,11 @@
 # Ground truth for recorded videos used by the benchmark (python -m evaluation.evaluate).
+# Written by setup_and_tools/fake_cameras/make_test_videos.py: re-run that instead of editing.
 # Paths are relative to this file. A missing file is skipped: videos are git-ignored.
 # falls: [start, end] in seconds of the video for every period someone is down.
 videos:
-  - path: ../../test-media/fall.mp4
-    falls: [[8.0, 22.0]]
-    note: Staged - the picture is rotated 90 degrees from 8 s to 22 s, so both people suddenly look horizontal.
-  - path: ../../test-media/test.mp4
-    falls: []
-    note: Two people standing and walking in front of a bus. Nobody falls.
+  - path: ../../test_videos/test.mp4
+    falls: [[10.53, 15.2]]
+    note: "Real fall (dataset scenario 5, camera 3): falls, lies 3.8 s, gets up."
+  - path: ../../test_videos/fall.mp4
+    falls: [[12.5, 20.03]]
+    note: "Real fall (dataset scenario 2, camera 3): falls, lies 6.7 s."

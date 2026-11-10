@@ -1,17 +1,17 @@
 """Work on the course server over SSH (it only allows password logins).
 
-The login comes from scripts/server/.env (git-ignored; copy .env.example), never from
-the command line. The server's host key is pinned in scripts/server/known_hosts.
+The login comes from fanshawe_server_and_WSL_Setup/server/.env (git-ignored; copy .env.example), never from
+the command line. The server's host key is pinned in fanshawe_server_and_WSL_Setup/server/known_hosts.
 
-    python scripts/server/ssh.py "<command>"             run a command, print its output
-    python scripts/server/ssh.py --put <local> <remote>  upload a file (remote: relative to home)
-    python scripts/server/ssh.py --tunnel 9999:9999 8000:8000 --reverse 15432:db:5432
+    python fanshawe_server_and_WSL_Setup/server/ssh.py "<command>"             run a command, print its output
+    python fanshawe_server_and_WSL_Setup/server/ssh.py --put <local> <remote>  upload a file (remote: relative to home)
+    python fanshawe_server_and_WSL_Setup/server/ssh.py --tunnel 9999:9999 8000:8000 --reverse 15432:db:5432
         forward localhost:9999 to the server's 127.0.0.1:9999 (and so on), and the server's
         127.0.0.1:15432 back to db:5432 on this side, until Ctrl+C or the connection drops.
         TUNNEL_BIND=0.0.0.0 listens on every interface (inside a container).
 
-Setup (one time): python -m venv scripts/server/.venv
-                  scripts/server/.venv/Scripts/pip install paramiko
+Setup (one time): python -m venv fanshawe_server_and_WSL_Setup/server/.venv
+                  fanshawe_server_and_WSL_Setup/server/.venv/Scripts/pip install paramiko
 """
 import os
 import select
