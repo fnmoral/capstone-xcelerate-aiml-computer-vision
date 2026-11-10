@@ -11,7 +11,7 @@ Three parts:
   that look a bit like falls (bending, sitting, squatting...). Each runs with several random
   seeds. Fast, needs no model, and tests the fall logic on its own.
 - Recorded videos (evaluation/videos.yaml): the real model and tracker on real footage. The model's
-  output is cached in evaluation/.cache, so only a change to the model, tracker or detection/pose_model.py
+  output is cached in evaluation/.cache, so only a change to the model, tracker or app/detection/pose_model.py
   runs it again.
 - Multiple Cameras Fall Dataset (evaluation/datasets.py, optional, 3.6 GB, not in the repo): 24 scenarios
   filmed by 8 cameras, with falls, sitting, crouching and lying on a sofa. Scored per camera
@@ -37,13 +37,13 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-import config  # noqa: E402
+from app import config  # noqa: E402
 from evaluation import datasets as mcfd  # noqa: E402
 from evaluation.datasets import FRAME_H, FRAME_W, render, scenarios  # noqa: E402
-from detection.fall_detection import FallDetector  # noqa: E402
-from detection.fall_detection import FALLING, LYING, UNCLEAR  # noqa: E402
-from detection.fall_detection import STARTED  # noqa: E402
-from camera_service.camera_pipeline import IncidentAggregator  # noqa: E402
+from app.detection.fall_detection import FallDetector  # noqa: E402
+from app.detection.fall_detection import FALLING, LYING, UNCLEAR  # noqa: E402
+from app.detection.fall_detection import STARTED  # noqa: E402
+from app.camera_service.camera_pipeline import IncidentAggregator  # noqa: E402
 
 EVAL = Path(__file__).resolve().parent
 RESULTS = EVAL / "results"
@@ -143,7 +143,8 @@ def _fingerprint(cfg: config.Config, video: Path, extra: str = "") -> str:
         Path(inf.weights).name, str(inf.imgsz), str(inf.conf), str(inf.target_fps),
         json.dumps(asdict(inf), sort_keys=True, default=str),
         tracker.read_text() if tracker.is_file() else inf.tracker,
-        (ROOT / "detection" / "pose_model.py").read_text(encoding="utf-8"),
+        (ROOT / "app" / "detection" / "pose_model.py").read_text(encoding="utf-8"),
+        "app.detection.pose_model",  # cached Person objects are pickled by module path: a move must miss the cache
         ultralytics.__version__,
     ] + ([extra] if extra else [])
     return hashlib.sha256("\n".join(parts).encode()).hexdigest()[:16]
@@ -165,7 +166,7 @@ def detect_video(cfg: config.Config, video: Path, *, fps: float | None = None, o
         return pickle.loads(cached.read_bytes())
 
     import cv2
-    from detection.pose_model import PoseTracker
+    from app.detection.pose_model import PoseTracker
     tracker = PoseTracker.from_config(cfg.inference)
     cap = cv2.VideoCapture(str(video))
     fps = fps or cap.get(cv2.CAP_PROP_FPS) or 25.0

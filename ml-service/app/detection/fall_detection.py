@@ -188,7 +188,7 @@ class RuleClassifier:
 #
 # Stage B fall classifier: a small learned model over the last second of a person's body points.
 #
-# The rules (detection/fall_detection.py) measure angles in the picture, which fails for high ceiling
+# The rules (app/detection/fall_detection.py) measure angles in the picture, which fails for high ceiling
 # cameras: someone lying along the camera's line of sight looks upright. This model learns from
 # examples instead (model_finetuning/finetune.py, Multiple Cameras Fall Dataset), using where the body
 # points are inside the person's box, the box's size and place in the picture, and how they
@@ -400,7 +400,7 @@ class FallMonitor:
 #
 # Fall detection for one camera: tracked poses in, labels and incident events out.
 #
-# camera_service/camera_pipeline.py uses this for live cameras and evaluation/evaluate.py for the benchmark, so both
+# app/camera_service/camera_pipeline.py uses this for live cameras and evaluation/evaluate.py for the benchmark, so both
 # run exactly the same logic.
 
 VELOCITY_WINDOW_S = 0.5   # hip speed is the trend over this long (a fall takes under a second)
@@ -419,7 +419,7 @@ class DetectorConfig:
     # A new track ID that appears where a person was lost this recently carries on that
     # person's state (e.g. the tracker renumbered them as they fell). 0 = off.
     handoff_seconds: float = 2.0
-    # "rules" (detection/fall_detection.py, picture angles) or "learned" (detection/fall_detection.py, trained model).
+    # "rules" (app/detection/fall_detection.py, picture angles) or "learned" (app/detection/fall_detection.py, trained model).
     classifier: str = "rules"
     learned_model: str = "models/stage_b.npz"
     learned_min_keypoints: int = 3   # with fewer visible points the learned model says "unclear"

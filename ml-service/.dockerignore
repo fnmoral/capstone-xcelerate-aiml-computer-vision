@@ -9,10 +9,8 @@ runs/
 *.pt
 !models/*.pt
 # Not needed to run the service:
-tests/
 evaluation/
 setup_and_tools/
-Dockerfile
 .dockerignore
 .env
 **/.env

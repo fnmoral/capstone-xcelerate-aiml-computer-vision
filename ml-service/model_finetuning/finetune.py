@@ -22,8 +22,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-import config
-from detection.fall_detection import WINDOW, frame_vector, window_vector
+from app import config
+from app.detection.fall_detection import WINDOW, frame_vector, window_vector
 from evaluation import datasets as mcfd
 from evaluation.evaluate import detect_video
 
@@ -221,7 +221,7 @@ def finetune_main() -> None:
 # 3. Stage B: train the learned fall classifier
 # ================================================================================================
 
-STAGE_B_DOC = """Train the Stage B classifier (detection/fall_detection.py) on the Multiple Cameras Fall Dataset.
+STAGE_B_DOC = """Train the Stage B classifier (app/detection/fall_detection.py) on the Multiple Cameras Fall Dataset.
 
     python -m model_finetuning.finetune stage-b --mcfd "C:/datasets/Fall Dataset" --weights models/yolo26n-pose-mcfd.pt
     -> models/stage_b.npz  (then set fall.classifier: learned in config.yaml)

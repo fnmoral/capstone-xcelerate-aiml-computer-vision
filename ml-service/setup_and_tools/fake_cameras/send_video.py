@@ -16,7 +16,7 @@ import av
 import cv2
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from camera_service.video_input import write_message  # noqa: E402
+from app.camera_service.video_input import write_message  # noqa: E402
 
 
 def make_encoder(width: int, height: int, fps: int) -> av.CodecContext:

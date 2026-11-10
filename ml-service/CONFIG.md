@@ -209,7 +209,7 @@ Thresholds for the fall rules and incident timing. See *Detection logic in detai
 | Option | Default | Meaning |
 |---|---|---|
 | `fall.min_keypoint_conf` | `0.3` | Body points (shoulders, hips, ...) below this confidence are ignored |
-| `fall.classifier` | `rules` | What decides "down": `rules` (picture angles, `detection/fall_detection.py`, the thresholds below) or `learned` (a small trained model, `detection/fall_detection.py`, made by `python -m model_finetuning.finetune stage-b`). See [DETECTION_CHANGELOG.md](DETECTION_CHANGELOG.md) for how each scores |
+| `fall.classifier` | `rules` | What decides "down": `rules` (picture angles, `app/detection/fall_detection.py`, the thresholds below) or `learned` (a small trained model, `app/detection/fall_detection.py`, made by `python -m model_finetuning.finetune stage-b`). See [DETECTION_CHANGELOG.md](DETECTION_CHANGELOG.md) for how each scores |
 | `fall.learned_model` | `models/stage_b.npz` | The trained model for `classifier: learned`, relative to this file. Train it with the same `inference.weights` you run it with |
 | `fall.learned_min_keypoints` | `3` | With `learned`: fewer visible body points than this gives `unclear` |
 | `fall.lying_torso_angle_deg` | `60` | Torso angle from vertical that counts fully as lying |
@@ -350,7 +350,7 @@ python main.py --prod                  # try the prod settings on your PC
 | `ML_PROD_MODE` | `true` forces prod mode, `false` forces dev. Overrides `prod_mode` in the file; `--prod`/`--dev` override it. Set to `true` in the container |
 | `ML_CONFIG` | Path to the config file, instead of `config.yaml` next to `main.py` |
 | `ML_DATABASE_URL` | Database connection URL; overrides `database.url`. Required in prod mode with the shipped config |
-| `ML_TEST_DATABASE_URL`, `ML_TEST_ADMIN_URL` | Only for `tests/test_database.py`: a database loaded with `schema.sql` + `seed.sql` (use a non-superuser role so row-level security applies), and an admin URL for cleanup |
+| `ML_TEST_DATABASE_URL`, `ML_TEST_ADMIN_URL` | Only for `setup_and_tools/tests/test_database.py`: a database loaded with `schema.sql` + `seed.sql` (use a non-superuser role so row-level security applies), and an admin URL for cleanup |
 | `OPENCV_FFMPEG_CAPTURE_OPTIONS` | Advanced RTSP options. Defaults to `rtsp_transport;tcp`, which avoids broken frames on busy networks |
 
 ---
@@ -410,7 +410,7 @@ prod:
 ```
 
 and build the image with the same weights:
-`docker build --build-arg YOLO_WEIGHTS=yolo26s-pose.pt .` (or `YOLO_WEIGHTS` in
+`docker build -f setup_and_tools/docker_server/Dockerfile --build-arg YOLO_WEIGHTS=yolo26s-pose.pt .` (or `YOLO_WEIGHTS` in
 `setup_and_tools/docker_server/docker-compose.yml`). The build fails if the two don't match.
 
 **Overlapping cameras in production**: start the service, note each camera's ID from the

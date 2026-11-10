@@ -8,7 +8,7 @@ import av
 import numpy as np
 import pytest
 
-from camera_service.clips import ClipConfig, ClipJob, ClipRecorder, ClipWriter, nal_kind
+from app.camera_service.clips import ClipConfig, ClipJob, ClipRecorder, ClipWriter, nal_kind
 
 
 def split_annexb(data: bytes) -> list[bytes]:

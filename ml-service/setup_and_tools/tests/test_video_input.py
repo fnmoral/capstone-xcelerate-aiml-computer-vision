@@ -1,4 +1,4 @@
-"""Tests for camera_service/video_input.py: stream-hub's protocol, decoding, frame sampling.
+"""Tests for app/camera_service/video_input.py: stream-hub's protocol, decoding, frame sampling.
 """
 
 import random
@@ -11,7 +11,7 @@ import av
 import numpy as np
 import pytest
 
-from camera_service.video_input import FrameSampler, ProtocolError, VideoDecoder, detect_codec, read_handshake, read_message, to_annexb, write_message
+from app.camera_service.video_input import FrameSampler, ProtocolError, VideoDecoder, detect_codec, read_handshake, read_message, to_annexb, write_message
 
 
 # ================================================================================================

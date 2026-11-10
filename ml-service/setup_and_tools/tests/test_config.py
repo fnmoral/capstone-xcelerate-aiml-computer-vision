@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-import config
+from app import config
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]  # ml-service/
 
 
 def write(tmp_path, text):

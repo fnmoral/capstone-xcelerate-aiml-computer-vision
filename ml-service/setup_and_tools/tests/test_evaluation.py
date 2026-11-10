@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
-from config import Config
-from detection.pose_model import PoseTracker
+from app.config import Config
+from app.detection.pose_model import PoseTracker
 from evaluation import datasets as mcfd
 from evaluation.evaluate import _new_tally, run_synthetic, score_mcfd, summarize
 

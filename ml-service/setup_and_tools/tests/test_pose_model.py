@@ -1,4 +1,4 @@
-"""Tests for detection/pose_model.py: choosing the device, and the lap stand-in.
+"""Tests for app/detection/pose_model.py: choosing the device, and the lap stand-in.
 """
 
 import importlib.util
@@ -8,7 +8,7 @@ from unittest import mock
 
 import numpy as np
 
-from detection.pose_model import resolve_device
+from app.detection.pose_model import resolve_device
 
 
 # ================================================================================================
@@ -41,10 +41,10 @@ def test_explicit_values_pass_through():
 # 2. The lap stand-in used by the tracker
 # ================================================================================================
 #
-# detection/lap_compat/lap.py, the stand-in for the `lap` package (tested even when the real one is installed).
+# app/detection/lap_compat/lap.py, the stand-in for the `lap` package (tested even when the real one is installed).
 
 _spec = importlib.util.spec_from_file_location(
-    "lap_shim", Path(__file__).resolve().parents[1] / "detection" / "lap_compat" / "lap.py")
+    "lap_shim", Path(__file__).resolve().parents[2] / "app" / "detection" / "lap_compat" / "lap.py")
 lap_shim = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(lap_shim)
 lapjv = lap_shim.lapjv

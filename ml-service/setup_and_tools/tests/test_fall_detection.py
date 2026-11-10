@@ -1,9 +1,9 @@
-"""Tests for detection/fall_detection.py: measurements, rules, incident timing, FallDetector.
+"""Tests for app/detection/fall_detection.py: measurements, rules, incident timing, FallDetector.
 """
 
 import numpy as np
 
-from detection.fall_detection import DetectorConfig, FALLING, FallDetector, FallMonitor, LYING, MonitorConfig, RECOVERED, RuleClassifier, RuleThresholds, STARTED, UNCLEAR, UNRESOLVED, UPDATED, UPRIGHT, extract
+from app.detection.fall_detection import DetectorConfig, FALLING, FallDetector, FallMonitor, LYING, MonitorConfig, RECOVERED, RuleClassifier, RuleThresholds, STARTED, UNCLEAR, UNRESOLVED, UPDATED, UPRIGHT, extract
 
 
 # ================================================================================================

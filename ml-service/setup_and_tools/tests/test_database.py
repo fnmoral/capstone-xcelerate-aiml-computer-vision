@@ -3,7 +3,7 @@
 Skipped unless ML_TEST_DATABASE_URL is set, e.g.
     ML_TEST_DATABASE_URL=postgresql://ml_service:pw@127.0.0.1:5432/fallguard
     ML_TEST_ADMIN_URL=postgresql://postgres@127.0.0.1:5432/fallguard   (for cleanup; default: same)
-    python -m pytest tests/test_database.py
+    python -m pytest setup_and_tools/tests/test_database.py
 
 Use a non-superuser role for ML_TEST_DATABASE_URL, so row-level security is really applied.
 The pose model is replaced by a stub (no GPU needed); everything else is the real pipeline.
@@ -24,12 +24,12 @@ pytestmark = pytest.mark.skipif(not URL, reason="ML_TEST_DATABASE_URL not set")
 if URL:
     import psycopg
 
-import camera_service.camera_pipeline as pipeline_module
-from config import Config
-from camera_service.camera_pipeline import IncidentAggregator
-from camera_service.results import FanoutSink, SnapshotStore
-from camera_service.results import JsonlSink
-from tests.test_camera_pipeline import StubPose
+import app.camera_service.camera_pipeline as pipeline_module
+from app.config import Config
+from app.camera_service.camera_pipeline import IncidentAggregator
+from app.camera_service.results import FanoutSink, SnapshotStore
+from app.camera_service.results import JsonlSink
+from setup_and_tools.tests.test_camera_pipeline import StubPose
 
 TENANT_SLUG = "demo-facility"
 TENANT_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
@@ -59,7 +59,7 @@ def clock(monkeypatch):
 
 
 def make_sink(tmp_path):
-    from camera_service.database import PostgresSink
+    from app.camera_service.database import PostgresSink
 
     pg = PostgresSink(URL)
     return pg, FanoutSink([JsonlSink(str(tmp_path)), pg])
@@ -126,7 +126,7 @@ def test_zone_fall_from_database_zones(tmp_path, clock, db):
 
 
 def test_unzoned_unknown_camera_gets_stable_id(tmp_path, clock, db):
-    from camera_service.database import derived_camera_id
+    from app.camera_service.database import derived_camera_id
 
     pg, sink = make_sink(tmp_path)
     run_fall(tmp_path, clock, ["local-webcam"], str(TENANT_ID), {}, sink)
@@ -148,7 +148,7 @@ def test_unknown_tenant_is_skipped_not_fatal(tmp_path, clock, db):
 
 
 def test_partitions_exist_for_this_and_next_month(db):
-    from camera_service.database import PostgresSink
+    from app.camera_service.database import PostgresSink
 
     PostgresSink(URL).close()  # connecting runs create_monthly_partitions
     names = {r[0] for r in db.execute(
@@ -159,7 +159,7 @@ def test_partitions_exist_for_this_and_next_month(db):
 
 
 def test_database_down_does_not_block(tmp_path, clock):
-    from camera_service.database import PostgresSink
+    from app.camera_service.database import PostgresSink
 
     pg = PostgresSink("postgresql://nobody@127.0.0.1:1/none", connect_timeout_s=1)
     start = time.perf_counter()

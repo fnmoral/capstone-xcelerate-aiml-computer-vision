@@ -3,7 +3,7 @@
 Every change to how falls are detected, why we made it, and what it did to the benchmark
 numbers. Newest first.
 
-The version is `RuleClassifier.version` in `detection/fall_detection.py`. It is stored with every
+The version is `RuleClassifier.version` in `app/detection/fall_detection.py`. It is stored with every
 prediction (`model_predictions.model_version`), so any stored result can be traced back to
 the logic that produced it.
 
@@ -54,7 +54,7 @@ What the numbers mean:
 | 'falling' label shown | Falls where the orange `falling` label appeared while going down | higher |
 | Known-limit scenarios | Cases we *know* fail until a planned feature exists (listed below) | higher |
 
-`tests/test_evaluation.py` runs the synthetic part with every `pytest`, so a change that misses
+`setup_and_tools/tests/test_evaluation.py` runs the synthetic part with every `pytest`, so a change that misses
 a fall or adds a false alarm fails the tests.
 
 ---
@@ -132,7 +132,7 @@ Results of every step are in [evaluation/results/](evaluation/results/) (`00-bas
 - **Result:** no change on the benchmark: the synthetic scenarios don't run the model, and in our
   two videos the person's score never drops below 0.66. **Not yet verified**: needs footage
   of a real fall, ideally a dim room or an unusual angle.
-- **Files:** `detection/pose_model.py`, `config.py`, `config.yaml`
+- **Files:** `app/detection/pose_model.py`, `app/config.py`, `config.yaml`
 
 ### 5. A renumbered person keeps their fall
 
@@ -144,7 +144,7 @@ Results of every step are in [evaluation/results/](evaluation/results/) (`00-bas
 - **Result:** the `fall_id_switch` scenario (renumbered three times while lying) alerted after
   6.3 s on average, now 3.3 s, the same as a normal fall. Mean time to alert 3.77 → 3.34 s;
   error in recorded fall start 0.71 → 0.30 s.
-- **Files:** `detection/fall_detection.py`, `detection/fall_detection.py`
+- **Files:** `app/detection/fall_detection.py`, `app/detection/fall_detection.py`
 
 ### 4. Measure fall speed in body lengths, not screen size
 
@@ -161,7 +161,7 @@ Results of every step are in [evaluation/results/](evaluation/results/) (`00-bas
   too late: by the time the speed was measured, the person was already lying.
 - **Not done:** smoothing each body point over time. The fit already smooths the speed, and
   smoothing the points adds lag; worth revisiting with real noisy footage.
-- **Files:** `detection/fall_detection.py` (speed moved here from `state_machine.py`), `detection/fall_detection.py`,
+- **Files:** `app/detection/fall_detection.py` (speed moved here from `state_machine.py`), `app/detection/fall_detection.py`,
   `config.yaml`. The frontend's Detection Settings page shows the new unit.
 
 ### 3. Don't guess from too little evidence: the new `unclear` label
@@ -175,7 +175,7 @@ Results of every step are in [evaluation/results/](evaluation/results/) (`00-bas
   `lying`, so after 3 s it became an alarm. A person cut off by the frame edge has a misleading box
   too.
 - **Result:** the `at_table` false alarm is gone (5 → 0). No falls lost.
-- **Files:** `detection/fall_detection.py`, `detection/fall_detection.py`, `detection/fall_detection.py`, `camera_service/camera_pipeline.py` (grey box);
+- **Files:** `app/detection/fall_detection.py`, `app/detection/fall_detection.py`, `app/detection/fall_detection.py`, `app/camera_service/camera_pipeline.py` (grey box);
   frontend `CameraGrid.tsx` now counts only `lying`/`falling` as down; badges and legends show
   `Unclear`.
 
@@ -189,7 +189,7 @@ Results of every step are in [evaluation/results/](evaluation/results/) (`00-bas
   3 s, that was an alarm. Legs tell the difference: a bent-over person still stands on them.
 - **Result:** both bending scenarios went from a false alarm every time (5/5 and 5/5) to none.
   No falls lost.
-- **Files:** `detection/fall_detection.py`, `detection/fall_detection.py`
+- **Files:** `app/detection/fall_detection.py`, `app/detection/fall_detection.py`
 
 ### 1. Most of the 3 seconds must actually show the person down
 
@@ -202,11 +202,11 @@ Results of every step are in [evaluation/results/](evaluation/results/) (`00-bas
 - **Result:** the `detector_glitches` scenario had false alarms in 3 of 5 runs; now none.
   The "feet toward the camera" scenario was being caught 4/5 times only by that same flaw
   (stray frames adding up), so it now shows 0/5, which is its real state (see known limits).
-- **Files:** `detection/fall_detection.py`
+- **Files:** `app/detection/fall_detection.py`
 
 ### 0. Groundwork (no change in behaviour)
 
-- Moved the per-person logic from `camera_service/camera_pipeline.py` into `detection/fall_detection.py` (`FallDetector`),
+- Moved the per-person logic from `app/camera_service/camera_pipeline.py` into `app/detection/fall_detection.py` (`FallDetector`),
   so the live service and the benchmark run exactly the same code.
 - Added the benchmark (`evaluation/`) and recorded the baseline (`evaluation/results/00-baseline.json`).
 

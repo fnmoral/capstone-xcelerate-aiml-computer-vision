@@ -15,12 +15,12 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from camera_service.clips import ClipRecorder
-from camera_service.results import Sink, SnapshotStore, incident_record, prediction_record
-from camera_service.video_input import FrameSampler, VideoDecoder
-from config import Config
-from detection.fall_detection import FALLING, FallDetector, Incident, IncidentEvent, LYING, RECOVERED, STARTED, UNCLEAR, UNRESOLVED, UPDATED
-from detection.pose_model import Person, PoseTracker
+from app.camera_service.clips import ClipRecorder
+from app.camera_service.results import Sink, SnapshotStore, incident_record, prediction_record
+from app.camera_service.video_input import FrameSampler, VideoDecoder
+from app.config import Config
+from app.detection.fall_detection import FALLING, FallDetector, Incident, IncidentEvent, LYING, RECOVERED, STARTED, UNCLEAR, UNRESOLVED, UPDATED
+from app.detection.pose_model import Person, PoseTracker
 
 
 # ================================================================================================

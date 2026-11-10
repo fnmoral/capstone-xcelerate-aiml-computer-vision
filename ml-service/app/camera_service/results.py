@@ -14,7 +14,7 @@ import cv2
 import numpy as np
 
 if TYPE_CHECKING:  # only for type hints: camera_pipeline imports this module
-    from camera_service.camera_pipeline import ZoneIncident
+    from app.camera_service.camera_pipeline import ZoneIncident
 
 
 # ================================================================================================
@@ -25,7 +25,7 @@ if TYPE_CHECKING:  # only for type hints: camera_pipeline imports this module
 #
 # - prediction records: one per person per `prediction_interval_s` (model_predictions table)
 # - incident records: one per zone-level incident event (incidents, incident_cameras, alerts)
-# - clip records: one per saved incident video clip, per camera (camera_service/clips.py)
+# - clip records: one per saved incident video clip, per camera (app/camera_service/clips.py)
 #
 # Field names follow backend-module/db/schema.sql. Timestamps are timezone-aware datetimes;
 # each sink serialises them as it needs. Snapshots are saved once by SnapshotStore, and the

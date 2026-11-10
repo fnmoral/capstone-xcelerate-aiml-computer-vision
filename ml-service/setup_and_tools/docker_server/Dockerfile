@@ -4,7 +4,7 @@
 # Host requirements: NVIDIA driver 580+ (for CUDA 13.0) and the NVIDIA Container Toolkit.
 # The PyTorch wheel bundles the CUDA runtime, so a plain Python base image is enough.
 #
-#   docker build -t ml-service .
+#   docker build -f setup_and_tools/docker_server/Dockerfile -t ml-service .    (from ml-service/)
 #   docker run --gpus all -p 9999:9999 -v ml-data:/app/data ml-service
 
 ARG PYTHON_VERSION=3.15
@@ -19,7 +19,7 @@ RUN apt-get update \
 RUN python -m venv /opt/venv
 ENV PATH=/opt/venv/bin:$PATH
 
-# CUDA build by default; ../docker-compose.cpu.yml passes the CPU index for machines
+# CUDA build by default; the root docker-compose.cpu.yml passes the CPU index for machines
 # without an NVIDIA GPU (Macs, laptops).
 ARG TORCH_INDEX=https://download.pytorch.org/whl/cu130
 RUN pip install --no-cache-dir --upgrade pip \
@@ -27,7 +27,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 COPY requirements.txt .
 # PyYAML and lap build from source here (with the compiler), so the image uses the
-# real packages and detection/lap_compat/lap.py stays unused.
+# real packages and app/detection/lap_compat/lap.py stays unused.
 RUN pip install --no-cache-dir -r requirements.txt "lap>=0.5.12"
 
 # ---------- runtime ----------
@@ -64,7 +64,7 @@ import numpy as np
 from ultralytics import YOLO, settings
 
 sys.path.insert(0, "/app")
-import config
+from app import config
 
 # The real database URL is only given at runtime; the check below just needs one present.
 os.environ.setdefault("ML_DATABASE_URL", "postgresql://build-check@localhost/none")

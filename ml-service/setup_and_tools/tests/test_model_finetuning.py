@@ -35,7 +35,7 @@ def test_label_line_is_normalised_yolo_pose():
 
 
 def _tiny_model(path, threshold=0.5, bias=0.0):
-    from detection.fall_detection import FRAME_DIM
+    from app.detection.fall_detection import FRAME_DIM
     rng = np.random.default_rng(0)
     d = FRAME_DIM * 3
     np.savez(path, n_layers=2, w0=rng.normal(0, 0.1, (d, 4)).astype(np.float32), b0=np.zeros(4, np.float32),
@@ -44,7 +44,7 @@ def _tiny_model(path, threshold=0.5, bias=0.0):
 
 
 def test_learned_classifier_matches_a_direct_calculation(tmp_path):
-    from detection.fall_detection import LearnedClassifier, window_vector
+    from app.detection.fall_detection import LearnedClassifier, window_vector
     _tiny_model(tmp_path / "m.npz")
     clf = LearnedClassifier(tmp_path / "m.npz")
     rng = np.random.default_rng(1)
@@ -57,9 +57,9 @@ def test_learned_classifier_matches_a_direct_calculation(tmp_path):
 
 
 def test_detector_uses_the_learned_model_when_configured(tmp_path):
-    from detection.fall_detection import DetectorConfig, FallDetector
-    from detection.fall_detection import LYING, RuleThresholds
-    from detection.fall_detection import MonitorConfig
+    from app.detection.fall_detection import DetectorConfig, FallDetector
+    from app.detection.fall_detection import LYING, RuleThresholds
+    from app.detection.fall_detection import MonitorConfig
     _tiny_model(tmp_path / "m.npz", bias=50.0)   # always "down"
     det = FallDetector(RuleThresholds(), MonitorConfig(),
                        DetectorConfig(classifier="learned", learned_model=str(tmp_path / "m.npz")))

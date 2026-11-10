@@ -10,10 +10,10 @@ from pathlib import Path
 
 import yaml
 
-from camera_service.clips import ClipConfig
-from detection.fall_detection import DetectorConfig
-from detection.fall_detection import RuleThresholds
-from detection.fall_detection import MonitorConfig
+from app.camera_service.clips import ClipConfig
+from app.detection.fall_detection import DetectorConfig
+from app.detection.fall_detection import RuleThresholds
+from app.detection.fall_detection import MonitorConfig
 
 
 @dataclass(slots=True)

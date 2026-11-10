@@ -1,4 +1,4 @@
-"""Tests for camera_service/camera_pipeline.py: the camera pipeline and zones.
+"""Tests for app/camera_service/camera_pipeline.py: the camera pipeline and zones.
 """
 
 import json
@@ -6,13 +6,13 @@ import json
 import numpy as np
 import pytest
 
-import camera_service.camera_pipeline as pipeline_module
-import config
-from camera_service.camera_pipeline import IncidentAggregator
-from camera_service.results import JsonlSink, SnapshotStore
-from config import Config
-from detection.fall_detection import Incident, IncidentEvent, RECOVERED, STARTED, UNRESOLVED, UPDATED
-from detection.pose_model import Person
+import app.camera_service.camera_pipeline as pipeline_module
+from app import config
+from app.camera_service.camera_pipeline import IncidentAggregator
+from app.camera_service.results import JsonlSink, SnapshotStore
+from app.config import Config
+from app.detection.fall_detection import Incident, IncidentEvent, RECOVERED, STARTED, UNRESOLVED, UPDATED
+from app.detection.pose_model import Person
 
 
 # ================================================================================================

@@ -130,26 +130,28 @@ through exactly the same steps as an IP camera, so prototyping results carry ove
 
 ```
 ml-service/
-├── main.py, config.py, config.yaml   start here: starts the cameras and runs the model; settings
-├── detection/        ★ THE MACHINE-LEARNING MODEL
-│   ├── pose_model.py        YOLO26-pose: people, 17 body points, track IDs
-│   └── fall_detection.py    who has fallen: 1 measurements · 2 rules · 3 learned model · 4 incident timing · 5 FallDetector
-├── model_finetuning/ ★ IMPROVING THE MODEL
+├── main.py, config.yaml   start here: `python main.py`; the settings file
+├── app/                ★ THE LIVE SYSTEM (what runs on the cameras)
+│   ├── config.py            reads config.yaml
+│   ├── detection/           ★ THE MACHINE-LEARNING MODEL
+│   │   ├── pose_model.py        YOLO26-pose: people, 17 body points, track IDs
+│   │   └── fall_detection.py    who has fallen: 1 measurements · 2 rules · 3 learned model · 4 incident timing · 5 FallDetector
+│   └── camera_service/      video in, results out
+│       ├── video_input.py       stream-hub's TCP messages, decoding video into frames
+│       ├── camera_pipeline.py   one camera from frames to incidents; zones merge cameras of one area
+│       ├── results.py · database.py   JSONL files and snapshots · the PostgreSQL database
+│       └── clips.py · viewer.py       incident video clips · live view in the browser
+├── model_finetuning/   ★ IMPROVING THE MODEL
 │   └── finetune.py          1 pose labels · 2 fine-tune the pose model · 3 Stage B classifier
-├── evaluation/       ★ TESTING THE MODEL
+├── evaluation/         ★ TESTING THE MODEL
 │   ├── datasets.py          1 synthetic scenarios · 2 Multiple Cameras Fall Dataset (+ train/test split)
 │   ├── evaluate.py          the benchmark: falls caught, false alarms
 │   └── results/             every saved benchmark run (DETECTION_CHANGELOG.md explains them)
-├── models/           the model files to choose from (see models/README.md)
-├── camera_service/   running the model on live cameras
-│   ├── video_input.py       stream-hub's TCP messages, decoding video into frames
-│   ├── camera_pipeline.py   one camera from frames to incidents; zones merge cameras of one area
-│   ├── results.py · database.py   JSONL files and snapshots · the PostgreSQL database
-│   └── clips.py · viewer.py       incident video clips · live view in the browser
-├── setup_and_tools/  everything around the app
-│   ├── docker_server/       Docker setup to run ml-service on the GPU server
-│   └── fake_cameras/        fake cameras for testing without real ones (send_video.py, publish_webcam.py)
-└── tests/            one test file per module above (python -m pytest)
+├── models/             the model files to choose from (see models/README.md)
+└── setup_and_tools/    everything around the app
+    ├── docker_server/       Dockerfile and docker-compose.yml for the GPU server
+    ├── fake_cameras/        fake cameras for testing without real ones (send_video.py, publish_webcam.py)
+    └── tests/               automatic checks, one file per module (python -m pytest)
 ```
 
 Long files are split into numbered sections with a banner comment, e.g.
@@ -174,7 +176,7 @@ A person is reported once detected with confidence `inference.conf` (0.4). After
 stay tracked down to `inference.track_conf` (0.1), because people lying on the floor get
 lower scores than people standing, and we must not lose someone just as they fall.
 
-### 2. Measurements (`detection/fall_detection.py`, section 1)
+### 2. Measurements (`app/detection/fall_detection.py`, section 1)
 
 | Measurement | How it is computed | What it tells us |
 |---|---|---|
@@ -185,7 +187,7 @@ lower scores than people standing, and we must not lose someone just as they fal
 | Head below hips | Nose lower in the image than the hip midpoint | Strong hint the person is on the floor |
 | Visible points | Keypoints at or above `min_keypoint_conf` | Too few = not enough to decide |
 
-### 3. Labels (`detection/fall_detection.py`, sections 2-3)
+### 3. Labels (`app/detection/fall_detection.py`, sections 2-3)
 
 Each person in each frame gets exactly one label and a confidence between 0 and 1.
 
@@ -215,7 +217,7 @@ The rules are checked in this order:
    **`falling`**. Faster drops give higher confidence.
 4. **Upright.** Anything else is **`upright`**, with confidence 1 − lying score.
 
-### 4. Decisions: incidents (`detection/fall_detection.py`, section 4)
+### 4. Decisions: incidents (`app/detection/fall_detection.py`, section 4)
 
 Each tracked person has a small state machine. Being *down* means the label is `falling` or
 `lying`. An `unclear` frame changes nothing: it neither confirms nor recovers.
@@ -230,7 +232,7 @@ Each tracked person has a small state machine. Being *down* means the label is `
 **Renumbered people.** Trackers often give someone a new ID as they fall, because their box
 suddenly changes shape. A new ID that appears near where a person was lost within
 `handoff_seconds` (2 s) takes over that person's state, so the 3-second timer doesn't restart
-and an open incident stays with them (`detection/fall_detection.py`).
+and an open incident stays with them (`app/detection/fall_detection.py`).
 
 What this filters out:
 
@@ -247,7 +249,7 @@ A camera that disconnects with an incident still open closes it as `unresolved`.
 recorded videos; [DETECTION_CHANGELOG.md](DETECTION_CHANGELOG.md) records each change and
 what it did to the numbers.
 
-### 5. Zones: one alert per fall across overlapping cameras (`camera_service/camera_pipeline.py`)
+### 5. Zones: one alert per fall across overlapping cameras (`app/camera_service/camera_pipeline.py`)
 
 Each camera's state machine only knows its own people. Track IDs are per camera, so one
 person seen by two cameras is two tracks. Cameras that see the same area are grouped into a
@@ -312,8 +314,8 @@ Python 3.15 is new, so a few packages need workarounds until they publish 3.15 w
 - **PyYAML** has no 3.15 wheel; `PYYAML_FORCE_LIBYAML=0` builds the pure-Python version
   instead of failing for lack of a C++ compiler.
 - **lap**, which Ultralytics' ByteTrack imports, cannot be built without a C++ compiler.
-  `detection/lap_compat/lap.py` stands in for it using Ultralytics' own NumPy solver and is only used
-  when the real package is missing. Delete `detection/lap_compat/` once `pip install lap` works.
+  `app/detection/lap_compat/lap.py` stands in for it using Ultralytics' own NumPy solver and is only used
+  when the real package is missing. Delete `app/detection/lap_compat/` once `pip install lap` works.
 
 The YOLO26 weights (`models/yolo26n-pose.pt`) download automatically on first run.
 
@@ -412,7 +414,7 @@ Details of the database setup: [backend-module/db/README.md](../backend-module/d
 How the image differs from the Windows setup:
 
 - **No workarounds needed.** The build stage has a C compiler, so the real PyYAML and `lap`
-  are built and `detection/lap_compat/lap.py` stays unused.
+  are built and `app/detection/lap_compat/lap.py` stays unused.
 - **Works offline.** The weights are downloaded at build time
   (`--build-arg YOLO_WEIGHTS=yolo26s-pose.pt` for a bigger model). The build also runs the
   tracker once, so a missing package fails the build instead of Ultralytics trying to

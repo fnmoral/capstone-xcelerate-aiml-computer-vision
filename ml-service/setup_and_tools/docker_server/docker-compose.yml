@@ -11,6 +11,7 @@ services:
   ml-service:
     build:
       context: ../..
+      dockerfile: setup_and_tools/docker_server/Dockerfile
       args:
         YOLO_WEIGHTS: yolo26n-pose.pt   # must match prod: inference: weights in config.yaml
     image: capstone/ml-service:latest

@@ -2,7 +2,7 @@
 
 Ultralytics' ByteTrack calls lap.lapjv(cost, extend_cost=True, cost_limit=thresh).
 This reproduces that call on top of Ultralytics' own pure-NumPy assignment solver.
-detection/pose_model.py only puts this on the path when the real package is missing, so
+app/detection/pose_model.py only puts this on the path when the real package is missing, so
 delete this folder once `pip install lap` works on 3.15.
 """
 
