@@ -1,0 +1,48 @@
+# Run ml-service on the GPU server, in prod mode (IP cameras only):
+#   (start the database first: cd backend-module && docker compose up -d)
+#   cd ml-service/setup_and_tools/docker_server
+#   cp .env.example .env        # set ML_DATABASE_URL
+#   docker compose up -d --build
+#   docker compose logs -f ml-service
+# (the whole stack: ../../../docker-compose.yml)
+name: fallguard-ml
+
+services:
+  ml-service:
+    build:
+      context: ../..
+      dockerfile: setup_and_tools/docker_server/Dockerfile
+      args:
+        YOLO_WEIGHTS: yolo26n-pose-finetuned-mcfDataset-111026.pt   # must match prod: inference: weights in config.yaml
+    image: capstone/ml-service:latest
+    restart: unless-stopped
+    environment:
+      ML_PROD_MODE: "true"
+      # backend-module PostgreSQL. On the shared network the host is "db":
+      #   postgresql://ml_service:<ML_SERVICE_PASSWORD>@db:5432/fallguard
+      ML_DATABASE_URL: ${ML_DATABASE_URL:?set ML_DATABASE_URL in .env}
+    ports:
+      - "9999:9999"          # stream-hub connects here; keep it on the internal network only
+      - "127.0.0.1:8000:8000"  # live viewer (no login): this machine only. The backend API uses ml-service:8000
+    volumes:
+      - ml-data:/app/data
+      # Edit sources or thresholds without rebuilding:
+      # - ../../config.yaml:/app/config.yaml:ro
+    networks: [fallguard]
+    logging:                           # cap Docker's log files (stream-hub logs every video chunk)
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  ml-data:
+
+networks:
+  fallguard:
+    name: fallguard               # shared by every module; whichever starts first creates it

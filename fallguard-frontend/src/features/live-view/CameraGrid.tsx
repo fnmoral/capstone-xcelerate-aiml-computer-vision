@@ -51,7 +51,7 @@ export function CameraTile({ cam, live = true, fill = false, onSelect }: {
   onSelect?: (id: string) => void;
 }) {
   const watching = cam.on_gateway && cam.status !== 'paused';
-  const down = cam.people.filter((p) => p.label !== 'upright');
+  const down = cam.people.filter((p) => p.label === 'lying' || p.label === 'falling');
   const broken = cam.health === 'not_working';
   // Highlighted only when its "alert me" toggle is on; otherwise it just shows the status.
   const flagged = broken && cam.alert_offline;

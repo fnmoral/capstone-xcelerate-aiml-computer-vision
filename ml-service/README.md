@@ -108,7 +108,7 @@ for a while; the service keeps detecting and catches up when it's back.
 
 # Part 2 — Technical reference
 
-Replaces `mock/receiver.py` (kept as a reference) and speaks the same TCP protocol
+Speaks stream-hub's TCP protocol (it replaced the early mock receiver prototype, since removed)
 on port `9999` (`ai_server_addr` in `stream-hub/config.json`). Runs on a Windows PC for
 prototyping and in a Linux container on the GPU server for production
 (see [Deployment](#deployment-linux-server-container)).
@@ -126,23 +126,38 @@ webcam / RTSP / file (OpenCV) ───────────────┴�
 Every source becomes a camera with its own tracker, fall state and outputs. A webcam goes
 through exactly the same steps as an IP camera, so prototyping results carry over.
 
-| Step | File | What it does |
-|---|---|---|
-| Entry point | `main.py` | Starts the sources, runs the model for every camera on the main thread, preview window |
-| Protocol | `ingest/protocol.py` | Length-prefixed handshake and NALUs, read without partial-read bugs |
-| Decode | `ingest/decoder.py` | One decoder per camera; H.264 or H.265, detected from the stream; frame-rate sampler |
-| Pipeline | `pipeline.py` | Per-camera chain: newest frame → pose → features → rules → incidents → sink |
-| Pose | `vision/pose.py` | People, 17 COCO keypoints, stable track IDs; picks GPU or CPU |
-| Features | `fall/features.py` | Torso angle, box aspect ratio, hip height, head below hips |
-| Rules | `fall/rules.py` | Labels each pose `upright`, `falling` or `lying` (Stage A, no training needed) |
-| Incidents | `fall/state_machine.py` | Down for `confirm_seconds` opens an incident; up for `recover_seconds` closes it |
-| Zones | `fall/zones.py` | Merges incidents from cameras of the same zone, so one fall gives one alert |
-| Output | `sinks/` | Shared record format and snapshots (`__init__.py`), JSONL files (`jsonl.py`), backend-module PostgreSQL on a background thread (`postgres.py`) |
-| Config | `config.py`, `config.yaml` | Typed settings with a dev and a prod section; documented in [CONFIG.md](CONFIG.md) |
-| Test sender | `tools/send_video.py` | Plays the part of stream-hub from a webcam or video file |
-| Webcam as IP camera | `tools/publish_webcam.py` | Publishes this PC's webcam to an RTSP server (the `test-camera` service), so it goes through the real gateway → hub → ML path |
-| Clips | `clips.py` | Dashcam-style incident clips: per-camera in-memory loop of compressed video, recordings, H.264 MP4 encoding and retention on a background thread |
-| Viewer | `viewer.py` | Browser view at :8000: annotated MJPEG video per camera, recent incidents, detection settings (used by the frontend through the backend API) |
+### Where things are
+
+```
+ml-service/
+├── main.py, config.yaml   start here: `python main.py`; the settings file
+├── app/                ★ THE LIVE SYSTEM (what runs on the cameras)
+│   ├── config.py            reads config.yaml
+│   ├── detection/           ★ THE MACHINE-LEARNING MODEL
+│   │   ├── pose_model.py        YOLO26-pose: people, 17 body points, track IDs
+│   │   └── fall_detection.py    who has fallen: 1 measurements · 2 rules · 3 learned model · 4 incident timing · 5 FallDetector
+│   └── camera_service/      video in, results out
+│       ├── video_input.py       stream-hub's TCP messages, decoding video into frames
+│       ├── camera_pipeline.py   one camera from frames to incidents; zones merge cameras of one area
+│       ├── results.py · database.py   JSONL files and snapshots · the PostgreSQL database
+│       └── clips.py · viewer.py       incident video clips · live view in the browser
+├── model_finetuning/   ★ IMPROVING THE MODEL
+│   ├── finetune.py          1 pose labels · 2 fine-tune the pose model · 3 Stage B classifier
+│   ├── report.py            Excel/CSV/charts: per-epoch progress, hyperparameters, before vs after
+│   └── reports/             the latest report (fine_tuning_report.xlsx)
+├── evaluation/         ★ TESTING THE MODEL
+│   ├── datasets.py          1 synthetic scenarios · 2 Multiple Cameras Fall Dataset (+ train/test split)
+│   ├── evaluate.py          the benchmark: falls caught, false alarms
+│   └── results/             every saved benchmark run (DETECTION_CHANGELOG.md explains them)
+├── models/             the model files to choose from (see models/README.md)
+└── setup_and_tools/    everything around the app
+    ├── docker_server/       Dockerfile and docker-compose.yml for the GPU server
+    ├── fake_cameras/        fake cameras for testing without real ones (send_video.py, publish_webcam.py)
+    └── tests/               automatic checks, one file per module (python -m pytest)
+```
+
+Long files are split into numbered sections with a banner comment, e.g.
+`# 2. Rules classifier (Stage A)` in `fall_detection.py`, so you can jump straight to a step.
 
 ## Detection logic in detail
 
@@ -159,64 +174,84 @@ For each frame, YOLO26-pose returns every person with:
 - a **track ID** from ByteTrack (`#1`, `#2`, ...) that follows the same person across frames,
   so each person gets their own labels and incidents
 
-### 2. Measurements (`fall/features.py`)
+A person is reported once detected with confidence `inference.conf` (0.4). After that they
+stay tracked down to `inference.track_conf` (0.1), because people lying on the floor get
+lower scores than people standing, and we must not lose someone just as they fall.
+
+### 2. Measurements (`app/detection/fall_detection.py`, section 1)
 
 | Measurement | How it is computed | What it tells us |
 |---|---|---|
-| Torso angle | Angle between the shoulder midpoint → hip midpoint line and vertical | 0° = upright, 90° = horizontal |
-| Aspect ratio | Box width ÷ box height | Above 1 means wider than tall, typical of lying |
-| Hip height | Hip midpoint y ÷ frame height | Used to measure how fast the hips drop |
-| Hip drop speed | Change in hip height over the last ~8 samples, per second | Fast downward motion = a fall in progress |
+| Torso angle | Angle between the shoulder midpoint → hip midpoint line and vertical. Without shoulders or hips: head/shoulders → hips/knees/ankles instead | 0° = upright, 90° = horizontal |
+| Aspect ratio | Box width ÷ box height. Ignored when the box touches the frame edge (the person is cut off) | Above 1 means wider than tall, typical of lying |
+| Legs upright | How far the ankles are below the hips, ÷ the leg's length along hip → knee → ankle | ~1 standing or bending over, ~0.5 sitting on a chair, ~0 lying |
+| Hip drop speed | Straight-line fit of the hip height over the last 0.5 s, ÷ the person's torso length | Fast downward motion = a fall in progress. In body lengths, so near and far people are treated alike |
 | Head below hips | Nose lower in the image than the hip midpoint | Strong hint the person is on the floor |
+| Visible points | Keypoints at or above `min_keypoint_conf` | Too few = not enough to decide |
 
-If the shoulders or hips aren't visible with enough confidence, the torso angle is unknown
-and only the box shape is used.
-
-### 3. Labels (`fall/rules.py`)
+### 3. Labels (`app/detection/fall_detection.py`, sections 2-3)
 
 Each person in each frame gets exactly one label and a confidence between 0 and 1.
 
 | Label | Meaning | Preview colour |
 |---|---|---|
-| `upright` | Standing, walking, sitting: not on the way down and not lying | green |
+| `upright` | Standing, walking, sitting, bending: not on the way down and not lying | green |
 | `falling` | Going down fast right now | orange |
 | `lying` | On the floor, or horizontal | red |
+| `unclear` | Too little of the person is visible to tell | grey |
 
 The rules are checked in this order:
 
-1. **Lying score.** Two scores from 0 to 1 are combined:
+1. **Enough evidence?** Fewer than `min_visible_keypoints` (6) visible points, or no hip, knee
+   or ankle at all (e.g. someone sitting behind a table), gives **`unclear`**. The box shape
+   alone is never taken as proof of lying.
+2. **Lying score.** Two scores from 0 to 1 are combined:
    - *angle score* rises from 0 at a 30° torso angle to 1 at `lying_torso_angle_deg` (60°)
    - *shape score* rises from 0 at aspect ratio 0.8 to 1 at `lying_aspect_ratio` (1.3)
-   - lying score = 0.7 × angle score + 0.3 × shape score, plus 0.15 if the head is below the
-     hips. With no torso angle, the shape score is used on its own.
+   - lying score = 0.7 × angle score + 0.3 × shape score (angle score alone if the box touches
+     the frame edge), plus 0.15 if the head is below the hips
+   - **on their feet:** if *legs upright* is `standing_legs` (0.6) or more, the score is capped at
+     0.5. Someone bent over on straight legs has a horizontal torso but isn't lying.
 
    If the lying score is **0.75 or more**, the label is **`lying`**, with the score as its confidence.
-2. **Falling.** Otherwise, if the hips are dropping at **`fall_velocity` (0.6 frame heights/s)
+3. **Falling.** Otherwise, if the hips are dropping at **`fall_velocity` (1.2 torso lengths/s)
    or faster** and the torso is tilted **`falling_torso_angle_deg` (35°) or more**, the label is
    **`falling`**. Faster drops give higher confidence.
-3. **Upright.** Anything else is **`upright`**, with confidence 1 − lying score.
+4. **Upright.** Anything else is **`upright`**, with confidence 1 − lying score.
 
-### 4. Decisions: incidents (`fall/state_machine.py`)
+### 4. Decisions: incidents (`app/detection/fall_detection.py`, section 4)
 
-Each tracked person has a small state machine. Being *down* means the label is `falling` or `lying`.
+Each tracked person has a small state machine. Being *down* means the label is `falling` or
+`lying`. An `unclear` frame changes nothing: it neither confirms nor recovers.
 
 | Event | Triggered when | What happens |
 |---|---|---|
-| `incident_started` | The person has been down for `confirm_seconds` (3 s) **and** the current label is `lying` | A new incident opens with severity `medium`. Its start time is backdated to the first *down* frame, i.e. when the fall began. The current frame is saved as a snapshot |
+| `incident_started` | The person has been down for `confirm_seconds` (3 s), **at least `confirm_ratio` (80%) of their frames in those 3 s were down**, and the current label is `lying` | A new incident opens with severity `medium`. Its start time is backdated to when the fall began (the first frame of the mostly-down run, so a stray frame earlier is skipped). The current frame is saved as a snapshot |
 | `incident_updated` | The incident has lasted `high_after_seconds` (60 s), then `critical_after_seconds` (300 s) | Severity goes up to `high`, then `critical`. Highest confidence seen so far is kept as `peak_confidence` |
 | `incident_recovered` | The person has been `upright` for `recover_seconds` (3 s) | The incident closes with status `recovered`. `recovered_at` is set to the first upright frame, so the database can work out how long they were down |
 | `incident_unresolved` | The person hasn't been seen for `lost_track_seconds` (10 s) while an incident is open | The incident closes with status `unresolved`. This needs a human check, because the person may still be on the floor out of view |
 
+**Renumbered people.** Trackers often give someone a new ID as they fall, because their box
+suddenly changes shape. A new ID that appears near where a person was lost within
+`handoff_seconds` (2 s) takes over that person's state, so the 3-second timer doesn't restart
+and an open incident stays with them (`app/detection/fall_detection.py`).
+
 What this filters out:
 
 - **Bending over, crouching or sitting down quickly** may produce `falling` or `lying` for a
-  moment. It only becomes an incident if it lasts 3 seconds.
+  moment. It only becomes an incident if it lasts 3 seconds, and bending on straight legs is
+  never `lying` at all.
 - **A `falling` label alone never opens an incident.** The person has to end up `lying`.
+- **Stray misdetected frames** don't add up to an alarm: 80% of the frames in the 3 s must agree.
 - **One misdetected frame** doesn't close an incident either. Recovery needs 3 seconds of `upright`.
 
 A camera that disconnects with an incident still open closes it as `unresolved`.
 
-### 5. Zones: one alert per fall across overlapping cameras (`fall/zones.py`)
+**Measuring changes:** `python -m evaluation.evaluate` scores the logic on scripted scenarios and
+recorded videos; [DETECTION_CHANGELOG.md](DETECTION_CHANGELOG.md) records each change and
+what it did to the numbers.
+
+### 5. Zones: one alert per fall across overlapping cameras (`app/camera_service/camera_pipeline.py`)
 
 Each camera's state machine only knows its own people. Track IDs are per camera, so one
 person seen by two cameras is two tracks. Cameras that see the same area are grouped into a
@@ -281,10 +316,10 @@ Python 3.15 is new, so a few packages need workarounds until they publish 3.15 w
 - **PyYAML** has no 3.15 wheel; `PYYAML_FORCE_LIBYAML=0` builds the pure-Python version
   instead of failing for lack of a C++ compiler.
 - **lap**, which Ultralytics' ByteTrack imports, cannot be built without a C++ compiler.
-  `compat/lap.py` stands in for it using Ultralytics' own NumPy solver and is only used
-  when the real package is missing. Delete `compat/` once `pip install lap` works.
+  `app/detection/lap_compat/lap.py` stands in for it using Ultralytics' own NumPy solver and is only used
+  when the real package is missing. Delete `app/detection/lap_compat/` once `pip install lap` works.
 
-The YOLO26 weights (`yolo26n-pose.pt`) download automatically on first run.
+The YOLO26 weights (`models/yolo26n-pose.pt`) download automatically on first run.
 
 ## Running: dev and prod mode
 
@@ -331,7 +366,7 @@ Results go to `data/` (git-ignored). Press `q` in the window to quit.
 With `viewer.enabled` (on in the shipped config), http://localhost:8000 shows each camera's
 annotated video and the recent incidents; see [CONFIG.md → viewer](CONFIG.md#viewer).
 
-To test the TCP path without the Go services, `tools/send_video.py --source 0` plays the
+To test the TCP path without the Go services, `setup_and_tools/fake_cameras/send_video.py --source 0` plays the
 part of stream-hub.
 
 ## Configuration
@@ -356,7 +391,7 @@ listening on `0.0.0.0:9999`.
 | File | Purpose |
 |---|---|
 | `Dockerfile` | Python 3.15 image with PyTorch (CUDA 13.0) and the YOLO26 weights baked in |
-| `deploy/docker-compose.yml` | Runs the container with the GPU, port 9999 and a `ml-data` volume |
+| `setup_and_tools/docker_server/docker-compose.yml` | Runs the container with the GPU, port 9999 and a `ml-data` volume |
 
 **Host requirements:** NVIDIA driver 580+ (for CUDA 13.0) and the NVIDIA Container Toolkit.
 Check with `docker run --rm --gpus all ubuntu nvidia-smi`.
@@ -368,7 +403,7 @@ cp .env.example .env                   # set POSTGRES_PASSWORD, ML_SERVICE_PASSW
 docker compose up -d
 
 # 2. ml-service (joins the network, reaches the database as db:5432)
-cd ../ml-service/deploy
+cd ../ml-service/setup_and_tools/docker_server
 cp .env.example .env                   # ML_DATABASE_URL with the ML_SERVICE_PASSWORD
 docker compose up -d --build
 docker compose logs -f ml-service      # look for: model ... ready on GPU 0 (<server GPU>)
@@ -381,7 +416,7 @@ Details of the database setup: [backend-module/db/README.md](../backend-module/d
 How the image differs from the Windows setup:
 
 - **No workarounds needed.** The build stage has a C compiler, so the real PyYAML and `lap`
-  are built and `compat/lap.py` stays unused.
+  are built and `app/detection/lap_compat/lap.py` stays unused.
 - **Works offline.** The weights are downloaded at build time
   (`--build-arg YOLO_WEIGHTS=yolo26s-pose.pt` for a bigger model). The build also runs the
   tracker once, so a missing package fails the build instead of Ultralytics trying to

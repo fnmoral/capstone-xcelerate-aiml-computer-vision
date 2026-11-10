@@ -1,0 +1,49 @@
+part,setting,value,meaning
+pose fine-tuning,model,last.pt,starting point (the standard model)
+pose fine-tuning,epochs,15,passes over the training images
+pose fine-tuning,patience,6,stop after this many epochs without improvement
+pose fine-tuning,batch,8,images per step
+pose fine-tuning,imgsz,640,image size the model sees
+pose fine-tuning,optimizer,AdamW,how weights are updated (auto = chosen by Ultralytics)
+pose fine-tuning,lr0,0.002,starting learning rate
+pose fine-tuning,lrf,0.01,"final learning rate, as a fraction of lr0"
+pose fine-tuning,cos_lr,True,learning rate follows a cosine curve
+pose fine-tuning,momentum,0.937,optimizer momentum
+pose fine-tuning,weight_decay,0.0005,penalty on large weights (less over-fitting)
+pose fine-tuning,warmup_epochs,3.0,slow start
+pose fine-tuning,box,7.5,weight of the box loss
+pose fine-tuning,pose,12.0,weight of the body-point loss
+pose fine-tuning,kobj,1.0,weight of the point-visibility loss
+pose fine-tuning,cls,0.5,weight of the class loss
+pose fine-tuning,degrees,15.0,"random rotation, degrees"
+pose fine-tuning,fliplr,0.5,chance of a mirrored image
+pose fine-tuning,mosaic,1.0,chance of combining 4 images into one
+pose fine-tuning,close_mosaic,3,last epochs without mosaic
+pose fine-tuning,hsv_h,0.015,random colour change
+pose fine-tuning,hsv_s,0.7,random saturation change
+pose fine-tuning,hsv_v,0.4,random brightness change
+pose fine-tuning,translate,0.1,random shift
+pose fine-tuning,scale,0.5,random zoom
+pose fine-tuning,device,cpu,where it trained
+pose fine-tuning,seed,0,random seed
+training labels,teacher model,yolo26x-pose.pt,the large model that labelled the training frames
+training labels,teacher confidence,0.5,frames where the teacher was less sure were left out
+training labels,rotation,90 and 270 degrees,tried when nobody was found upright (finds people lying down)
+training labels,frames per second sampled,1 (falling/lying: 4),more frames where they matter most
+data split,training scenarios,"1, 4, 6, 8, 9, 11, 12, 14, 15, 16, 17, 18, 22, 23",
+data split,validation scenarios,"3, 20",used during training to pick the best epoch
+data split,test scenarios,"2, 5, 7, 10, 13, 19, 21, 24",never seen in training; all before/after numbers
+data split,training cameras,"1, 2, 4, 6, 7",
+data split,test cameras,"3, 5, 8",camera positions never seen in training
+Stage B classifier,hidden_layers,"[64, 32]",
+Stage B classifier,learning_rate,0.001,
+Stage B classifier,weight_decay,0.0001,
+Stage B classifier,dropout,0.2,
+Stage B classifier,batch_size,256,
+Stage B classifier,epochs,40,
+Stage B classifier,window_frames,10,
+Stage B classifier,optimizer,Adam,
+Stage B classifier,loss,"binary cross-entropy, weighted for class balance",
+Stage B classifier,augmentation,left-right mirroring,
+Stage B classifier,decision threshold,0.3,picked on validation for balanced accuracy
+Stage B classifier,trained on pose model,yolo26n-pose-finetuned-mcfDataset-111026.pt,

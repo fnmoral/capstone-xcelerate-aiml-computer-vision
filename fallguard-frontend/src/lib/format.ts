@@ -59,6 +59,7 @@ export const LABEL_TEXT: Record<string, string> = {
   upright: 'Upright',
   falling: 'Falling',
   lying: 'Lying',
+  unclear: 'Unclear',
 };
 
 export const STATUS_TEXT: Record<string, string> = {

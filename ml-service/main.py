@@ -27,15 +27,15 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-import config
-from clips import ClipRecorder, ClipWriter
-from fall.zones import IncidentAggregator
-from ingest.protocol import MAX_NALU_LEN, ProtocolError, read_handshake, read_message
-from pipeline import CameraPipeline
-from sinks import FanoutSink, SnapshotStore, clip_record
-from sinks.jsonl import JsonlSink
-from viewer import Viewer, ViewerSink
-from vision.pose import PoseTracker, describe_device
+from app import config
+from app.camera_service.clips import ClipRecorder, ClipWriter
+from app.camera_service.camera_pipeline import IncidentAggregator
+from app.camera_service.video_input import MAX_NALU_LEN, ProtocolError, read_handshake, read_message
+from app.camera_service.camera_pipeline import CameraPipeline
+from app.camera_service.results import FanoutSink, SnapshotStore, clip_record
+from app.camera_service.results import JsonlSink
+from app.camera_service.viewer import Viewer, ViewerSink
+from app.detection.pose_model import PoseTracker, describe_device
 
 log = logging.getLogger("ml-service")
 
@@ -69,7 +69,7 @@ def build_sink(cfg: config.Config):
     if "jsonl" in cfg.sinks:
         sinks.append(JsonlSink(cfg.output_dir))
     if "postgres" in cfg.sinks:
-        from sinks.postgres import PostgresSink  # psycopg only needed when the database is used
+        from app.camera_service.database import PostgresSink  # psycopg only needed when the database is used
 
         pg = PostgresSink(cfg.database_url, cfg.database_connect_timeout_s)
         sinks.append(pg)
@@ -388,11 +388,15 @@ def detection_settings(cfg: config.Config) -> dict:
             "falling_torso_angle_deg": r.falling_torso_angle_deg,
             "lying_aspect_ratio": r.lying_aspect_ratio,
             "fall_velocity": r.fall_velocity,
-            "min_keypoint_conf": cfg.rules_min_kpt_conf,
+            "standing_legs": r.standing_legs,
+            "min_visible_keypoints": r.min_visible_keypoints,
+            "confirm_ratio": m.confirm_ratio,
+            "min_keypoint_conf": cfg.detector.min_keypoint_conf,
         },
         "incidents": {
             "confirm_seconds": m.confirm_seconds,
             "recover_seconds": m.recover_seconds,
+            "handoff_seconds": cfg.detector.handoff_seconds,
             "lost_track_seconds": m.lost_track_seconds,
             "high_after_seconds": m.high_after_seconds,
             "critical_after_seconds": m.critical_after_seconds,
