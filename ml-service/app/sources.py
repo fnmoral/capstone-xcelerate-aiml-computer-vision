@@ -12,7 +12,7 @@ import time
 
 import cv2
 
-import config
+from app import config
 from app.runtime import Runtime
 
 log = logging.getLogger("ml-service")

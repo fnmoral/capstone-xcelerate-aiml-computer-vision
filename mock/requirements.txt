@@ -1,3 +1,0 @@
-opencv-python
-av
-mediapipe==0.10.21

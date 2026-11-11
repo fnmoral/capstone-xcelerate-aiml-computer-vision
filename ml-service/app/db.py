@@ -5,10 +5,9 @@ overrides the frontend can change, kept in sync without a restart.
 import logging
 import threading
 
-import config
+from app import config
+from app.camera_service.results import FanoutSink, JsonlSink
 from app.runtime import Runtime
-from sinks import FanoutSink
-from sinks.jsonl import JsonlSink
 
 log = logging.getLogger("ml-service")
 
@@ -20,7 +19,7 @@ def build_sink(cfg: config.Config) -> tuple[FanoutSink, object | None]:
     if "jsonl" in cfg.sinks:
         sinks.append(JsonlSink(cfg.output_dir))
     if "postgres" in cfg.sinks:
-        from sinks.postgres import PostgresSink  # psycopg only needed when the database is used
+        from app.camera_service.database import PostgresSink  # psycopg only needed when the database is used
 
         pg = PostgresSink(cfg.database_url, cfg.database_connect_timeout_s)
         sinks.append(pg)

@@ -27,6 +27,8 @@ import threading
 
 import cv2
 
+from app.camera_service.camera_pipeline import IncidentAggregator
+from app.camera_service.results import SnapshotStore
 from app.cli import build_config
 from app.db import build_sink, load_db_zones, load_overrides, merge_zones, refresh_from_db
 from app.loop import main_loop
@@ -35,8 +37,6 @@ from app.runtime import Runtime
 from app.sources import run_capture
 from app.stats import report_status
 from app.stream_hub import start as start_stream_hub
-from fall.zones import IncidentAggregator
-from sinks import SnapshotStore
 
 log = logging.getLogger("ml-service")
 

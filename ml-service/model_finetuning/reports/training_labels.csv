@@ -1,0 +1,9 @@
+activity,frames tried,labelled %,found only after rotating
+crouching,90,78.9,6
+falling,570,84.4,20
+lying on a sofa,120,61.7,5
+lying on the ground,1235,80.6,161
+moving down,185,83.2,11
+moving up,325,85.2,8
+sitting,125,63.2,8
+walking/standing,910,91.1,12

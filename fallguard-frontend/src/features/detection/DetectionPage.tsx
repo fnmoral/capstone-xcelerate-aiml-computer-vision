@@ -9,7 +9,10 @@ const RULES: { key: string; label: string; unit: string; help: string }[] = [
   { key: 'lying_torso_angle_deg', label: 'Lying: torso angle', unit: '°', help: 'Torso this far from vertical counts fully as lying' },
   { key: 'lying_aspect_ratio', label: 'Lying: box shape', unit: '× wider than tall', help: 'A person this much wider than tall looks like lying' },
   { key: 'falling_torso_angle_deg', label: 'Falling: minimum tilt', unit: '°', help: 'Torso tilt needed for the "falling" label' },
-  { key: 'fall_velocity', label: 'Falling: hip drop speed', unit: 'frame heights/s', help: 'How fast the hips must drop' },
+  { key: 'fall_velocity', label: 'Falling: hip drop speed', unit: 'torso lengths/s', help: 'How fast the hips must drop, measured in body size so near and far look the same' },
+  { key: 'standing_legs', label: 'Standing: legs under hips', unit: '', help: 'Legs this straight under the hips mean standing or bending, never lying (0–1)' },
+  { key: 'min_visible_keypoints', label: 'Body points needed', unit: 'of 17', help: 'Fewer visible points (or no hips/legs) gives "unclear" instead of a guess' },
+  { key: 'confirm_ratio', label: 'Confirm: frames down', unit: '', help: 'Share of frames in the confirm time that must show the person down' },
   { key: 'min_keypoint_conf', label: 'Body-point confidence', unit: '', help: 'Body points below this are ignored' },
 ];
 
@@ -18,6 +21,7 @@ const TIMINGS: { key: string; label: string; help: string }[] = [
   { key: 'recover_seconds', label: 'Recovered after', help: 'Standing this long closes the incident' },
   { key: 'high_after_seconds', label: 'Severity high after', help: 'Still down after this long' },
   { key: 'critical_after_seconds', label: 'Severity critical after', help: 'Still down after this long' },
+  { key: 'handoff_seconds', label: 'Same person if renumbered within', help: 'A new tracker ID where someone was just lost carries on their fall' },
   { key: 'lost_track_seconds', label: 'Out of view for', help: 'Then the incident is "unresolved": someone should check' },
   { key: 'merge_window_seconds', label: 'Zone merge window', help: 'Falls seen by several cameras of a zone within this time are one alert' },
 ];
@@ -82,7 +86,7 @@ export default function DetectionPage() {
           <section className="card" style={{ padding: 16 }}>
             <h2 className="section-title">Labels</h2>
             <p className="row"><StatusBadge value="upright" /> standing, walking or sitting
-              <StatusBadge value="falling" /> going down fast <StatusBadge value="lying" /> on the floor</p>
+              <StatusBadge value="falling" /> going down fast <StatusBadge value="lying" /> on the floor <StatusBadge value="unclear" /> too little visible to tell</p>
             <div className="table-wrap"><table className="table table--settings">
               <SettingsCols />
               <thead><tr><th>Rule</th><th className="num">Value</th><th>Meaning</th></tr></thead>

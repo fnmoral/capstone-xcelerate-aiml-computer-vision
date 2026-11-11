@@ -28,7 +28,7 @@ function Timeline({ predictions }: { predictions: Prediction[] }) {
         <span>{formatTime(predictions[predictions.length - 1].at)}</span>
       </div>
       <div className="row ev-legend">
-        <StatusBadge value="upright" /> <StatusBadge value="falling" /> <StatusBadge value="lying" />
+        <StatusBadge value="upright" /> <StatusBadge value="falling" /> <StatusBadge value="lying" /> <StatusBadge value="unclear" />
       </div>
     </>
   );

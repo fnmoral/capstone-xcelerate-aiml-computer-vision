@@ -6,7 +6,7 @@ import argparse
 import os
 from pathlib import Path
 
-import config as config_module
+from app import config as config_module
 
 DEFAULT_CONFIG_ENV = "ML_CONFIG"
 

@@ -8,8 +8,8 @@ from pathlib import Path
 
 import numpy as np
 
-import config
-from vision.pose import PoseTracker, describe_device
+from app import config
+from app.detection.pose_model import PoseTracker, describe_device
 
 log = logging.getLogger("ml-service")
 
@@ -20,7 +20,7 @@ def warm_up(cfg: config.Config) -> str:
     """
     inf = cfg.inference
     start = time.perf_counter()
-    tracker = PoseTracker(inf.weights, inf.device, inf.conf, inf.imgsz, inf.tracker, inf.half)
+    tracker = PoseTracker.from_config(inf)
     tracker(np.zeros((inf.imgsz, inf.imgsz, 3), dtype=np.uint8))
     device_in_use = describe_device(tracker.device) + (" FP16" if tracker.half else "")
     log.info("model %s ready on %s%s in %.1fs", Path(inf.weights).name, describe_device(tracker.device),

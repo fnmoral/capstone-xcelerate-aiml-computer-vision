@@ -61,7 +61,9 @@ export function CameraTile({
 }) {
   const watching = cam.on_gateway && cam.status !== "paused";
   // Only lying/falling count as down; "unclear" (too little visible) is not a fall.
-  const down = cam.people.filter((p) => p.label === "lying" || p.label === "falling");
+  const down = cam.people.filter(
+    (p) => p.label === "lying" || p.label === "falling",
+  );
   const broken = cam.health === "not_working";
   const flagged = broken && cam.alert_offline;
 

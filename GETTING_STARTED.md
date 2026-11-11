@@ -95,7 +95,7 @@ Copy-Item ml-service\deploy\.env.example ml-service\deploy\.env
 ```bash
 cp .env.example .env
 cp backend-module/.env.example backend-module/.env
-cp ml-service/deploy/.env.example ml-service/deploy/.env
+cp ml-service/setup_and_tools/docker_server/.env.example ml-service/setup_and_tools/docker_server/.env
 ```
 
 The first one (`.env` in the project folder) sets **dev mode**, which is what you want on
@@ -112,7 +112,7 @@ POSTGRES_PASSWORD=Admin2026pass
 ML_SERVICE_PASSWORD=Detector2026pass
 ```
 
-`ml-service/deploy/.env`, the **same** detector password goes between `ml_service:` and `@db`:
+`ml-service/setup_and_tools/docker_server/.env`, the **same** detector password goes between `ml_service:` and `@db`:
 ```
 ML_DATABASE_URL=postgresql://ml_service:Detector2026pass@db:5432/fallguard
 ```
@@ -207,7 +207,7 @@ Windows:
 ```
 Mac:
 ```bash
-.venv/bin/python ml-service/tools/publish_webcam.py
+.venv/bin/python ml-service/setup_and_tools/fake_cameras/publish_webcam.py
 ```
 On a Mac, allow **Terminal** to use the camera if asked (or System Settings → Privacy &
 Security → Camera → turn on Terminal, then run it again).

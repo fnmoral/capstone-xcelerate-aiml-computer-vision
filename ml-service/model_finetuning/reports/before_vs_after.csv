@@ -1,0 +1,19 @@
+metric,Standard model + rules,Fine-tuned 2 epochs + rules,Fine-tuned 15 epochs + rules,Fine-tuned 15 epochs + Stage B
+"Falls caught, cameras as one zone (%)",16.7,83.3,83.3,100.0
+"Falls caught, cameras as one zone",1/6,5/6,5/6,6/6
+"False alarms, cameras as one zone",1,3,2,4
+Extra alerts for the same fall (zone),0,2,0,0
+Short falls caught (zone),0/1,1/1,1/1,0/1
+"Falls caught, each camera on its own (%)",5.6,72.2,66.7,88.9
+"False alarms, each camera on its own",1,3,2,6
+Mean time to alert (s),4.63,4.27,4.26,3.24
+Lying on the ground: frames labelled down (%),8.1,70.4,69.4,90.9
+Falling: frames labelled down (%),1.3,22.2,24.2,73.6
+Lying on a sofa: frames labelled down (%),4.3,21.6,48.4,100.0
+Sitting: frames labelled down (%),11.5,20.9,24.9,19.0
+Walking/standing: frames labelled down (%),0.2,16.9,0.2,8.0
+Lying on the ground: person found (person-frames),372,1323,1013,1013
+Synthetic falls caught,35/35,35/35,35/35,22/35
+Synthetic false alarms,0,0,0,6
+Test videos: falls caught,1/2,2/2,1/2,2/2
+Test videos: false alarms,0,0,0,0

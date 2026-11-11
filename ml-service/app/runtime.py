@@ -9,13 +9,13 @@ import logging
 import threading
 from typing import TYPE_CHECKING
 
-import config
-from fall.zones import IncidentAggregator
-from ingest.server import Publish
-from sinks import FanoutSink, SnapshotStore
+from app import config
+from app.camera_service.camera_pipeline import IncidentAggregator
+from app.camera_service.hub_results import Publish
+from app.camera_service.results import FanoutSink, SnapshotStore
 
 if TYPE_CHECKING:
-    from pipeline import CameraPipeline
+    from app.camera_service.camera_pipeline import CameraPipeline
 
 log = logging.getLogger("ml-service")
 
@@ -46,7 +46,7 @@ class Runtime:
         return self.overrides.get(tenant_id, {})
 
     def new_pipeline(self, tenant_id: str, camera_id: str, publish: Publish | None = None) -> "CameraPipeline":
-        from pipeline import CameraPipeline  # deferred: pulls in the pose model's dependencies
+        from app.camera_service.camera_pipeline import CameraPipeline  # deferred: pulls in the pose model's dependencies
 
         return CameraPipeline(tenant_id, camera_id, self.cfg, self.sink, self.aggregator, self.snapshots,
                               overrides=self.tenant_overrides, publish=publish)

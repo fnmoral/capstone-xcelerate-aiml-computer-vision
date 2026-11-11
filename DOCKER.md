@@ -14,10 +14,10 @@ analytics, cameras, detection settings, system status.
 | `frontend` | `fallguard-frontend/` | `3000` | React app (nginx); forwards `/api` to the backend API |
 | `api` | `backend-module/api/` | `127.0.0.1:8100` | Core backend REST API: incidents, alerts, stats, cameras (via the gateway) |
 | `db`, `partitions` | `backend-module/` | `127.0.0.1:5432` | PostgreSQL 17 + pgvector |
-| `ml-service` | `ml-service/deploy/` | `9999`, `127.0.0.1:8000` (viewer) | Needs an NVIDIA GPU; prod mode (IP cameras only) |
+| `ml-service` | `ml-service/setup_and_tools/docker_server/` | `9999`, `127.0.0.1:8000` (viewer) | Needs an NVIDIA GPU; prod mode (IP cameras only) |
 | `stream-hub` | `stream-hub/` | `9000` (HTTP/WS), `8090` (gateways) | Forwards every camera to `ml-service:9999` |
 | `gateway-back` | `gateway-back/` | `8080` (web UI + API) | Cameras and settings kept in the `gateway-data` volume |
-| `test-camera` (dev; profile `test-camera`) | root | `8554` | RTSP relay: accepts published streams (this PC's webcam as `rtsp://test-camera:8554/webcam`), and plays `test-media/test.mp4` as `/test` while something watches it. Starts with the stack in dev (`COMPOSE_PROFILES=test-camera` in the root `.env`) |
+| `test-camera` (dev; profile `test-camera`) | root | `8554` | RTSP relay: accepts published streams (this PC's webcam as `rtsp://test-camera:8554/webcam`), and plays `test_videos/test.mp4` as `/test` while something watches it. Starts with the stack in dev (`COMPOSE_PROFILES=test-camera` in the root `.env`) |
 
 The root [`docker-compose.yml`](docker-compose.yml) runs everything; each folder's own
 compose file runs that module alone. All of them declare the same fixed-name Docker network
@@ -27,7 +27,7 @@ other by name (`db`, `ml-service`, `stream-hub`, `gateway-back`) and can start i
 ## 1. One-time machine setup
 
 **Linux server:** Docker Engine, the NVIDIA driver 580+ and the NVIDIA Container Toolkit;
-`sudo bash scripts/wsl-docker-setup.sh <user>` installs the Docker parts on Ubuntu.
+`sudo bash fanshawe_server_and_WSL_Setup/wsl-docker-setup.sh <user>` installs the Docker parts on Ubuntu.
 
 **Windows PC (WSL 2):**
 
@@ -35,7 +35,7 @@ other by name (`db`, `ml-service`, `stream-hub`, `gateway-back`) and can start i
 2. After the reboot, run the same command again if `wsl -l -v` shows no distribution:
    the first run only enables WSL itself.
 3. From the repo folder in PowerShell:
-   `wsl -d Ubuntu-24.04 -u root --cd "$PWD" -- bash scripts/wsl-docker-setup.sh <your-linux-user>`.
+   `wsl -d Ubuntu-24.04 -u root --cd "$PWD" -- bash fanshawe_server_and_WSL_Setup/wsl-docker-setup.sh <your-linux-user>`.
    It installs Docker Engine, the Compose plugin and the NVIDIA Container Toolkit, and makes
    `<your-linux-user>` the default WSL user.
 4. `wsl --terminate Ubuntu-24.04` so the default user takes effect.
@@ -50,7 +50,7 @@ slower for Docker, and OneDrive can lock files mid-build):
 rsync -a --delete --exclude .git --exclude .venv --exclude node_modules --exclude __pycache__ \
     --exclude ml-service/data --exclude '*.pt' \
     "/mnt/d/<path to>/capstone-xcelerate-aiml-computer-vision/" ~/fallguard/
-chmod 600 ~/fallguard/backend-module/.env ~/fallguard/ml-service/deploy/.env
+chmod 600 ~/fallguard/backend-module/.env ~/fallguard/ml-service/setup_and_tools/docker_server/.env
 cd ~/fallguard
 ```
 
@@ -62,7 +62,7 @@ clone the repo inside Ubuntu and work there directly.)
 ```bash
 cp .env.example .env                                         # mode: PROD_MODE, COMPOSE_PROFILES (dev / prod)
 cp backend-module/.env.example backend-module/.env           # POSTGRES_PASSWORD, ML_SERVICE_PASSWORD
-cp ml-service/deploy/.env.example ml-service/deploy/.env     # ML_DATABASE_URL with the same ML_SERVICE_PASSWORD
+cp ml-service/setup_and_tools/docker_server/.env.example ml-service/setup_and_tools/docker_server/.env     # ML_DATABASE_URL with the same ML_SERVICE_PASSWORD
 ```
 
 All three are git-ignored. Use letters and digits only, or URL-encode the password in `ML_DATABASE_URL`.
@@ -109,7 +109,7 @@ ml-service\.venv\Scripts\python.exe ml-service\tools\publish_webcam.py --index 0
 and label on each person. Lie down in view for 3 seconds: an incident and an alert appear
 under **Fall Events** (with the photo), and the header shows "1 person down".
 
-**With a video file:** put a clip with people in it at `test-media/test.mp4` and add the
+**With a video file:** put a clip with people in it at `test_videos/test.mp4` and add the
 camera `rtsp://test-camera:8554/test` instead.
 
 A real IP camera works the same way: add its `rtsp://<ip>:554/...` URL with its username
