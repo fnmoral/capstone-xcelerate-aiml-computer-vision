@@ -37,6 +37,8 @@ def load_db_zones(pg) -> dict[str, list[str]] | None:
 
 def load_overrides(pg, runtime: Runtime) -> None:
     try:
+        # One name per tenant for the zone merge, whether a camera sends its slug or its UUID.
+        runtime.aggregator.set_tenant_ids(pg.load_tenant_ids())
         new = pg.load_overrides()
     except Exception as e:
         log.warning("could not load detection settings from the database (%s)", str(e).strip().splitlines()[0])

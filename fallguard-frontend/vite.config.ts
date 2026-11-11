@@ -1,7 +1,12 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { fileURLToPath } from "node:url";
+import { defineConfig, loadEnv } from "vite";
+
+// The project's one settings file is the .env in the repository root (see ../.env.example).
+// Only its VITE_* settings reach the app; outside Docker it is optional (defaults below).
+const ROOT_DIR = fileURLToPath(new URL("..", import.meta.url));
 
 /**
  * App version MAJOR.MINOR.PATCH, shown in the footer:
@@ -59,26 +64,30 @@ function appVersion(): string {
 }
 
 // https://vite.dev/config/
-export default defineConfig({
-  plugins: [react()],
-  define: {
-    "import.meta.env.VITE_APP_VERSION": JSON.stringify(appVersion()),
-  },
-  server: {
-    // `npm run dev`: forward /api to the backend API (backend-module, published on 127.0.0.1:8100)
-    // and /stream-hub to stream-hub (published on 127.0.0.1:9000). Separate override
-    // variables, so redirecting one proxy (e.g. VITE_API_PROXY to a remote backend) never
-    // silently drags the other along with it.
-    proxy: {
-      "/api": {
-        target: process.env.VITE_API_PROXY ?? "http://localhost:8000",
-        changeOrigin: true,
-      },
-      "/stream-hub": {
-        target: process.env.VITE_STREAM_PROXY ?? "http://localhost:9000",
-        changeOrigin: true,
-        ws: true,
+export default defineConfig(({ mode }) => {
+  const env = { ...loadEnv(mode, ROOT_DIR, "VITE_"), ...process.env };
+  return {
+    envDir: ROOT_DIR,
+    plugins: [react()],
+    define: {
+      "import.meta.env.VITE_APP_VERSION": JSON.stringify(appVersion()),
+    },
+    server: {
+      // `npm run dev`: forward /api to the backend API (backend-module, published on 127.0.0.1:8100)
+      // and /stream-hub to stream-hub (published on 127.0.0.1:9000). Separate override
+      // variables, so redirecting one proxy (e.g. VITE_API_PROXY to a remote backend) never
+      // silently drags the other along with it.
+      proxy: {
+        "/api": {
+          target: env.VITE_API_PROXY ?? "http://localhost:8000",
+          changeOrigin: true,
+        },
+        "/stream-hub": {
+          target: env.VITE_STREAM_PROXY ?? "http://localhost:9000",
+          changeOrigin: true,
+          ws: true,
+        },
       },
     },
-  },
+  };
 });

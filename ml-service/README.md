@@ -344,7 +344,6 @@ ml-service
  ┃ ┗ yolo26n-pose.pt                    the standard pose model
  ┣ setup_and_tools                      everything around the app
  ┃ ┣ docker_server
- ┃ ┃ ┣ .env.example
  ┃ ┃ ┣ Dockerfile
  ┃ ┃ ┗ docker-compose.yml               the GPU server container
  ┃ ┣ fake_cameras                       fake cameras for testing without real ones
@@ -427,7 +426,7 @@ ml-service
 | `evaluation/` | The benchmark (`python -m evaluation.evaluate`): scripted scenarios, recorded videos, the Multiple Cameras Fall Dataset | no |
 | `model_finetuning/` | Training: label the dataset, fine-tune the pose model, train the learned classifier, write the report | no |
 | `DETECTION_CHANGELOG.md` | Every change to the detection logic and what it did to the benchmark numbers | no |
-| `setup_and_tools/docker_server/` | `Dockerfile`, `docker-compose.yml`, `.env.example` for the GPU server | the container exposes port 9999 for it |
+| `setup_and_tools/docker_server/` | `Dockerfile` and `docker-compose.yml` for the GPU server (settings: the project's root `.env`) | the container exposes port 9999 for it |
 | `setup_and_tools/fake_cameras/send_video.py` | Plays the part of stream-hub from a webcam or video file, with the real protocol | **sends video** (as stream-hub) |
 | `setup_and_tools/fake_cameras/publish_webcam.py` | Publishes this PC's webcam as an RTSP camera, so it takes the real gateway → stream-hub path | indirect |
 | `setup_and_tools/fake_cameras/make_test_videos.py` | Makes the test videos and their ground truth from the dataset | no |
@@ -499,7 +498,8 @@ Written up, with the benchmark numbers for each step, in
 | **Fine-tuned pose model is the default** (`models/yolo26n-pose-finetuned-mcfDataset-111026.pt`) | Trained on the Multiple Cameras Fall Dataset (people on the floor, ceiling cameras). On the held-out test scenarios the falls caught per zone went from 1/6 to 5/6. The standard `yolo26n-pose.pt` is still in `models/`. |
 | **Learned classifier, "Stage B"** (`fall.classifier: learned`) | A small model over the last second of body points. Catches 6/6 falls and alerts about 1 s sooner, but doubles the false alarms and reads a sofa as a fall, so it is an option, not the default |
 | **`unclear` label** | Fewer than 6 visible body points, or no hips or legs: it says nothing instead of guessing |
-| **Standing on straight legs is never lying** (`fall.standing_legs`) | Bending over no longer looks like a fall |
+| **Standing on straight legs is never lying** (`fall.standing_legs`), only while the person is taller than wide | Bending over no longer looks like a fall, and a fall seen by a low camera is no longer mistaken for it |
+| **Kneeling is not lying** | Kneeling to look under furniture no longer raises an alarm |
 | **Most of the 3 seconds must show the person down** (`fall.confirm_ratio`) | Stray misdetections no longer add up to an alarm |
 | **Fall speed in torso lengths per second** (`fall.fall_velocity` is now `1.2`, was `0.6` frame heights) | Near and far people are treated alike; the `falling` label appears in 31 of 35 falls (was 0) |
 | **A renumbered person keeps their fall** (`fall.handoff_seconds`) | The tracker often renumbers someone as they fall; their 3-second timer used to restart |
@@ -583,8 +583,12 @@ The rules are checked in this order:
    - *shape score* rises from 0 at aspect ratio 0.8 to 1 at `lying_aspect_ratio` (1.3)
    - lying score = 0.7 × angle score + 0.3 × shape score (angle score alone if the box touches
      the frame edge), plus 0.15 if the head is below the hips
-   - **on their feet:** if *legs upright* is `standing_legs` (0.6) or more, the score is capped at
-     0.5. Someone bent over on straight legs has a horizontal torso but isn't lying.
+   - **on their feet:** if *legs upright* is `standing_legs` (0.6) or more **and the box is taller
+     than wide** (aspect below `lying_aspect_ratio`), the score is capped at 0.5. Someone bent over
+     on straight legs has a horizontal torso but isn't lying. A wide box is left alone: from a low
+     camera, someone lying with their legs toward it also shows "ankles below hips".
+   - **kneeling:** thighs pointing down from the hips while the shins lie flat (e.g. looking under
+     furniture) also caps the score at 0.5: the torso may be flat, but the hips are off the floor.
 
    If the lying score is **0.75 or more**, the label is **`lying`**, with the score as its confidence.
 3. **Falling.** Otherwise, if the hips are dropping at **`fall_velocity` (1.2 torso lengths/s)
@@ -719,7 +723,6 @@ more (see [What changed](#what-changed-in-this-version)).
 |---|---|
 | `setup_and_tools/docker_server/Dockerfile` | Python 3.15 image with PyTorch (CUDA 13.0 by default) and the model weights baked in |
 | `setup_and_tools/docker_server/docker-compose.yml` | Runs the container with the GPU, port 9999 and a `ml-data` volume |
-| `setup_and_tools/docker_server/.env.example` | The `ML_DATABASE_URL` to copy into `.env` |
 
 The whole stack (database, gateway, stream-hub, backend, frontend and ml-service) is started
 by the compose files in the repository root; `docker-compose.cpu.yml` there builds ml-service
@@ -729,15 +732,17 @@ with the CPU PyTorch for machines without an NVIDIA GPU.
 Check with `docker run --rm --gpus all ubuntu nvidia-smi`.
 
 ```bash
+# 0. The one settings file, in the project folder
+cp .env.example .env                   # set POSTGRES_PASSWORD, ML_SERVICE_PASSWORD
+
 # 1. The database (creates the shared "fallguard" Docker network)
 cd backend-module
-cp .env.example .env                   # set POSTGRES_PASSWORD, ML_SERVICE_PASSWORD
-docker compose up -d
+docker compose --env-file ../.env up -d
 
-# 2. ml-service (joins the network, reaches the database as db:5432)
+# 2. ml-service (joins the network, reaches the database as db:5432; its database
+#    address is built from ML_SERVICE_PASSWORD)
 cd ../ml-service/setup_and_tools/docker_server
-cp .env.example .env                   # ML_DATABASE_URL with the ML_SERVICE_PASSWORD
-docker compose up -d --build
+docker compose --env-file ../../../.env up -d --build
 docker compose logs -f ml-service      # look for: model ... ready on GPU 0 (<server GPU>)
                                        #           database connected
 ```

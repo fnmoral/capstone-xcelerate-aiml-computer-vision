@@ -39,6 +39,9 @@ other by name (`db`, `ml-service`, `stream-hub`, `gateway-back`) and can start i
    It installs Docker Engine, the Compose plugin and the NVIDIA Container Toolkit, and makes
    `<your-linux-user>` the default WSL user.
 4. `wsl --terminate Ubuntu-24.04` so the default user takes effect.
+   Already have another distro (e.g. `Ubuntu`)? Use the name `wsl -l -v` shows in these commands.
+   Using Docker Desktop instead? Skip steps 1-4: its engine already runs in WSL 2; run
+   `docker compose` from the repo folder in PowerShell.
 5. Check the GPU: `wsl -d Ubuntu-24.04 -- docker run --rm --gpus all ubuntu:24.04 nvidia-smi`.
    The Windows NVIDIA driver provides the GPU to WSL; don't install a Linux driver.
 6. Optional: `wsl -u root passwd <your-linux-user>` to be able to use `sudo`.
@@ -50,22 +53,23 @@ slower for Docker, and OneDrive can lock files mid-build):
 rsync -a --delete --exclude .git --exclude .venv --exclude node_modules --exclude __pycache__ \
     --exclude ml-service/data --exclude '*.pt' \
     "/mnt/d/<path to>/capstone-xcelerate-aiml-computer-vision/" ~/fallguard/
-chmod 600 ~/fallguard/backend-module/.env ~/fallguard/ml-service/setup_and_tools/docker_server/.env
+chmod 600 ~/fallguard/.env
 cd ~/fallguard
 ```
 
 Rerun the `rsync` after editing code on Windows, then rebuild the changed service. (Or
 clone the repo inside Ubuntu and work there directly.)
 
-## 2. Secrets
+## 2. Settings (one file)
 
 ```bash
-cp .env.example .env                                         # mode: PROD_MODE, COMPOSE_PROFILES (dev / prod)
-cp backend-module/.env.example backend-module/.env           # POSTGRES_PASSWORD, ML_SERVICE_PASSWORD
-cp ml-service/setup_and_tools/docker_server/.env.example ml-service/setup_and_tools/docker_server/.env     # ML_DATABASE_URL with the same ML_SERVICE_PASSWORD
+cp .env.example .env      # then set POSTGRES_PASSWORD and ML_SERVICE_PASSWORD
 ```
 
-All three are git-ignored. Use letters and digits only, or URL-encode the password in `ML_DATABASE_URL`.
+Everything is in this one git-ignored file: the mode (`PROD_MODE`, `COMPOSE_PROFILES`), the
+two database passwords, and optional ports and settings (all commented in `.env.example`).
+Every module reads it; ml-service's database address is built from `ML_SERVICE_PASSWORD`.
+Use letters and digits only in the passwords.
 
 ## 3. Run
 
@@ -101,8 +105,12 @@ the relay with `docker compose --profile test-camera up -d test-camera` and add 
 
 ```powershell
 # On Windows, in the repo folder (uses ml-service's venv; Ctrl+C to stop)
-ml-service\.venv\Scripts\python.exe ml-service\tools\publish_webcam.py --index 0
+ml-service\.venv\Scripts\python.exe ml-service\setup_and_tools\fake_cameras\publish_webcam.py --index 0
 ```
+
+`--index` is the webcam number: 0 is the first camera Windows lists, which can be a virtual
+camera (e.g. VCam, OBS) rather than a webcam; try 1, 2 ... (`--show` previews it). A second
+webcam: `--index 2 --url rtsp://localhost:8554/webcam2`, added as `rtsp://test-camera:8554/webcam2`.
 
 (Prod: then in http://localhost:3000 → **Cameras → Add camera**, RTSP URL
 `rtsp://test-camera:8554/webcam`.) Within seconds **Live View** shows the video with a box

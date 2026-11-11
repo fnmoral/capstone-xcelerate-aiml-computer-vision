@@ -27,7 +27,7 @@ prod_mode: false     # false = dev / prototyping, true = production
 | Allowed sources | webcam, video file, RTSP camera, stream-hub (tcp) | **IP cameras only**: stream-hub (tcp) and RTSP |
 | Preview window | on | off |
 | Listens for stream-hub on | `127.0.0.1` (this PC only) | `0.0.0.0` (other machines) |
-| Database URL | the development database in the shipped file | **none**: must come from `ML_DATABASE_URL` |
+| Database URL | none (JSONL files only), unless `ML_DATABASE_URL` is set | **none**: must come from `ML_DATABASE_URL` (Docker builds it from the root `.env`) |
 
 Prod refuses to start if a webcam or video file is listed, so a prototyping setting can't
 end up in production by mistake. It also refuses to write to the database without an
@@ -214,7 +214,7 @@ The person and pose detection model.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `inference.weights` | `models/yolo26n-pose-finetuned-mcfDataset-111026.pt` | Model file, relative to this file (the files available are listed in [models/README.md](models/README.md)). The fall-fine-tuned model is the default; `models/yolo26n-pose.pt` is the standard one. A standard name that isn't in `models/` downloads into it automatically. Sizes from fastest to most accurate: `yolo26n-pose.pt`, `yolo26s-pose.pt`, `yolo26m-pose.pt`, `yolo26l-pose.pt`, `yolo26x-pose.pt`. Baked into the container image, so in Docker it must match the build argument (see [Recipes](#recipes)). |
+| `inference.weights` | `models/yolo26n-pose-finetuned-mcfDataset-111026.pt` | Model file, relative to this file (the files available are listed in [models/README.md](models/README.md)). The fall-fine-tuned model is the default; `models/yolo26n-pose.pt` is the standard one. With webcams the fine-tuned model finds people standing and lying, but often misses someone sitting close to the camera (upper body only), where the standard model still sees them. A standard name that isn't in `models/` downloads into it automatically. Sizes from fastest to most accurate: `yolo26n-pose.pt`, `yolo26s-pose.pt`, `yolo26m-pose.pt`, `yolo26l-pose.pt`, `yolo26x-pose.pt`. Baked into the container image, so in Docker it must match the build argument (see [Recipes](#recipes)). |
 | `inference.device` | `auto` | `auto` = GPU 0 if CUDA is available, otherwise CPU. Or a GPU number (`0`, `1`), or `cpu`. A GPU number on a machine without CUDA falls back to CPU with a warning |
 | `inference.half` | `false` | FP16 on GPU. Can be faster on data-center GPUs, but was slower on an RTX 3060 laptop with the nano model, so measure first. Ignored on CPU |
 | `inference.conf` | `0.4` | Minimum confidence for a person to be reported (and drawn), 0–1. Lower finds more people but more false detections (e.g. plush toys or pillows taken for a person). **Can be changed in the frontend** (Detection Settings, as `person_confidence`), which wins over this value; ml-service picks it up within 15 s |
@@ -420,7 +420,7 @@ picked up within 15 s). To make it permanent for the machine, set `inference.con
 lower value also lets in more false detections, so check it with `evaluation` on footage
 from that camera.
 
-**Production**: set `ML_DATABASE_URL` (e.g. in `setup_and_tools/docker_server/.env`). The container sets
+**Production**: in Docker, `ML_DATABASE_URL` is built from `ML_SERVICE_PASSWORD` in the project's root `.env` (or set it there to override). The container sets
 `ML_PROD_MODE=true`, which uses the `prod:` section: stream-hub cameras, no preview,
 listening on all interfaces, results to JSONL and the database.
 

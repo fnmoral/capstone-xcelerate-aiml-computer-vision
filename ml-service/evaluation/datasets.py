@@ -62,6 +62,16 @@ def lying_toward_camera(pose: np.ndarray) -> np.ndarray:
     return out
 
 
+def lying_low_camera(pose: np.ndarray) -> np.ndarray:
+    """Flat on the floor, seen by a low camera with the legs pointing toward it: the knees and
+    ankles show lower in the picture than the hips (as if standing on them), but the outline is
+    clearly wider than tall. (Like the 11 Nov webcam test.)"""
+    out = lying(pose)
+    out[[13, 14]] = [(-0.12, -0.08), (-0.14, -0.08)]   # knees
+    out[[15, 16]] = [(-0.24, -0.30), (-0.26, -0.30)]   # ankles
+    return out
+
+
 def bend(pose: np.ndarray, degrees: float) -> np.ndarray:
     """Upper body pivots forward (toward +x) at the hips; legs stay straight."""
     out = pose.copy()
@@ -146,6 +156,9 @@ def scenarios() -> list[Scenario]:
                  [Segment(S, 4.0), Segment(S, 0.0), Segment(lying(S), 0.8, track_id=2),
                   Segment(lying(S), 2.4, track_id=3), Segment(lying(S), 2.4, track_id=4),
                   Segment(lying(S), 8.0)], fall_at=4.0),
+        Scenario("fall_low_camera", "Falls in front of a low camera, legs toward it (ankles look below hips)",
+                 [Segment(S, 4.0), Segment(S, 0.0), Segment(lying_low_camera(S), 0.8),
+                  Segment(lying_low_camera(S), 12.0)], fall_at=4.0, center=(640, 560)),
         Scenario("fall_toward_camera", "Falls with the feet toward the camera (body looks short, upright)",
                  [Segment(F, 4.0), Segment(F, 0.0), Segment(lying_toward_camera(F), 0.8),
                   Segment(lying_toward_camera(F), 12.0)], fall_at=4.0, known_limit=True),

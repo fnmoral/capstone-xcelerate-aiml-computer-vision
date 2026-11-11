@@ -1,8 +1,7 @@
 # backend-module database: PostgreSQL 17 + pgvector, with the schema loaded on first start.
 #
 #   cd backend-module
-#   cp .env.example .env        # then set the passwords
-#   docker compose up -d
+#   docker compose --env-file ../.env up -d     # settings: the root .env (see ../.env.example)
 #   docker compose logs -f db
 #
 # Other containers reach it as  db:5432  by joining the shared "fallguard" network:
@@ -21,8 +20,8 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-fallguard}
       POSTGRES_USER: ${POSTGRES_USER:-fallguard_admin}          # owns the tables
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
-      ML_SERVICE_PASSWORD: ${ML_SERVICE_PASSWORD:?set ML_SERVICE_PASSWORD in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the root .env}
+      ML_SERVICE_PASSWORD: ${ML_SERVICE_PASSWORD:?set ML_SERVICE_PASSWORD in the root .env}
       # Demo data on first start: off in prod, on otherwise. Unset = prod (never demo data
       # by accident). SEED_DEMO_DATA=true/false overrides the mode.
       PROD_MODE: ${PROD_MODE:-true}
@@ -65,7 +64,7 @@ services:
         condition: service_healthy
     environment:
       # Table owner for now; switch to a restricted role once user accounts exist.
-      DATABASE_URL: postgresql://${POSTGRES_USER:-fallguard_admin}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-fallguard}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-fallguard_admin}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the root .env}@db:5432/${POSTGRES_DB:-fallguard}
       TENANT: ${TENANT:-demo-facility}
       PROD_MODE: ${PROD_MODE:-true}            # dev (false): adds the PC's webcam to an empty gateway
       GATEWAY_URL: ${GATEWAY_URL:-http://gateway-back:8080}
@@ -91,7 +90,7 @@ services:
       PGHOST: db
       PGDATABASE: ${POSTGRES_DB:-fallguard}
       PGUSER: ${POSTGRES_USER:-fallguard_admin}
-      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the root .env}
       MONTHS_AHEAD: ${PARTITION_MONTHS_AHEAD:-3}
     volumes:
       - ./db/init/partitions.sh:/partitions.sh:ro

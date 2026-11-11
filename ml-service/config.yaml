@@ -63,7 +63,7 @@ server:
 database:
   # Leave empty and set the ML_DATABASE_URL environment variable instead; the URL holds a
   # password. Format: postgresql://ml_service:<password>@<host>:5432/<database>
-  url: "postgresql://fallguard_admin:change-me@localhost:5433/fallguard?sslmode=disable"
+  url: ""
   connect_timeout_s: 5
   zones_from_db: true        # also use zones from the zones table + cameras.zone_id
 
@@ -75,7 +75,7 @@ handshake:
   default_tenant_id: demo-facility
 
 inference:
-  weights: models/yolo26n-pose-finetuned-mcfDataset-111026.pt   # fine-tuned for falls (models/README.md); the standard model: models/yolo26n-pose.pt
+  weights: models/yolo26n-pose-finetuned-mcfDataset-111026.pt   # fine-tuned for falls; the standard model: models/yolo26n-pose.pt (see models/README.md)
   device: auto               # auto = GPU 0 if CUDA is available, else CPU; or a GPU index, or cpu
   half: false                # FP16 on GPU; measure first, it was slower on an RTX 3060 laptop
   conf: 0.4                  # a person is reported once detected this confidently

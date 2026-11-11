@@ -6,15 +6,18 @@
 # The "ml-service" container becomes an SSH tunnel with the same name, so stream-hub
 # (ml-service:9999) and the API (ml-service:8000) need no changes. It also forwards the
 # server's 127.0.0.1:15432 back to db:5432, so ml-service can save incidents.
-# Login: fanshawe_server_and_WSL_Setup/server/.env (see .env.example).
+# Login: SERVER_HOST, SERVER_PORT, SERVER_USER, SERVER_PASSWORD in the root .env (see .env.example).
 services:
   ml-service:
     build: !override
       context: ./fanshawe_server_and_WSL_Setup/server
     image: capstone/ml-tunnel:latest
-    environment: !reset {}
+    environment: !override
+      SERVER_HOST: ${SERVER_HOST:?set SERVER_HOST in the root .env}
+      SERVER_PORT: ${SERVER_PORT:-22}
+      SERVER_USER: ${SERVER_USER:?set SERVER_USER in the root .env}
+      SERVER_PASSWORD: ${SERVER_PASSWORD:?set SERVER_PASSWORD in the root .env}
     ports: !override
       - "127.0.0.1:8000:8000"  # live viewer from the server: http://localhost:8000
-    volumes: !override
-      - ./fanshawe_server_and_WSL_Setup/server/.env:/run/secrets/server.env:ro
+    volumes: !reset []
     deploy: !reset {}

@@ -199,6 +199,13 @@ class PostgresSink:
                     zones.setdefault(zone, []).extend([str(cam_id), cam_name])
         return zones
 
+    def load_tenant_ids(self) -> dict[str, str]:
+        """Every active tenant's slug and UUID, both mapped to the UUID. Cameras added to a
+        gateway before it registered send the slug (e.g. 'demo-facility'), later ones the UUID."""
+        with psycopg.connect(self.url, connect_timeout=self.connect_timeout_s, autocommit=True) as conn:
+            rows = conn.execute("SELECT id, slug FROM tenants WHERE status = 'active'").fetchall()
+        return {k: str(tid) for tid, slug in rows for k in (str(tid), slug) if k}
+
     def load_overrides(self) -> dict[str, dict]:
         """Detection settings changed in the frontend, per tenant (keyed by slug and by UUID):
         the fall rule's parsed_config.detection, e.g. {"person_confidence": 0.6}."""

@@ -165,7 +165,7 @@ Endpoints in use (all exist in `backend-module/api`, checked 2026-11-09):
 To add an endpoint: add its response type to `types/domain.ts`, add one function to `api` in
 `fallguard.ts`, and call it from the page with `usePolling` (reads) or directly (actions).
 
-Settings (`.env.example`): `VITE_API_BASE_URL` (default `/api`), `VITE_STREAM_BASE_URL`
+Settings (the project's one `.env`, see `../.env.example`): `VITE_API_BASE_URL` (default `/api`), `VITE_STREAM_BASE_URL`
 (default `/stream-hub`). In Docker, nginx forwards both paths; in `npm run dev`, the Vite
 proxy does (`VITE_API_PROXY`, `VITE_STREAM_PROXY`).
 
@@ -208,7 +208,7 @@ Semantic landmarks (`header`, `nav`, `main`, `footer`), skip-to-content link, `a
 
 1. Start the platform once with Docker (see `../GETTING_STARTED.md`).
 2. In `fallguard-frontend`: `npm install`, then `npm run dev` and open http://localhost:5173.
-   No `.env` is needed; copy `.env.example` to `.env` only to change a default.
+   No settings are needed; to change a default, set it in the project's root `.env` (it reads only the `VITE_*` lines).
 3. Read this file, then `config/navigation.ts`, `components/layout/AppLayout.tsx` and `services/api/fallguard.ts`.
 4. To add a page: create `features/<area>/<Area>Page.tsx` with a default export, add one entry to `NAV_ITEMS`. Done.
 5. To show backend data: add a function to `api` and use it with `usePolling` (section 7).

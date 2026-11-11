@@ -218,7 +218,14 @@ class IncidentAggregator:
         self._zone_of = {cam: name for name, cams in zones.items() for cam in cams}
         self._open: list[ZoneIncident] = []
         self._by_member: dict[int, ZoneIncident] = {}
+        self._tenant_ids: dict[str, str] = {}  # slug or UUID -> UUID (from the database)
         self._lock = threading.Lock()  # main thread, plus reader threads closing a lost camera
+
+    def set_tenant_ids(self, tenant_ids: dict[str, str]) -> None:
+        """Tenants by slug and by UUID, so a camera sending 'demo-facility' and one sending its
+        UUID count as the same facility (otherwise their falls are never merged)."""
+        with self._lock:
+            self._tenant_ids = dict(tenant_ids)
 
     def set_zones(self, zones: dict[str, list[str]]) -> None:
         """Replace the zone map (e.g. after zones were edited in the database).
@@ -251,6 +258,7 @@ class IncidentAggregator:
     def handle(self, tenant_id: str, camera_id: str, event: IncidentEvent) -> list[tuple[str, ZoneIncident]]:
         """Feed one camera-level event; returns the zone-level events to report (often none)."""
         with self._lock:
+            tenant_id = self._tenant_ids.get(tenant_id, tenant_id)
             match event.kind:
                 case "incident_started":
                     return self._start(tenant_id, camera_id, event.incident)

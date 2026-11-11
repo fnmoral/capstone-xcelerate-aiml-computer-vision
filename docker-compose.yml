@@ -21,12 +21,18 @@
 #                                            and recorded clips/snapshots (HTTP)
 name: fallguard
 
+# Every module reads the one settings file: .env next to this file (see .env.example).
 include:
-  - backend-module/docker-compose.yml    # db, partitions, api; reads backend-module/.env
-  - ml-service/setup_and_tools/docker_server/docker-compose.yml # reads ml-service/setup_and_tools/docker_server/.env
-  - stream-hub/docker-compose.yml
-  - gateway-back/docker-compose.yml
-  - fallguard-frontend/docker-compose.yml # http://localhost:3000
+  - path: backend-module/docker-compose.yml    # db, partitions, api
+    env_file: .env
+  - path: ml-service/setup_and_tools/docker_server/docker-compose.yml
+    env_file: .env
+  - path: stream-hub/docker-compose.yml
+    env_file: .env
+  - path: gateway-back/docker-compose.yml
+    env_file: .env
+  - path: fallguard-frontend/docker-compose.yml # http://localhost:3000
+    env_file: .env
 
 services:
   # An RTSP relay for testing without real cameras: this PC's webcam is published to it

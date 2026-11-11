@@ -44,6 +44,7 @@ class PoseFeatures:
     lower_body: bool = True            # any hip, knee or ankle visible
     at_edge: bool = False              # box touches the frame edge: the person may be cut off
     angle_source: str = "torso"        # "torso" (shoulders-hips), "body" (head-legs fallback) or "none"
+    kneeling: bool | None = None       # thighs upright under the hips, shins flat on the floor
 
 
 def _midpoint(kpts: np.ndarray, a: int, b: int, min_conf: float) -> np.ndarray | None:
@@ -67,6 +68,27 @@ def _legs_upright(kpts: np.ndarray, min_conf: float) -> float | None:
         if length > 1.0:
             ratios.append((kpts[ankle, 1] - kpts[hip, 1]) / length)
     return float(np.mean(ratios)) if ratios else None
+
+
+def _kneeling(kpts: np.ndarray, min_conf: float) -> bool | None:
+    """Thighs pointing down from the hips while the shins lie flat: kneeling (e.g. looking
+    under furniture), not lying. Lying has the thighs flat too; standing has the shins upright.
+    None when no leg is fully visible."""
+    thighs, shins = [], []
+    for hip, knee, ankle in ((L_HIP, L_KNEE, L_ANKLE), (R_HIP, R_KNEE, R_ANKLE)):
+        if min(kpts[hip, 2], kpts[knee, 2], kpts[ankle, 2]) < min_conf:
+            continue
+        thigh = np.linalg.norm(kpts[knee, :2] - kpts[hip, :2])
+        shin = np.linalg.norm(kpts[ankle, :2] - kpts[knee, :2])
+        if thigh > 1.0 and shin > 1.0:
+            thighs.append((kpts[knee, 1] - kpts[hip, 1]) / thigh)     # 1 = knee straight below the hip
+            shins.append(abs(kpts[ankle, 1] - kpts[knee, 1]) / shin)  # 0 = shin flat
+    if not thighs:
+        return None
+    return bool(np.mean(thighs) >= KNEEL_THIGH_DOWN and np.mean(shins) <= KNEEL_SHIN_FLAT)
+
+
+KNEEL_THIGH_DOWN, KNEEL_SHIN_FLAT = 0.7, 0.4
 
 
 def _group_mean(kpts: np.ndarray, idx: range, min_conf: float) -> np.ndarray | None:
@@ -109,7 +131,7 @@ def extract(box: np.ndarray, kpts: np.ndarray, frame_shape: tuple[int, ...], min
         head_below = bool(kpts[NOSE, 1] > hips[1])
 
     return PoseFeatures(angle, aspect, hip_y, head_below, _legs_upright(kpts, min_conf),
-                        visible, lower is not None, at_edge, source)
+                        visible, lower is not None, at_edge, source, _kneeling(kpts, min_conf))
 
 
 # ================================================================================================
@@ -143,7 +165,7 @@ def _clamp(x: float) -> float:
 
 class RuleClassifier:
     name = "rules"
-    version = "0.2.0"
+    version = "0.3.0"
 
     def __init__(self, thresholds: RuleThresholds):
         self.t = thresholds
@@ -164,8 +186,15 @@ class RuleClassifier:
         if f.head_below_hips:
             lying_score = _clamp(lying_score + 0.15)
         # Ankles well below the hips on straight legs: standing or bent over, not lying,
-        # however tilted the upper body is.
-        if f.legs_upright is not None and f.legs_upright >= t.standing_legs:
+        # however tilted the upper body is. Only while the person is taller than wide: from a
+        # low camera, someone lying with their legs toward or away from it also shows "ankles
+        # below hips", but their outline is clearly wider than tall (a box cut off by the frame
+        # edge has no reliable shape, so there the legs alone decide).
+        on_feet = f.legs_upright is not None and f.legs_upright >= t.standing_legs
+        if on_feet and (f.at_edge or f.aspect_ratio < t.lying_aspect_ratio):
+            lying_score = min(lying_score, 0.5)
+        # Kneeling (thighs down, shins flat): the torso may be flat, but the hips are off the floor.
+        if f.kneeling:
             lying_score = min(lying_score, 0.5)
 
         if lying_score >= 0.75:

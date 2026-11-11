@@ -61,6 +61,36 @@ a fall or adds a false alarm fails the tests.
 
 ---
 
+## Smarter "on their feet" rule, and kneeling (rules 0.3.0, 2026-11-11)
+
+Found in a live test with two webcams: a fall seen by a **low camera** raised its alert about
+10 s late. The rule "ankles well below the hips on straight legs = standing or bending, never
+lying" also fired for someone lying with their legs toward the camera, because from low down
+the ankles show below the hips. Lying frames were labelled `upright 0.50` (the rule's cap) even
+with the torso flat (85°) and the outline 1.3-1.7 times wider than tall.
+
+- **"On their feet" now needs a tall outline** (box aspect below `lying_aspect_ratio`, 1.3). Bending
+  over keeps a tall outline; lying is wide from any angle. A box cut off by the frame edge keeps
+  the old behaviour (its shape is unreliable).
+- **Kneeling is not lying:** thighs pointing down from the hips and shins flat on the floor cap the
+  lying score at 0.5, like standing. Fixes the "kneel and look under furniture" false alarm.
+- New synthetic scenario `fall_low_camera` (legs toward a low camera), so the benchmark covers it.
+
+| Benchmark | Rules 0.2.0 | Rules 0.3.0 |
+|---|---|---|
+| `fall_low_camera` (new) | 0/5 caught | **5/5 caught**, alert 3.3 s after the fall |
+| Synthetic falls caught | 35/40 | **40/40** |
+| Everyday scenarios, false alarms | 0 | 0 |
+| `kneel_look_under` (was a known limit) | 5 false alarms | **0** |
+| Dataset test set (zone / per camera / false alarms) | 5/6, 12/18, 2 | 5/6, 12/18, 2 (unchanged) |
+
+Saved as `evaluation/results/13-test-smarter-legs-kneeling.json`. Still open: lying on a bed or
+sofa (needs bed/sofa areas in the UI) and falling with the feet toward the camera (needs
+per-camera calibration). The low-camera fix should also be checked on more real recordings from
+low webcams (sideways, toward and away from the camera).
+
+---
+
 ## 15 epochs, Stage B, and the fine-tuned model as default (2026-11-10)
 
 The pose model finished all 15 epochs (epochs 3-15 on the course server's CPU: ~8 min each,

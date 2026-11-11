@@ -88,6 +88,27 @@ def test_bending_over_on_straight_legs_is_not_lying():
     assert clf.classify(f, 0.0)[0] == UPRIGHT
 
 
+def test_lying_seen_by_a_low_camera_is_lying():
+    """Legs toward a low camera: ankles show below the hips, but the outline is wide."""
+    clf = RuleClassifier(RuleThresholds())
+    low = keypoints(nose=(300, 400), shoulders=((270, 395), (270, 405)), hips=((170, 398), (170, 402)),
+                    knees=((130, 440), (130, 444)), ankles=((100, 500), (100, 504)))
+    f = extract(np.array([90, 380, 320, 510]), low, (720, 1280), 0.3)   # fully inside the frame
+    assert f.legs_upright > 0.6 and f.aspect_ratio > 1.3 and not f.kneeling
+    assert clf.classify(f, 0.0)[0] == LYING
+
+
+def test_kneeling_with_a_flat_torso_is_not_lying():
+    """Kneeling to look under furniture: torso flat, but thighs down and shins on the floor."""
+    clf = RuleClassifier(RuleThresholds())
+    kneel = keypoints(nose=(330, 330), shoulders=((290, 335), (290, 340)), hips=((200, 320), (200, 325)),
+                      knees=((215, 400), (215, 405)), ankles=((140, 402), (140, 407)))
+    f = extract(np.array([130, 310, 340, 410]), kneel, FRAME, 0.3)
+    assert f.torso_angle_deg > 70 and f.kneeling
+    assert clf.classify(f, 0.0)[0] == UPRIGHT
+    assert extract(LYING_BOX, LYING_DOWN, FRAME, 0.3).kneeling is False   # thighs flat: not kneeling
+
+
 def test_too_little_evidence_is_unclear():
     clf = RuleClassifier(RuleThresholds())
     # Only nose, shoulders and hips: fewer than min_visible_keypoints.

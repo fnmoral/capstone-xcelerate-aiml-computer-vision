@@ -1,8 +1,7 @@
 # Run ml-service on the GPU server, in prod mode (IP cameras only):
-#   (start the database first: cd backend-module && docker compose up -d)
+#   (start the database first: cd backend-module && docker compose --env-file ../.env up -d)
 #   cd ml-service/setup_and_tools/docker_server
-#   cp .env.example .env        # set ML_DATABASE_URL
-#   docker compose up -d --build
+#   docker compose --env-file ../../../.env up -d --build   # settings: the root .env
 #   docker compose logs -f ml-service
 # (the whole stack: ../../../docker-compose.yml)
 name: fallguard-ml
@@ -20,7 +19,8 @@ services:
       ML_PROD_MODE: "true"
       # backend-module PostgreSQL. On the shared network the host is "db":
       #   postgresql://ml_service:<ML_SERVICE_PASSWORD>@db:5432/fallguard
-      ML_DATABASE_URL: ${ML_DATABASE_URL:?set ML_DATABASE_URL in .env}
+      # Built from the root .env's ML_SERVICE_PASSWORD; set ML_DATABASE_URL there to override.
+      ML_DATABASE_URL: ${ML_DATABASE_URL:-postgresql://ml_service:${ML_SERVICE_PASSWORD:?set ML_SERVICE_PASSWORD in the root .env}@db:5432/${POSTGRES_DB:-fallguard}}
     ports:
       - "9999:9999"          # stream-hub connects here; keep it on the internal network only
       # No other port: there is no HTTP server here any more. Live video, incident clips and

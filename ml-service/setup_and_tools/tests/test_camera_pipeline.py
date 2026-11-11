@@ -137,6 +137,20 @@ def test_overlapping_cameras_give_one_alert():
     assert group.started_at == 100.0 and group.peak_confidence == 0.9
 
 
+def test_tenant_slug_and_uuid_count_as_one_facility():
+    """A camera added before its gateway registered sends the slug, a newer one the UUID."""
+    uuid = "11111111-1111-1111-1111-111111111111"
+    agg = IncidentAggregator(ZONES, merge_window_s=10)
+    agg.set_tenant_ids({"demo-facility": uuid, uuid: uuid})
+    [(kind1, group)] = agg.handle("demo-facility", "cam-1", event(STARTED, Incident(1, 100.0, 0.8)))
+    [(kind2, same)] = agg.handle(uuid, "cam-2", event(STARTED, Incident(2, 101.0, 0.8)))
+    assert (kind1, kind2) == (STARTED, UPDATED) and same is group
+    assert group.tenant_id == uuid
+    # A tenant the database doesn't know keeps its own name: never merged with another.
+    [(kind3, other)] = agg.handle("someone-else", "cam-2", event(STARTED, Incident(3, 101.5, 0.8)))
+    assert kind3 == STARTED and other is not group
+
+
 def test_merged_incident_closes_when_every_camera_closes():
     agg = IncidentAggregator(ZONES, merge_window_s=10)
     a = Incident(1, 100.0, 0.8)
