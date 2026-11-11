@@ -19,6 +19,9 @@ services:
       GATEWAY_TENANT_NAME: ${GATEWAY_TENANT_NAME:-demo-facility}
       GATEWAY_NAME_ID: ${GATEWAY_NAME_ID:-default_gateway}
       GATEWAY_ID: ${GATEWAY_ID:-default_id}
+      # Register with the backend by itself at start-up (no "Configure Now" step needed).
+      # The values stay editable on the gateway page; false = register by hand there.
+      GATEWAY_AUTO_REGISTER: ${GATEWAY_AUTO_REGISTER:-true}
     ports:
       - "${GATEWAY_PORT:-8080}:8080"   # web UI + /gateway/actions API
     volumes:

@@ -17,6 +17,7 @@ const (
 // A camera removed later isn't added back, because the gateway then still has others, or
 // was emptied on purpose after this ran once.
 func (s *Server) DevWebcam(ctx context.Context) {
+	var lastErr error
 	for wait := time.Duration(0); wait < 3*time.Minute; wait += 5 * time.Second {
 		select {
 		case <-ctx.Done():
@@ -32,8 +33,10 @@ func (s *Server) DevWebcam(ctx context.Context) {
 		}
 		cam, err := s.gateway.addCamera(ctx, devWebcamName, devWebcamURL, "", "")
 		if err != nil {
-			log.Printf("dev mode: adding the webcam camera: %v", err)
-			return
+			// The gateway refuses cameras until it has registered with this API, which it
+			// does by itself shortly after both start: try again.
+			lastErr = err
+			continue
 		}
 		location := "This PC"
 		if err := s.db.UpsertCamera(ctx, cam.ID, devWebcamName, devWebcamURL, dbStatus(cam.Status), &location, nil); err != nil {
@@ -45,6 +48,10 @@ func (s *Server) DevWebcam(ctx context.Context) {
 			log.Printf("dev mode: logging the webcam camera: %v", err)
 		}
 		log.Printf("dev mode: added camera %q (%s); start ml-service/tools/publish_webcam.py on the PC for video", devWebcamName, devWebcamURL)
+		return
+	}
+	if lastErr != nil {
+		log.Printf("dev mode: adding the webcam camera: %v", lastErr)
 		return
 	}
 	log.Printf("dev mode: gateway not reachable; webcam camera not added")

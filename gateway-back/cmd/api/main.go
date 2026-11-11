@@ -76,6 +76,10 @@ func main() {
 
 		handler.RegisterRoutes(api)
 		configHandler.RegisterRoutes(api)
+
+		// Register with the main backend by itself, from the start-up settings, so the
+		// one-time "Configure Now" step isn't needed. Still editable from the gateway page.
+		go configHandler.AutoRegister(ctx)
 	}
 
 	// Embedded Frontend Static Files Serving

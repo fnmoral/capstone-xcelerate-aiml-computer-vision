@@ -236,6 +236,7 @@ Run these in the project folder.
 | `set POSTGRES_PASSWORD in the root .env` (or `ML_SERVICE_PASSWORD`) | Step 3 was skipped: copy `.env.example` to `.env` in the project folder |
 | Settings page shows a service **not running** | `docker compose logs <service name>` and send the last lines to the team |
 | Changed the passwords after the first start and the app can't reach the database | `docker compose down -v` and start again (this wipes the demo data) |
+| Adding a camera fails with `Gateway information must be updated` | The gateway hasn't signed up with the main system yet (it does this by itself within a minute of starting). If it persists, `docker compose logs gateway-back` shows why (lines starting with `auto-register`), or fill in its settings at http://localhost:8080 |
 | Webcam tool says it can't open the camera | Close other apps using the camera (Zoom, Teams). Try `--index 1` at the end of the command |
 | Labels lag or the video is choppy on a Mac / no-NVIDIA computer | Normal: the processor is slower than a graphics card, so fewer frames are checked per second. Falls are still detected |
 

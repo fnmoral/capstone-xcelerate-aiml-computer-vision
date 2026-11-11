@@ -3,8 +3,7 @@
 package config
 
 import (
-	"bytes"
-	"encoding/json"
+	"errors"
 	"net/http"
 
 	"gateway-back/internal/stream"
@@ -65,49 +64,17 @@ func (h *ConfigHandler) UpdateConfig(c *gin.Context) {
 		return
 	}
 
-	// Prepare payload to register the gateway on the main backend.
-	// Sends tenant_name (slug) and gateway_name_id as required by the backend.
-	registerBody, err := json.Marshal(gin.H{
-		"tenant_name":     payload.TenantName,
-		"gateway_name_id": payload.GatewayNameID,
-	})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": "Failed to marshal registration payload"})
+	// Register (or re-register with changed values) on the main backend, then save.
+	// The gateway also does this by itself at start-up (AutoRegister); this lets a user change
+	// the values later from the gateway page.
+	if err := h.register(payload); err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, errBackend) {
+			status = http.StatusBadGateway
+		}
+		c.JSON(status, gin.H{"Error": "Failed to register the gateway: " + err.Error()})
 		return
 	}
-
-	// Perform POST request to the main backend to register/update the gateway.
-	resp, err := http.Post("http://"+payload.BackEndAddress+"/api/gateway/add", "application/json", bytes.NewBuffer(registerBody))
-	if err != nil || (resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated) {
-		c.JSON(http.StatusBadGateway, gin.H{"Error": "Failed to communicate with the main backend or tenant not found"})
-		return
-	}
-	defer resp.Body.Close()
-
-	// Decode the response from the backend to obtain the assigned tenant_id.
-	var backendResp BackendRegisterResponse
-	if err := json.NewDecoder(resp.Body).Decode(&backendResp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": "Failed to parse main backend response"})
-		return
-	}
-
-	// Update in-memory configuration state.
-	h.cfg.StreamHubAddress = payload.StreamHubAddress
-	h.cfg.BackEndAddress = payload.BackEndAddress
-	h.cfg.TenantNAME = payload.TenantName
-	h.cfg.GatewayNameID = payload.GatewayNameID
-	h.cfg.TenantID = backendResp.TenantID
-	h.cfg.GatewayID = backendResp.GatewayID
-	h.cfg.GatewayInfoUpdated = true
-
-	// Save changes to the physical configuration file.
-	if err := SaveConfig(h.cfgPath, h.cfg); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": "Failed to save configuration file"})
-		return
-	}
-
-	// Update the address in the StreamManager at runtime.
-	h.streamMgr.UpdateCloudAddress(h.cfg.StreamHubAddress)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Configuration updated successfully",
