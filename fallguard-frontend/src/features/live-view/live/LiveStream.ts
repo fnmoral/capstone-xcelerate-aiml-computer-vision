@@ -1,4 +1,5 @@
 import { DetectionBuffer } from "./detections";
+import type { LiveOverlay } from "../../../store/uiStore";
 import { drawFrame } from "./draw";
 import { AccessUnitAssembler, codecFromSps, type AccessUnit } from "./h264";
 import { FrameScheduler, type DecodedFrame } from "./playout";
@@ -14,6 +15,8 @@ export interface LiveStreamOptions {
   /** How long frames wait for their detections. 0 shows video as soon as it is decoded. */
   delayMs: number;
   labelText: (label: string) => string;
+  /** What to draw over the video; change it later with setOverlay(). */
+  overlay: LiveOverlay;
   onResult?: (message: ResultMessage) => void;
   /** "connecting" until the first frame, "live" while frames arrive, "stalled" when they stop. */
   onStatus?: (status: LiveStatus) => void;
@@ -57,8 +60,10 @@ export class LiveStream {
   private lastFrameAt = 0;
   private status: LiveStatus = "connecting";
   private readonly options: LiveStreamOptions;
+  private overlay: LiveOverlay;
 
   constructor(options: LiveStreamOptions) {
+    this.overlay = options.overlay;
     this.options = options;
     const ctx = options.canvas.getContext("2d");
     if (!ctx) throw new Error("2D canvas not available");
@@ -116,6 +121,12 @@ export class LiveStream {
     if (status === this.status && status !== "connecting") return;
     this.status = status;
     this.options.onStatus?.(status);
+  }
+
+  /** Redraws the current frame with other overlays (no reconnect). */
+  setOverlay(overlay: LiveOverlay): void {
+    this.overlay = overlay;
+    this.dirty = true;
   }
 
   stop(): void {
@@ -227,6 +238,7 @@ export class LiveStream {
       this.detections.at(this.current.pts),
       this.options.labelText,
       window.devicePixelRatio || 1,
+      this.overlay,
     );
   };
 

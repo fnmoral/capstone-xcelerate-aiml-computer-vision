@@ -8,7 +8,7 @@ import './Navigation.css';
 const SECTIONS: NavSection[] = ['monitor', 'manage', 'system'];
 
 export function Navigation() {
-  const { navOpen, navCollapsed, closeNav, toggleCollapsed } = useUiStore();
+  const { navOpen, navCollapsed, navPinned, closeNav, toggleCollapsed, togglePinned } = useUiStore();
   const cls = ['nav', navOpen && 'nav--open', navCollapsed && 'nav--collapsed'].filter(Boolean).join(' ');
 
   return (
@@ -32,6 +32,12 @@ export function Navigation() {
           </div>
         ))}
         <SidebarClock collapsed={navCollapsed} />
+        {/* Tablet-width windows only (CSS): keep the menu beside the page instead of a pop-out */}
+        <button className={`nav__pin${navPinned ? ' nav__pin--on' : ''}`} onClick={togglePinned} aria-pressed={navPinned}
+          title={navPinned ? 'Let the menu close after choosing a page' : 'Keep the menu open beside the page'}>
+          <Icon name="pin" />
+          <span className="nav__label">{navPinned ? 'Unpin menu' : 'Keep menu open'}</span>
+        </button>
         <button className="nav__collapse" onClick={toggleCollapsed}
           aria-label={navCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
           <Icon name={navCollapsed ? 'expand' : 'collapse'} />

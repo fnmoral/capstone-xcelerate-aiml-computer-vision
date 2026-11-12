@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { LABEL_TEXT } from "../../../lib/format";
+import { useUiStore } from "../../../store/uiStore";
 import { LiveStream, supportsLiveStream, type LiveStatus } from "./LiveStream";
 import type { ResultMessage } from "./protocol";
 
@@ -26,6 +27,10 @@ export function LiveVideo({
   onResultRef.current = onResult;
   const supported = supportsLiveStream();
   const [status, setStatus] = useState<LiveStatus>("connecting");
+  const overlay = useUiStore((s) => s.liveOverlay);
+  const overlayRef = useRef(overlay);
+  overlayRef.current = overlay;
+  const streamRef = useRef<LiveStream | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -35,12 +40,19 @@ export function LiveVideo({
       canvas,
       delayMs: DISPLAY_DELAY_MS,
       labelText,
+      overlay: overlayRef.current,
       onResult: (message) => onResultRef.current?.(message),
       onStatus: setStatus,
     });
+    streamRef.current = stream;
     stream.start();
-    return () => stream.stop();
+    return () => {
+      stream.stop();
+      streamRef.current = null;
+    };
   }, [url, supported]);
+
+  useEffect(() => streamRef.current?.setOverlay(overlay), [overlay]);
 
   if (!supported) {
     // Browsers only offer the video decoder on https:// or localhost. Opening the app as

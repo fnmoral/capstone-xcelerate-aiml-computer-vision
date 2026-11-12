@@ -12,7 +12,8 @@ any display size; width and height are the analysed frame's size in pixels.
     {"type": "detections", "camera_id": "cam1", "pts": 1730990000123,
      "width": 1280, "height": 720,
      "people": [{"track": 1, "label": "lying", "confidence": 0.91,
-                 "box": [0.12, 0.30, 0.45, 0.88], "incident_id": "..." | null}]}
+                 "box": [0.12, 0.30, 0.45, 0.88], "incident_id": "..." | null,
+                 "keypoints": [[0.21, 0.35, 0.98], ...]}]}   # 17 COCO points: x, y (0..1), confidence
 
 incident: a zone-level incident event (started, updated, recovered, unresolved).
 
@@ -56,13 +57,19 @@ def detections_message(camera_id: str, pts: int, width: int, height: int, people
 
 
 def person_entry(track: int, label: str, confidence: float, box, width: int, height: int,
-                 incident_id: str | None) -> dict:
-    """One person of a detections message. box is [x1, y1, x2, y2] in pixels."""
+                 incident_id: str | None, keypoints=None) -> dict:
+    """One person of a detections message. box is [x1, y1, x2, y2] in pixels; keypoints,
+    if given, the (17, 3) COCO body points as x, y in pixels and confidence. The frontend
+    draws the skeleton from them; points are normalised to 0..1 like the box."""
     x1, y1, x2, y2 = (float(v) for v in box)
     norm = [x1 / width, y1 / height, x2 / width, y2 / height]
-    return {"track": int(track), "label": str(label), "confidence": round(float(confidence), 2),
-            "box": [round(min(max(v, 0.0), 1.0), 4) for v in norm],
-            "incident_id": incident_id}
+    entry = {"track": int(track), "label": str(label), "confidence": round(float(confidence), 2),
+             "box": [round(min(max(v, 0.0), 1.0), 4) for v in norm],
+             "incident_id": incident_id}
+    if keypoints is not None:
+        entry["keypoints"] = [[round(float(x) / width, 4), round(float(y) / height, 4), round(float(c), 2)]
+                              for x, y, c in keypoints]
+    return entry
 
 
 def incident_message(camera_id: str, pts: int | None, event: str, incident_id: str | None,

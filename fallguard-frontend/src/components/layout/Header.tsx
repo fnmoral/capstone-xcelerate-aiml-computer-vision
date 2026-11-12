@@ -7,7 +7,7 @@ import { NotificationsMenu } from "./NotificationsMenu";
 import "./Header.css";
 
 export function Header() {
-  const { navOpen, toggleNav } = useUiStore();
+  const { navOpen, navPinned, toggleNav, togglePinned } = useUiStore();
   const { data: stats } = usePolling(() => api.stats(), 5000);
   const active = stats?.active_incidents ?? 0;
 
@@ -15,12 +15,12 @@ export function Header() {
     <header className="header" role="banner">
       <button
         className="header__menu"
-        onClick={toggleNav}
-        aria-label={navOpen ? "Close navigation" : "Open navigation"}
-        aria-expanded={navOpen}
+        onClick={navPinned ? togglePinned : toggleNav}
+        aria-label={navOpen || navPinned ? "Close navigation" : "Open navigation"}
+        aria-expanded={navOpen || navPinned}
         aria-controls="primary-nav"
       >
-        <Icon name={navOpen ? "close" : "menu"} />
+        <Icon name={navOpen || navPinned ? "close" : "menu"} />
       </button>
       <Link to="/" className="header__brand" aria-label="FallGuard Vision home">
         <img src="/logo.jpeg" alt="FallGuard Logo" className="header__logo" />

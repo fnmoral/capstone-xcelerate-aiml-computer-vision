@@ -26,7 +26,9 @@ from pathlib import Path
 import paramiko
 
 HERE = Path(__file__).resolve().parent
-ROOT_ENV = HERE.parents[1] / ".env"   # the project's one settings file
+# The project's one settings file. In the tunnel container the script sits at /app, with no
+# project folder above it; the login then comes from environment variables only.
+ROOT_ENV = HERE.parents[1] / ".env" if len(HERE.parents) > 1 else None
 LEGACY_ENV = HERE / ".env"            # older setups kept the login next to this script
 SERVER_KEYS = ("SERVER_HOST", "SERVER_PORT", "SERVER_USER", "SERVER_PASSWORD")
 KNOWN_HOSTS = HERE / "known_hosts"
@@ -36,8 +38,8 @@ def load_env() -> dict[str, str]:
     """SERVER_* settings: environment variables first (the tunnel container), then the root .env,
     then the old .env next to this script."""
     env: dict[str, str] = {}
-    for path in (LEGACY_ENV, Path(os.environ.get("SERVER_ENV_FILE", ROOT_ENV))):
-        if path.is_file():
+    for path in (LEGACY_ENV, ROOT_ENV):
+        if path is not None and path.is_file():
             for line in path.read_text().splitlines():
                 if "=" in line and not line.lstrip().startswith("#"):
                     key, value = line.split("=", 1)

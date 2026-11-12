@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// The PC's webcam, published into the test-camera relay by ml-service/tools/publish_webcam.py.
+// The PC's webcam, published into the test-camera relay by ml-service/setup_and_tools/fake_cameras/publish_webcam.py.
 const (
 	devWebcamName = "Windows webcam"
 	devWebcamURL  = "rtsp://test-camera:8554/webcam"
@@ -47,7 +47,7 @@ func (s *Server) DevWebcam(ctx context.Context) {
 			"Added automatically (dev mode): this PC's webcam through the test-camera relay"); err != nil {
 			log.Printf("dev mode: logging the webcam camera: %v", err)
 		}
-		log.Printf("dev mode: added camera %q (%s); start ml-service/tools/publish_webcam.py on the PC for video", devWebcamName, devWebcamURL)
+		log.Printf("dev mode: added camera %q (%s); start ml-service/setup_and_tools/fake_cameras/publish_webcam.py on the PC for video", devWebcamName, devWebcamURL)
 		return
 	}
 	if lastErr != nil {

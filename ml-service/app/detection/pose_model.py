@@ -38,6 +38,28 @@ def describe_device(device: str | int) -> str:
     return f"GPU {index} ({torch.cuda.get_device_name(index)})"
 
 
+def available_devices() -> list[dict]:
+    """Devices that can be picked in Detection Settings: auto, the CPU and each GPU."""
+    devices = [{"value": "auto", "label": "Auto (GPU if available)"}, {"value": "cpu", "label": "CPU"}]
+    if torch.cuda.is_available():
+        devices += [{"value": str(i), "label": f"GPU {i} ({torch.cuda.get_device_name(i)})"}
+                    for i in range(torch.cuda.device_count())]
+    return devices
+
+
+def available_models(models_dir: Path) -> list[str]:
+    """Pose model files in models_dir that can be picked in Detection Settings. Only pose
+    models work here: the fall rules need the body points."""
+    if not models_dir.is_dir():
+        return []
+    return sorted(p.name for p in models_dir.glob("*.pt") if "pose" in p.name.lower())
+
+
+def parse_device(value: str | int) -> str | int:
+    """"0" -> 0 (a GPU index), anything else as is ("auto", "cpu")."""
+    return int(value) if str(value).isdigit() else value
+
+
 @dataclass(slots=True)
 class Person:
     track_id: int
@@ -62,7 +84,10 @@ class PoseTracker:
     def __init__(self, weights: str, device: str | int, conf: float, imgsz: int, tracker: str,
                  half: bool = False, track_conf: float = 0.1):
         self.model = YOLO(weights)
-        self.device = resolve_device(device)
+        if self.model.task != "pose":
+            raise ValueError(f"{Path(weights).name} is a {self.model.task} model; a pose model is needed")
+        self.weights = str(weights)
+        self.device = resolve_device(parse_device(device))
         self.half = half and self.device != "cpu"  # FP16 is GPU-only
         self.conf = conf
         self.track_conf = track_conf

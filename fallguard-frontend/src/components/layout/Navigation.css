@@ -16,6 +16,18 @@
 .nav__link--active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .nav__collapse { display: none; align-items: center; gap: 12px; min-height: 40px; padding: 0 10px; border-radius: 8px; color: var(--text-muted); }
 .nav__collapse:hover { background: var(--surface-2); }
+.nav__pin { display: none; align-items: center; gap: 12px; min-height: 40px; padding: 0 10px; border-radius: 8px; color: var(--text-muted); }
+.nav__pin:hover { background: var(--surface-2); }
+.nav__pin--on { color: var(--accent); }
+
+/* Tablet-width windows: the menu is a pop-out unless pinned, then it sits beside the page */
+@media (min-width: 640px) and (max-width: 1023.98px) {
+  .nav__pin { display: flex; }
+  .layout--pinned .nav { transform: none; box-shadow: none; }
+  .layout--pinned .nav-scrim { display: none; }
+  .layout--pinned .main { margin-left: var(--nav-w); }
+  .layout--pinned > .footer { margin-left: var(--nav-w); }
+}
 .nav-scrim { position: fixed; inset: var(--header-h) 0 0 0; z-index: 20; background: rgba(0,0,0,.35); opacity: 0; pointer-events: none; transition: opacity .2s; }
 .nav-scrim--show { opacity: 1; pointer-events: auto; }
 

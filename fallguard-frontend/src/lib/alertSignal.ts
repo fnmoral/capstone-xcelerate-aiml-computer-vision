@@ -1,6 +1,6 @@
 /**
  * Getting someone's attention when a new fall alert arrives: a short alarm tone, a desktop
- * notification and a blinking tab title. Browsers only allow sound after the user has
+ * notification and a blinking badge on the tab icon. Browsers only allow sound after the user has
  * clicked something on the page, and desktop notifications only after permission and on
  * https:// or localhost, so enableAlertSignals() must be called from a click.
  */
@@ -59,21 +59,70 @@ export function desktopNotify(title: string, body: string, onClick: () => void):
   };
 }
 
-let baseTitle: string | null = null;
+let baseIcon: string | null = null;
 let blink: number | undefined;
+let latestCall = 0;
+let iconImage: Promise<HTMLImageElement | null> | null = null;
 
-/** Blinks "(n) FALL ALERT" in the tab title while n > 0; restores the title at 0. */
+function iconLink(): HTMLLinkElement | null {
+  return document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
+}
+
+function loadIcon(src: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+/** The tab icon with a red badge showing count (9+ above nine), as a PNG data URL. */
+async function badgeIcon(count: number): Promise<string | null> {
+  const img = await (iconImage ??= loadIcon(baseIcon!));
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  if (img) ctx.drawImage(img, 0, 0, size, size);
+  const r = 20;
+  ctx.fillStyle = '#dc2626';
+  ctx.beginPath();
+  ctx.arc(size - r, r, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#ffffff';
+  ctx.stroke();
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `bold ${count > 9 ? 22 : 28}px system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(count > 9 ? '9+' : String(count), size - r, r + 2);
+  return canvas.toDataURL('image/png');
+}
+
+/** Shows the number of open fall alerts as a blinking red badge on the tab icon while
+ *  count > 0, and the normal icon at 0. The tab title is left as it is, so the tab doesn't
+ *  get wider (a title such as "(2) FALL ALERT · ..." pushed the other tabs aside). */
 export function setTitleAlert(count: number): void {
-  baseTitle ??= document.title;
+  const link = iconLink();
+  if (!link) return;
+  baseIcon ??= link.href;
   window.clearInterval(blink);
   blink = undefined;
+  const call = ++latestCall;
   if (count <= 0) {
-    document.title = baseTitle;
+    link.href = baseIcon;
     return;
   }
-  const alertTitle = `(${count}) FALL ALERT · ${baseTitle}`;
-  document.title = alertTitle;
-  blink = window.setInterval(() => {
-    document.title = document.title === alertTitle ? baseTitle! : alertTitle;
-  }, 1000);
+  void badgeIcon(count).then((badge) => {
+    if (!badge || call !== latestCall) return; // a newer count arrived meanwhile
+    link.href = badge;
+    let on = true;
+    blink = window.setInterval(() => {
+      on = !on;
+      link.href = on ? badge : baseIcon!;
+    }, 1000);
+  });
 }

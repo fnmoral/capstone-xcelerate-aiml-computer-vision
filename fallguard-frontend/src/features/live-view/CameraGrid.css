@@ -39,3 +39,16 @@
 .live-chip__dot--online { background: var(--ok); }
 .live-chip__dot--not_working, .live-chip__dot--alert { background: var(--danger); }
 .live-chip__dot--connecting { background: var(--warn); }
+
+/* Overlays menu (Live View toolbar) */
+.overlay-menu { position: relative; }
+.overlay-menu__panel { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; width: min(320px, calc(100vw - 32px)); padding: 10px; display: grid; gap: 2px; box-shadow: 0 8px 24px rgba(0, 0, 0, .18); }
+.overlay-menu__option { display: flex; gap: 10px; align-items: flex-start; padding: 6px 8px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+.overlay-menu__option:hover { background: var(--surface-2); }
+.overlay-menu__option input { margin-top: 2px; }
+.overlay-menu__option span { display: grid; gap: 1px; }
+.overlay-menu__option small { color: var(--text-muted); font-size: 12px; }
+.overlay-menu__option--off { cursor: not-allowed; opacity: .6; }
+.overlay-menu__option--off:hover { background: none; }
+.overlay-menu__actions { display: flex; gap: 8px; align-items: center; padding: 8px 8px 0; border-top: 1px solid var(--border); margin-top: 6px; font-size: 13px; }
+.overlay-menu__note { margin: 4px 8px 0; font-size: 12px; }

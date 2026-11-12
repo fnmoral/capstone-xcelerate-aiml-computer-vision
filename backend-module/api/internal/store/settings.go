@@ -90,8 +90,15 @@ func (s *Store) migrate(ctx context.Context) error {
 
 // DetectionOverrides are detection settings changed in the frontend. They live in the
 // fall rule's parsed_config.detection, which ml-service reloads every 15 s.
+// A save replaces all of them: the frontend sends every value it wants kept.
 type DetectionOverrides struct {
 	PersonConfidence *float64 `json:"person_confidence,omitempty"`
+	// Model is a pose model file name in ml-service's models folder (e.g.
+	// "yolo26n-pose.pt"); Device is "auto", "cpu" or a GPU number. ml-service lists the
+	// choices in its status (models_available, devices_available) and keeps the running
+	// model if the chosen one can't be loaded.
+	Model  *string `json:"model,omitempty"`
+	Device *string `json:"device,omitempty"`
 }
 
 // Detection returns the saved overrides (empty if none).

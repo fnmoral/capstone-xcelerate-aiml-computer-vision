@@ -11,7 +11,7 @@ import './AppLayout.css';
 
 /** App shell: Header + Navigation + MainContainer(page, Footer). */
 export function AppLayout() {
-  const { navCollapsed, theme, closeNav, setTimeZone } = useUiStore();
+  const { navCollapsed, navPinned, theme, closeNav, setTimeZone } = useUiStore();
   // Facility settings (time zone): picked up by every page, re-checked every minute.
   const { data: settings } = usePolling(() => api.settings(), 60000);
   useEffect(() => { if (settings) setTimeZone(settings.timezone); }, [settings, setTimeZone]);
@@ -30,7 +30,7 @@ export function AppLayout() {
   }, [closeNav]);
 
   return (
-    <div className={`layout${navCollapsed ? ' layout--collapsed' : ''}`}>
+    <div className={`layout${navCollapsed ? ' layout--collapsed' : ''}${navPinned ? ' layout--pinned' : ''}`}>
       <a href="#main-content" className="skip-link">Skip to content</a>
       <Header />
       <div className="layout__body">
