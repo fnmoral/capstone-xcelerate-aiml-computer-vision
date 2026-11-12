@@ -21,7 +21,7 @@ from app.camera_service.video_input import FrameSampler, VideoDecoder
 from app.config import Config
 from app.detection.fall_detection import FallDetector, Incident, IncidentEvent, RECOVERED, STARTED, UNRESOLVED, UPDATED
 from app.detection.overlay import annotate
-from app.detection.pose_model import PoseTracker
+from app.detection.pose_model import PoseTracker, available_models, describe_device
 
 
 # ================================================================================================
@@ -62,6 +62,11 @@ class CameraPipeline:
         self.buffer = FrameBuffer()
 
         self.pose: PoseTracker | None = None  # created by step(), on the main thread
+        self._pose_key: tuple[str, str] | None = None     # (weights, device) self.pose runs
+        self._failed_key: tuple[str, str] | None = None   # last choice that failed to load: not retried
+        self.inference_error: str | None = None           # why the chosen model/device isn't running
+        self.device_in_use = ""                           # e.g. "GPU 0 (NVIDIA ...)", once loaded
+        self.model_file = Path(cfg.inference.weights).name  # the pose model file running
         self.detector = FallDetector(cfg.rules, cfg.monitor, cfg.detector)
         self.classifier = self.detector.classifier
         self.model_name = f"{Path(cfg.inference.weights).name}+{self.classifier.name}"  # e.g. yolo26n-pose.pt+rules
@@ -111,13 +116,63 @@ class CameraPipeline:
         if due is None:
             return False
         frame, pts = due
-        if self.pose is None:
-            self.pose = PoseTracker.from_config(self.cfg.inference)
+        # Model and device can be changed in the frontend (Detection Settings): load the new one
+        # when they change. A test's stub model (no _pose_key) is left alone.
+        want = self._wanted_inference()
+        if self.pose is None or (self._pose_key is not None and want not in (self._pose_key, self._failed_key)):
+            self._load_pose(want)
+        elif want == self._pose_key and self._failed_key is not None:  # switched back to what runs
+            self._failed_key = self.inference_error = None
         # Minimum person confidence can be changed in the frontend (Detection Settings).
         self.pose.conf = self.overrides(self.tenant_id).get("person_confidence", self.cfg.inference.conf)
         with self._monitor_lock:
             self._process(frame, time.time(), pts)
         return True
+
+    def _wanted_inference(self) -> tuple[str, str]:
+        """(weights path, device) to run: config.yaml's, unless changed in the frontend."""
+        inf = self.cfg.inference
+        o = self.overrides(self.tenant_id)
+        weights = inf.weights
+        name = o.get("model")
+        if name and name != Path(inf.weights).name:
+            weights = str(Path(inf.weights).parent / Path(str(name)).name)  # a file name only, never a path
+        return weights, str(o.get("device", inf.device))
+
+    def _load_pose(self, key: tuple[str, str]) -> None:
+        """Load the pose model for key = (weights, device). If it fails, keep the model already
+        running (or fall back to config.yaml's on the first load) and report why."""
+        inf = self.cfg.inference
+        weights, device = key
+        name = Path(weights).name
+        try:
+            if name not in available_models(Path(weights).parent):
+                raise FileNotFoundError(f"no pose model named {name} in {Path(weights).parent}")
+            pose = PoseTracker(weights, device, inf.conf, inf.imgsz, inf.tracker, inf.half, inf.track_conf)
+        except Exception as e:
+            error = f"could not use {name} on {device}: {e}"
+            log.error("[%s] %s", self.camera_id, error)
+            default = (inf.weights, str(inf.device))
+            if self.pose is None:
+                if key == default:
+                    raise
+                self._load_pose(default)
+            # Remember the failed choice (after any fallback load, which clears these) so it
+            # isn't retried on every frame; choosing something else in the frontend retries.
+            self.inference_error = error
+            self._failed_key = key
+            return
+        first = self._pose_key is None
+        self.pose = pose
+        self._pose_key = key
+        self._failed_key = None
+        self.inference_error = None
+        self.model_name = f"{name}+{self.classifier.name}"
+        self.model_file = name
+        self.device_in_use = describe_device(pose.device) + (" FP16" if pose.half else "")
+        if not first:
+            log.info("[%s] now running %s on %s (changed in Detection Settings)", self.camera_id, name,
+                     self.device_in_use)
 
     def _process(self, frame: np.ndarray, now: float, pts: int) -> None:
         start = time.perf_counter()

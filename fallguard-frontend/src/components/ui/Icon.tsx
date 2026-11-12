@@ -6,6 +6,8 @@ const PATHS: Record<string, string> = {
   sliders: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4',
   gear: 'M12 15a3 3 0 100-6 3 3 0 000 6zM19 12l2-1-2-4-2 1-2-1V5h-4v2l-2 1-2-1-2 4 2 1v2l-2 1 2 4 2-1 2 1v2h4v-2l2-1 2 1 2-4-2-1z',
   menu: 'M3 6h18M3 12h18M3 18h18',
+  pin: 'M9 4h6l-1 6 3 3H7l3-3zM12 13v8',
+  layers: 'M12 3l9 5-9 5-9-5zM3 13l9 5 9-5',
   close: 'M6 6l12 12M18 6L6 18',
   collapse: 'M15 6l-6 6 6 6',
   expand: 'M9 6l6 6-6 6',

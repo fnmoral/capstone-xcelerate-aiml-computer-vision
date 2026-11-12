@@ -226,3 +226,81 @@ def test_zone_config_validation(tmp_path):
     p.write_text("zones:\n  a: [cam-1]\nfall:\n  merge_window_seconds: 5\n", encoding="utf-8")
     cfg = config.load(p, prod_mode=False)
     assert cfg.zones == {"a": ["cam-1"]} and cfg.merge_window_s == 5
+
+
+# ================================================================================================
+# Model and device chosen in Detection Settings
+# ================================================================================================
+#
+# The frontend can pick another pose model file or device. The pipeline loads it on the next
+# frame; if that fails it keeps what runs (or config.yaml's model) and reports why.
+
+class FakeTracker:
+    """Stands in for PoseTracker: records what was loaded, fails for "broken" files."""
+    loaded: list = []
+
+    def __init__(self, weights, device, *args):
+        if "broken" in weights:
+            raise RuntimeError("not a model file")
+        self.weights, self.device, self.half, self.conf = weights, device, False, 0.4
+        FakeTracker.loaded.append((weights.replace("\\", "/"), device))
+
+    def __call__(self, frame):
+        return []
+
+
+@pytest.fixture
+def chosen(monkeypatch):
+    FakeTracker.loaded = []
+    settings: dict = {}
+    monkeypatch.setattr(pipeline_module, "PoseTracker", FakeTracker)
+    monkeypatch.setattr(pipeline_module, "available_models",
+                        lambda d: ["yolo26n-pose.pt", "custom-pose.pt", "broken-pose.pt"])
+    monkeypatch.setattr(pipeline_module, "describe_device", lambda d: "CPU" if d == "cpu" else f"GPU {d}")
+    return settings
+
+
+def step_once(p, clock):
+    clock[0] += 1.0
+    p.submit(np.zeros((480, 640, 3), dtype=np.uint8))
+    p.step()
+
+
+def make_pipeline(tmp_path, settings):
+    cfg = Config()
+    cfg.inference.weights = "models/yolo26n-pose.pt"
+    cfg.inference.device = "auto"
+    return pipeline_module.CameraPipeline("t", "cam-1", cfg, JsonlSink(str(tmp_path)), IncidentAggregator({}, 10),
+                                          SnapshotStore(str(tmp_path)), overrides=lambda tenant: settings)
+
+
+def test_model_and_device_change_from_the_frontend(tmp_path, clock, chosen):
+    p = make_pipeline(tmp_path, chosen)
+    step_once(p, clock)
+    chosen.update(model="custom-pose.pt", device="cpu")
+    step_once(p, clock)
+    step_once(p, clock)  # no reload while nothing changes
+    assert FakeTracker.loaded == [("models/yolo26n-pose.pt", "auto"), ("models/custom-pose.pt", "cpu")]
+    assert p.model_file == "custom-pose.pt" and p.device_in_use == "CPU" and p.inference_error is None
+
+
+def test_a_model_that_fails_to_load_keeps_the_running_one(tmp_path, clock, chosen):
+    p = make_pipeline(tmp_path, chosen)
+    step_once(p, clock)
+    chosen["model"] = "broken-pose.pt"
+    for _ in range(3):
+        step_once(p, clock)  # tried once, not on every frame
+    assert FakeTracker.loaded == [("models/yolo26n-pose.pt", "auto")]
+    assert p.model_file == "yolo26n-pose.pt" and "broken-pose.pt" in p.inference_error
+    chosen.pop("model")  # back to the default: the error clears
+    step_once(p, clock)
+    assert p.inference_error is None
+
+
+def test_a_bad_first_choice_falls_back_to_the_config_model(tmp_path, clock, chosen):
+    chosen["model"] = "../../etc/missing-pose.pt"  # only file names in the models folder are allowed
+    p = make_pipeline(tmp_path, chosen)
+    for _ in range(3):
+        step_once(p, clock)
+    assert FakeTracker.loaded == [("models/yolo26n-pose.pt", "auto")]
+    assert p.model_file == "yolo26n-pose.pt" and "missing-pose.pt" in p.inference_error

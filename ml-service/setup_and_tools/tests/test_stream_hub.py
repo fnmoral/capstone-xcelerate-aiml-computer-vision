@@ -213,6 +213,13 @@ def test_person_entry_clamps_boxes_that_leave_the_frame():
     assert p["box"] == [0.0, 0.0, 1.0, 1.0] and p["incident_id"] is None
 
 
+def test_person_entry_sends_body_points_normalised():
+    kp = np.zeros((17, 3), dtype=np.float32)
+    kp[0] = (320, 240, 0.876)
+    p = hub_results.person_entry(1, "upright", 0.5, [0, 0, 640, 480], 640, 480, None, kp)
+    assert len(p["keypoints"]) == 17 and p["keypoints"][0] == [0.5, 0.5, 0.88]
+
+
 def test_message_shapes():
     d = hub_results.detections_message("cam1", 123, 640, 480, [])
     assert d == {"type": "detections", "camera_id": "cam1", "pts": 123, "width": 640, "height": 480, "people": []}

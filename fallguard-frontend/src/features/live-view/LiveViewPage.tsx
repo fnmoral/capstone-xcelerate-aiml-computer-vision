@@ -9,6 +9,7 @@ import { STATUS_TEXT } from "../../lib/format";
 import { useUiStore, type LiveLayout } from "../../store/uiStore";
 import type { Camera } from "../../types/domain";
 import { CameraGrid, CameraTile, useFitHeight } from "./CameraGrid";
+import { OverlayMenu } from "./OverlayMenu";
 
 const LAYOUTS: { value: LiveLayout; label: string; title: string }[] = [
   { value: "auto", label: "Auto", title: "Every camera; scroll for more" },
@@ -78,6 +79,7 @@ function FocusView({
             </button>
           ))}
         </div>
+        <OverlayMenu />
       </div>
       <ul
         ref={ref}
@@ -203,6 +205,9 @@ export default function LiveViewPage() {
                   Set as default
                 </button>
               )}
+            </div>
+            <div className="live-toolbar__group">
+              <OverlayMenu />
             </div>
             {pages > 1 && (
               <div className="live-toolbar__group" aria-label="Pages">

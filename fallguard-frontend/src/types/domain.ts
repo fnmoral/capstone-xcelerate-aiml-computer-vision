@@ -181,10 +181,21 @@ export interface Health {
   services: Record<string, ServiceCheck>;
 }
 
+/** Detection settings changed in this app. A missing value = config.yaml's. */
+export interface DetectionOverrides {
+  person_confidence?: number;
+  model?: string; // pose model file name
+  device?: string; // auto, cpu or a GPU number
+}
+
 export interface DetectionSettings {
   mode: string;
-  model: string;
+  model: string; // pose model file the cameras run now
+  model_default: string; // config.yaml's
+  models_available: string[]; // pose model files that can be picked
   device: string; // as configured: auto, a GPU number, or cpu
+  devices_available?: { value: string; label: string }[]; // auto, cpu, each GPU
+  inference_error?: string | null; // a model/device picked here that could not be loaded
   device_in_use: string | null; // what it resolved to, e.g. "GPU 0 (NVIDIA GeForce RTX 3060 Laptop GPU)" or "CPU"
   target_fps: number;
   analysis: {
@@ -198,7 +209,7 @@ export interface DetectionSettings {
   };
   person_confidence: number; // in use now
   person_confidence_default: number; // config.yaml
-  saved: { person_confidence?: number }; // set in this app; ml-service applies it within 15 s
+  saved: DetectionOverrides; // set in this app; ml-service applies them within 15 s
   clips: {
     enabled: boolean;
     pre_roll_s: number;

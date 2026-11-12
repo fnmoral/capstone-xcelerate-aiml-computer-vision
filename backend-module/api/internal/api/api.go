@@ -699,6 +699,12 @@ func (s *Server) detection(c *gin.Context) {
 	c.JSON(http.StatusOK, out)
 }
 
+// A model is a file name only (no folders) of a pose model; a device is auto, cpu or a GPU number.
+var (
+	modelFileName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*pose[A-Za-z0-9._-]*\.pt$`)
+	deviceName    = regexp.MustCompile(`^(auto|cpu|[0-9]{1,2})$`)
+)
+
 func (s *Server) saveDetection(c *gin.Context) {
 	var in store.DetectionOverrides
 	if err := c.ShouldBindJSON(&in); err != nil {
@@ -707,6 +713,14 @@ func (s *Server) saveDetection(c *gin.Context) {
 	}
 	if p := in.PersonConfidence; p != nil && (*p < 0.05 || *p > 0.95) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "person_confidence must be between 0.05 and 0.95 (null = default)"})
+		return
+	}
+	if m := in.Model; m != nil && !modelFileName.MatchString(*m) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "model must be a pose model file name such as yolo26n-pose.pt (null = default)"})
+		return
+	}
+	if d := in.Device; d != nil && !deviceName.MatchString(*d) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": `device must be "auto", "cpu" or a GPU number (null = default)`})
 		return
 	}
 	if err := s.db.SetDetection(c.Request.Context(), in, actor(c)); err != nil {

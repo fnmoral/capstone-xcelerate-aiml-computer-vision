@@ -7,6 +7,7 @@ import threading
 import time
 from pathlib import Path
 
+from app.detection.pose_model import available_devices, available_models
 from app.runtime import Runtime
 
 log = logging.getLogger("ml-service")
@@ -48,7 +49,8 @@ def detection_settings(runtime: Runtime) -> dict:
     r, m = cfg.rules, cfg.monitor
     cameras = []
     now = time.time()
-    for camera_id, p in runtime.active_items():
+    items = runtime.active_items()
+    for camera_id, p in items:
         received, analysed = p.rates()
         cameras.append({
             "camera_id": camera_id,
@@ -56,13 +58,24 @@ def detection_settings(runtime: Runtime) -> dict:
             "analysed_fps": round(analysed, 1),
             # The backend uses this for camera health ("not working" after 20 s without video).
             "last_frame_age_s": round(now - p.latest_at, 1) if p.latest_at else None,
+            "model": getattr(p, "model_file", None),
+            "device_in_use": getattr(p, "device_in_use", "") or None,
         })
     live = [c["analysed_fps"] for c in cameras if c["received_fps"] > 0]
+    # What the cameras run now (the model can be changed in the frontend); before any camera
+    # has run the model, config.yaml's model and the device found at start-up.
+    running = [c for c in cameras if c["device_in_use"]]
+    errors = sorted({e for _, p in items if (e := getattr(p, "inference_error", None))})
+    models_dir = Path(cfg.inference.weights).parent
     return {
         "mode": "prod" if cfg.prod_mode else "dev",
-        "model": Path(cfg.inference.weights).name,
+        "model": running[0]["model"] if running else Path(cfg.inference.weights).name,
+        "model_default": Path(cfg.inference.weights).name,  # config.yaml
+        "models_available": available_models(models_dir),
         "device": str(cfg.inference.device),  # as configured ("auto", 0, "cpu")
-        "device_in_use": runtime.device_in_use or None,
+        "device_in_use": (running[0]["device_in_use"] if running else runtime.device_in_use) or None,
+        "devices_available": available_devices(),
+        "inference_error": "; ".join(errors) or None,  # a model/device chosen in the frontend that failed
         "analysis": {  # measured over the last 30 s
             "average_fps": round(sum(live) / len(live), 1) if live else None,
             "cameras": cameras,

@@ -4,6 +4,7 @@ import { api } from '../../services/api/fallguard';
 import { usePolling } from '../../services/api/usePolling';
 import { formatDuration } from '../../lib/format';
 import { PersonConfidence } from './PersonConfidence';
+import { ModelDevice } from './ModelDevice';
 
 const RULES: { key: string; label: string; unit: string; help: string }[] = [
   { key: 'lying_torso_angle_deg', label: 'Lying: torso angle', unit: '°', help: 'Torso this far from vertical counts fully as lying' },
@@ -39,13 +40,13 @@ export default function DetectionPage() {
   return (
     <>
       <PageHeader title="Detection Settings"
-        description="How the fall detector decides. Minimum person confidence can be changed here; the rest comes from ml-service's config.yaml (see ml-service/CONFIG.md)." />
+        description="How the fall detector decides. The model, device and minimum person confidence can be changed here; the rest comes from ml-service's config.yaml (see ml-service/CONFIG.md)." />
       {error && <p className="notice notice--error">{error}</p>}
       {!d ? <p className="muted">Loading…</p> : (
         <div className="stack">
           <div className="tiles">
             <div className="tile card"><div className="tile__label">Model</div><div className="tile__value" style={{ fontSize: 18 }}>{d.model}</div>
-              <div className="tile__hint">YOLO26 pose + fall rules</div></div>
+              <div className="tile__hint">{d.saved.model ? 'set below' : 'default'} · pose model + fall rules</div></div>
             <div className="tile card"><div className="tile__label">Analysis rate (actual)</div>
               <div className="tile__value">{d.analysis?.average_fps ?? '—'}</div>
               <div className="tile__hint">
@@ -53,7 +54,7 @@ export default function DetectionPage() {
                 {' · '}target {d.target_fps}</div></div>
             <div className="tile card"><div className="tile__label">Device in use</div>
               <div className="tile__value" style={{ fontSize: 18 }}>{d.device_in_use ?? 'Starting…'}</div>
-              <div className="tile__hint">config: {d.device === 'auto' ? 'auto (GPU if available)' : d.device} · mode: {d.mode}</div></div>
+              <div className="tile__hint">{d.saved.device ? `set below: ${d.saved.device}` : `config: ${d.device === 'auto' ? 'auto (GPU if available)' : d.device}`} · mode: {d.mode}</div></div>
             <div className="tile card"><div className="tile__label">Person confidence</div><div className="tile__value">{d.person_confidence}</div>
               <div className="tile__hint">{d.saved.person_confidence !== undefined ? 'set below' : 'default'}</div></div>
           </div>
@@ -80,6 +81,8 @@ export default function DetectionPage() {
               </p>
             </section>
           )}
+
+          <ModelDevice key={`${d.saved.model}|${d.saved.device}`} d={d} onSaved={reload} />
 
           <PersonConfidence key={String(d.saved.person_confidence)} d={d} onSaved={reload} />
 

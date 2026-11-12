@@ -15,6 +15,8 @@ export interface DetectedPerson {
   /** [x1, y1, x2, y2] normalised to 0..1 of the frame. */
   box: [number, number, number, number];
   incident_id: string | null;
+  /** The 17 COCO body points as [x, y, confidence], x and y normalised to 0..1 (newer ml-service). */
+  keypoints?: [number, number, number][];
 }
 
 /** Sent for every analysed frame (~10 fps), also when nobody is in view. */

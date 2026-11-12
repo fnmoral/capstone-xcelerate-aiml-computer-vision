@@ -81,7 +81,7 @@ class IncidentReporter:
         for p in people:
             label, confidence = labels[p.track_id]
             entries.append(person_entry(p.track_id, label, confidence, p.box, width, height,
-                                        incident_id_of(p.track_id)))
+                                        incident_id_of(p.track_id), p.keypoints))
         self._publish(detections_message(self.camera_id, pts, width, height, entries))
 
     def report_prediction(self, tenant_id: str, at: float, model_name: str, model_version: str, label: str,

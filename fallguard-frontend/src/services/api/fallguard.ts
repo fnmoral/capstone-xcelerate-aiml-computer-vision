@@ -1,6 +1,7 @@
 import type {
   Alert,
   Camera,
+  DetectionOverrides,
   DetectionSettings,
   GatewayLimits,
   GatewayConfig,
@@ -149,12 +150,19 @@ export const api = {
     apiRequest("/settings", { method: "PUT", ...json(s) }),
 
   detection: () => apiRequest<DetectionSettings>("/detection"),
-  /** person_confidence null = back to config.yaml's value. */
-  saveDetection: (d: { person_confidence: number | null }) =>
-    apiRequest("/detection", {
-      method: "PUT",
-      ...json(d.person_confidence === null ? {} : d),
-    }),
+  /** Saves ALL detection overrides at once: a value left out goes back to config.yaml's.
+   *  Use saveDetectionChange to change one or two and keep the rest. */
+  saveDetection: (d: DetectionOverrides) =>
+    apiRequest("/detection", { method: "PUT", ...json(d) }),
+  /** Changes some overrides, keeping the other saved ones; null = back to config.yaml's. */
+  saveDetectionChange: (saved: DetectionOverrides, change: { [K in keyof DetectionOverrides]?: DetectionOverrides[K] | null }) => {
+    const next: Record<string, unknown> = { ...saved };
+    for (const [k, v] of Object.entries(change)) {
+      if (v === null || v === undefined) delete next[k];
+      else next[k] = v;
+    }
+    return apiRequest("/detection", { method: "PUT", ...json(next) });
+  },
   gatewayConfig: () => apiRequest<GatewayConfig>("/gateway/config"),
   saveGatewayConfig: (c: GatewayConfig) =>
     apiRequest("/gateway/config", { method: "PUT", ...json(c) }),

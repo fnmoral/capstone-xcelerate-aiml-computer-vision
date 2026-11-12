@@ -15,7 +15,7 @@ export function PersonConfidence({ d, onSaved }: { d: DetectionSettings; onSaved
     setError(null);
     setDone(null);
     try {
-      await api.saveDetection({ person_confidence: v });
+      await api.saveDetectionChange(d.saved, { person_confidence: v });
       setDone(v === null ? 'Back to the default. Applied within 15 seconds.' : 'Saved. Applied within 15 seconds.');
       if (v === null) setValue(d.person_confidence_default);
       await onSaved();
