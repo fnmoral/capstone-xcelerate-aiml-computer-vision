@@ -1,7 +1,8 @@
 # stream-hub on its own (the whole stack: ../docker-compose.yml).
 #   docker compose up -d --build
 # Joins the shared "fallguard" network: gateways send to stream-hub:8090, and it forwards
-# every camera to ml-service:9999.
+# every camera to ml-service:9999. Incident clips and snapshots are kept on the
+# stream-hub-data volume.
 name: fallguard-stream-hub
 
 services:
@@ -13,9 +14,14 @@ services:
       STREAM_HUB_HTTP_ADDR: ":9000"
       STREAM_HUB_TCP_ADDR: ":8090"
       STREAM_HUB_AI_SERVER_ADDR: ${STREAM_HUB_AI_SERVER_ADDR:-ml-service:9999}
+      STREAM_HUB_RECORDINGS_DIR: ${STREAM_HUB_RECORDINGS_DIR:-/app/data/recordings}
+      STREAM_HUB_RETENTION_DAYS: ${STREAM_HUB_RETENTION_DAYS:-30}
+      STREAM_HUB_MAX_TOTAL_GB: ${STREAM_HUB_MAX_TOTAL_GB:-10}
     ports:
-      - "${STREAM_HUB_HTTP_PORT:-9000}:9000"   # /health and /ws/<tenant>/<camera> for the frontend
+      - "${STREAM_HUB_HTTP_PORT:-9000}:9000"   # /health, /ws/<tenant>/<camera> and /stream-hub/recordings for the frontend
       - "${STREAM_HUB_TCP_PORT:-8090}:8090"    # gateways running outside this Docker network
+    volumes:
+      - stream-hub-data:/app/data              # incident clips and snapshots
     networks: [fallguard]
     logging:                           # cap Docker's log files (stream-hub logs every video chunk)
       driver: json-file
@@ -25,6 +31,9 @@ services:
       interval: 10s
       timeout: 3s
       retries: 6
+
+volumes:
+  stream-hub-data:
 
 networks:
   fallguard:

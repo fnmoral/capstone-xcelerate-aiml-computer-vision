@@ -2,6 +2,10 @@
 
 The file has shared settings plus a `dev:` and a `prod:` section. `prod_mode` (or the
 ML_PROD_MODE environment variable) picks one, and its keys override the shared ones.
+
+Incident clips and snapshots are stream-hub's job, not this service's: it only tells
+stream-hub when to start and stop recording (see pipeline.py), so there is no clip or
+viewer configuration here.
 """
 
 import os
@@ -10,10 +14,7 @@ from pathlib import Path
 
 import yaml
 
-from app.camera_service.clips import ClipConfig
-from app.detection.fall_detection import DetectorConfig
-from app.detection.fall_detection import RuleThresholds
-from app.detection.fall_detection import MonitorConfig
+from app.detection.fall_detection import DetectorConfig, MonitorConfig, RuleThresholds
 
 
 @dataclass(slots=True)
@@ -31,7 +32,7 @@ class InferenceConfig:
 SOURCE_TYPES = ("tcp", "webcam", "rtsp", "file")
 PROD_SOURCE_TYPES = ("tcp", "rtsp")  # production watches IP cameras only
 MODE_KEYS = {"sources", "source", "preview", "server", "handshake", "inference", "output", "fall", "zones",
-             "database", "viewer", "clips"}
+             "database"}
 SINK_TYPES = ("jsonl", "postgres")
 
 
@@ -68,12 +69,6 @@ class Config:
     database_url: str = ""
     database_connect_timeout_s: float = 5.0
     zones_from_db: bool = True
-    viewer_enabled: bool = False
-    viewer_host: str = "127.0.0.1"
-    viewer_port: int = 8000
-    viewer_fps: float = 5.0
-    viewer_jpeg_quality: int = 70
-    clips: ClipConfig = field(default_factory=ClipConfig)
     show: bool = False
 
     @property
@@ -187,6 +182,72 @@ def parse_zones(raw_zones) -> dict[str, list[str]]:
     return zones
 
 
+def _resolve_sources(raw: dict, base: Path, default_tenant: str) -> list[SourceConfig]:
+    if "sources" in raw:
+        raw_sources = raw["sources"] or []
+    elif "source" in raw:  # older config files had a single source
+        raw_sources = [raw["source"]]
+    else:
+        raw_sources = [{"type": "tcp"}]
+    if not raw_sources:
+        raise ValueError("sources is empty")
+    return parse_sources(raw_sources, base, default_tenant)
+
+
+def _parse_inference(raw: dict, base: Path) -> InferenceConfig:
+    inference = InferenceConfig(**raw.get("inference", {}))
+    inference.weights = str(base / inference.weights)
+    return inference
+
+
+def _parse_fall(raw: dict, base: Path) -> tuple[RuleThresholds, MonitorConfig, DetectorConfig, float]:
+    """Returns (rule thresholds, incident timings, detector settings, zone merge window)."""
+    fall = dict(raw.get("fall", {}))
+    merge_window = float(fall.pop("merge_window_seconds", 10.0))
+    rule_keys = RuleThresholds.__dataclass_fields__.keys()
+    monitor_keys = MonitorConfig.__dataclass_fields__.keys()
+    detector_keys = DetectorConfig.__dataclass_fields__.keys()
+    unknown = set(fall) - set(rule_keys) - set(monitor_keys) - set(detector_keys)
+    if unknown:
+        raise ValueError(f"unknown keys under fall: {sorted(unknown)}")
+    if "learned_model" in fall:
+        fall["learned_model"] = str(base / fall["learned_model"])
+    if fall.get("classifier", "rules") not in ("rules", "learned"):
+        raise ValueError(f"fall.classifier must be rules or learned, got {fall['classifier']!r}")
+    rules = RuleThresholds(**{k: v for k, v in fall.items() if k in rule_keys})
+    monitor = MonitorConfig(**{k: v for k, v in fall.items() if k in monitor_keys})
+    detector = DetectorConfig(**{k: v for k, v in fall.items() if k in detector_keys})
+    return rules, monitor, detector, merge_window
+
+
+def _parse_output(raw: dict, base: Path) -> tuple[str, float, float, list[str]]:
+    """Returns (output dir, prediction interval, stats interval, sink names)."""
+    output = raw.get("output", {})
+    sinks = output.get("sinks", ["jsonl"])
+    if isinstance(sinks, str):
+        sinks = [sinks]
+    bad = [s for s in sinks if s not in SINK_TYPES]
+    if bad or not sinks:
+        raise ValueError(f"output.sinks must list some of {SINK_TYPES}, got {sinks}")
+    return (
+        str(base / output.get("dir", "data")),
+        float(output.get("prediction_interval_s", 1.0)),
+        float(output.get("stats_interval_s", 30.0)),
+        list(sinks),
+    )
+
+
+def _parse_database(raw: dict, sinks: list[str]) -> tuple[str, float, bool]:
+    """Returns (URL, connect timeout, whether to also load zones from it)."""
+    database = raw.get("database") or {}
+    # The URL usually holds a password, so the environment variable wins over the file.
+    url = os.environ.get("ML_DATABASE_URL") or database.get("url") or ""
+    if "postgres" in sinks and not url:
+        raise ValueError("output.sinks includes postgres but no database URL is set "
+                         "(ML_DATABASE_URL or database.url)")
+    return url, float(database.get("connect_timeout_s", 5.0)), parse_bool(database.get("zones_from_db", True))
+
+
 def load(path: str | Path, prod_mode: bool | None = None) -> Config:
     """Read the config file for one mode. prod_mode=None means ML_PROD_MODE, then the file's prod_mode.
 
@@ -197,81 +258,33 @@ def load(path: str | Path, prod_mode: bool | None = None) -> Config:
     prod_mode, raw = resolve_mode(yaml.safe_load(path.read_text(encoding="utf-8")) or {}, prod_mode)
     server = raw.get("server", {})
     handshake = raw.get("handshake", {})
-    fall = dict(raw.get("fall", {}))
-    output = raw.get("output", {})
     default_tenant = handshake.get("default_tenant_id", "tenant_example")
 
-    merge_window = float(fall.pop("merge_window_seconds", 10.0))
-    rule_keys = RuleThresholds.__dataclass_fields__.keys()
-    monitor_keys = MonitorConfig.__dataclass_fields__.keys()
-    detector_keys = DetectorConfig.__dataclass_fields__.keys()
-    unknown = set(fall) - set(rule_keys) - set(monitor_keys) - set(detector_keys)
-    if unknown:
-        raise ValueError(f"unknown keys under fall: {sorted(unknown)}")
-
-    inference = InferenceConfig(**raw.get("inference", {}))
-    inference.weights = str(base / inference.weights)
-    if "learned_model" in fall:
-        fall["learned_model"] = str(base / fall["learned_model"])
-    if fall.get("classifier", "rules") not in ("rules", "learned"):
-        raise ValueError(f"fall.classifier must be rules or learned, got {fall['classifier']!r}")
-
-    if "sources" in raw:
-        raw_sources = raw["sources"] or []
-    elif "source" in raw:  # older config files had a single source
-        raw_sources = [raw["source"]]
-    else:
-        raw_sources = [{"type": "tcp"}]
-    if not raw_sources:
-        raise ValueError("sources is empty")
+    rules, monitor, detector, merge_window = _parse_fall(raw, base)
+    output_dir, prediction_interval_s, stats_interval_s, sinks = _parse_output(raw, base)
+    database_url, database_timeout, zones_from_db = _parse_database(raw, sinks)
 
     cfg = Config(
         prod_mode=prod_mode,
-        sources=parse_sources(raw_sources, base, default_tenant),
+        sources=_resolve_sources(raw, base, default_tenant),
         show=bool(raw.get("preview", False)),
         host=server.get("host", "127.0.0.1"),
         port=int(server.get("port", 9999)),
         tenant_in_handshake=bool(handshake.get("tenant_in_handshake", False)),
         default_tenant_id=default_tenant,
-        inference=inference,
-        rules=RuleThresholds(**{k: v for k, v in fall.items() if k in rule_keys}),
-        detector=DetectorConfig(**{k: v for k, v in fall.items() if k in detector_keys}),
-        monitor=MonitorConfig(**{k: v for k, v in fall.items() if k in monitor_keys}),
+        inference=_parse_inference(raw, base),
+        rules=rules,
+        detector=detector,
+        monitor=monitor,
         zones=parse_zones(raw.get("zones")),
         merge_window_s=merge_window,
-        output_dir=str(base / output.get("dir", "data")),
-        prediction_interval_s=float(output.get("prediction_interval_s", 1.0)),
-        stats_interval_s=float(output.get("stats_interval_s", 30.0)),
+        output_dir=output_dir,
+        prediction_interval_s=prediction_interval_s,
+        stats_interval_s=stats_interval_s,
+        sinks=sinks,
+        database_url=database_url,
+        database_connect_timeout_s=database_timeout,
+        zones_from_db=zones_from_db,
     )
-    database = raw.get("database") or {}
-    sinks = output.get("sinks", ["jsonl"])
-    if isinstance(sinks, str):
-        sinks = [sinks]
-    bad = [s for s in sinks if s not in SINK_TYPES]
-    if bad or not sinks:
-        raise ValueError(f"output.sinks must list some of {SINK_TYPES}, got {sinks}")
-    cfg.sinks = list(sinks)
-    # The URL usually holds a password, so the environment variable wins over the file.
-    cfg.database_url = os.environ.get("ML_DATABASE_URL") or database.get("url") or ""
-    cfg.database_connect_timeout_s = float(database.get("connect_timeout_s", 5.0))
-    cfg.zones_from_db = parse_bool(database.get("zones_from_db", True))
-    viewer = raw.get("viewer") or {}
-    cfg.viewer_enabled = parse_bool(viewer.get("enabled", False))
-    cfg.viewer_host = str(viewer.get("host", "127.0.0.1"))
-    cfg.viewer_port = int(viewer.get("port", 8000))
-    cfg.viewer_fps = float(viewer.get("fps", 5.0))
-    cfg.viewer_jpeg_quality = int(viewer.get("jpeg_quality", 70))
-    clips = dict(raw.get("clips") or {})
-    unknown = set(clips) - set(ClipConfig.__dataclass_fields__)
-    if unknown:
-        raise ValueError(f"unknown keys under clips: {sorted(unknown)}")
-    if "enabled" in clips:
-        clips["enabled"] = parse_bool(clips["enabled"])
-    cfg.clips = ClipConfig(**clips)
-
-    if "postgres" in cfg.sinks and not cfg.database_url:
-        raise ValueError("output.sinks includes postgres but no database URL is set "
-                         "(ML_DATABASE_URL or database.url)")
-
     cfg.check_mode()
     return cfg

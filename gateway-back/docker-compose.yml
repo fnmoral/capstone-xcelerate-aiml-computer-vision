@@ -1,7 +1,8 @@
 # gateway-back on its own (the whole stack: ../docker-compose.yml).
 #   docker compose up -d --build
 #   open http://localhost:8080
-# Joins the shared "fallguard" network; stream-hub is reached as stream-hub:8090.
+# Joins the shared "fallguard" network; stream-hub is reached as stream-hub:8090, the
+# backend API as api:8000.
 name: fallguard-gateway
 
 services:
@@ -10,9 +11,17 @@ services:
     image: capstone/gateway-back:latest
     restart: unless-stopped
     environment:
-      # Only used to create config.json on first start (see docker-entrypoint.sh).
-      GATEWAY_CLOUD_ADDRESS: ${GATEWAY_CLOUD_ADDRESS:-stream-hub:8090}
+      # Only used to create config.json on first start (see docker-entrypoint.sh); after
+      # that the gateway itself owns the file.
+      GATEWAY_STREAM_HUB_ADDRESS: ${GATEWAY_STREAM_HUB_ADDRESS:-stream-hub:8090}
+      GATEWAY_BACKEND_ADDRESS: ${GATEWAY_BACKEND_ADDRESS:-api:8000}
       GATEWAY_TENANT_ID: ${GATEWAY_TENANT_ID:-demo-facility}
+      GATEWAY_TENANT_NAME: ${GATEWAY_TENANT_NAME:-demo-facility}
+      GATEWAY_NAME_ID: ${GATEWAY_NAME_ID:-default_gateway}
+      GATEWAY_ID: ${GATEWAY_ID:-default_id}
+      # Register with the backend by itself at start-up (no "Configure Now" step needed).
+      # The values stay editable on the gateway page; false = register by hand there.
+      GATEWAY_AUTO_REGISTER: ${GATEWAY_AUTO_REGISTER:-true}
     ports:
       - "${GATEWAY_PORT:-8080}:8080"   # web UI + /gateway/actions API
     volumes:

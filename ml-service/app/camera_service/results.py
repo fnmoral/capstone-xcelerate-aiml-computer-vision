@@ -2,6 +2,7 @@
 
 The PostgreSQL sink is in database.py (it needs psycopg, loaded only when the database is used).
 """
+from __future__ import annotations
 
 import json
 import logging
@@ -25,11 +26,15 @@ if TYPE_CHECKING:  # only for type hints: camera_pipeline imports this module
 #
 # - prediction records: one per person per `prediction_interval_s` (model_predictions table)
 # - incident records: one per zone-level incident event (incidents, incident_cameras, alerts)
-# - clip records: one per saved incident video clip, per camera (app/camera_service/clips.py)
+# - clip records: one per incident video clip, per camera
 #
 # Field names follow backend-module/db/schema.sql. Timestamps are timezone-aware datetimes;
-# each sink serialises them as it needs. Snapshots are saved once by SnapshotStore, and the
-# records only carry the resulting key.
+# each sink serialises them as it needs. Records only carry the keys of snapshots and clips.
+#
+# For stream-hub cameras the files themselves live in stream-hub: it records the clips and
+# stores the snapshots this service sends it (see hub_results.py). The keys below are the
+# names both sides agree on, so this service can record them without waiting for the files.
+# SnapshotStore is only for sources read directly (webcam, RTSP, file) in development.
 
 log = logging.getLogger(__name__)
 
@@ -43,6 +48,20 @@ class Sink(Protocol):
 
 def utc(ts: float | None) -> datetime | None:
     return datetime.fromtimestamp(ts, UTC) if ts is not None else None
+
+
+def snapshot_name(inc: ZoneIncident, camera_id: str) -> str:
+    """File name of a camera's snapshot of an incident: the first camera's is <id>.jpg."""
+    return f"{inc.id}.jpg" if camera_id == inc.camera_id else f"{inc.id}_{camera_id}.jpg"
+
+
+def snapshot_key(name: str) -> str:
+    return f"snapshots/{name}"
+
+
+def clip_key(incident_id: str, camera_id: str) -> str:
+    """Key of a camera's clip of an incident; stream-hub writes the same name."""
+    return f"clips/{incident_id}_{camera_id}.mp4"
 
 
 def prediction_record(tenant_id: str, camera_id: str, at: float, model_name: str, model_version: str,
@@ -84,21 +103,20 @@ def incident_record(kind: str, inc: ZoneIncident, at: float, snapshot_key: str |
     }
 
 
-def clip_record(tenant_id: str, incident_id: str, camera_id: str, key: str, seconds: float) -> dict:
+def clip_record(tenant_id: str, incident_id: str, camera_id: str, key: str, seconds: float | None) -> dict:
     return {"tenant_id": tenant_id, "incident_id": incident_id, "camera_id": camera_id,
             "clip_key": key, "seconds": seconds}
 
 
 class SnapshotStore:
-    """Saves incident images under <output dir>/snapshots and returns their keys."""
+    """Saves incident images under <output dir>/snapshots (development sources only)."""
 
     def __init__(self, out_dir: str):
         self.dir = Path(out_dir)
         (self.dir / "snapshots").mkdir(parents=True, exist_ok=True)
 
     def save(self, inc: ZoneIncident, camera_id: str, frame: np.ndarray) -> str:
-        name = inc.id if camera_id == inc.camera_id else f"{inc.id}_{camera_id}"
-        key = f"snapshots/{name}.jpg"
+        key = snapshot_key(snapshot_name(inc, camera_id))
         cv2.imwrite(str(self.dir / key), frame)
         return key
 

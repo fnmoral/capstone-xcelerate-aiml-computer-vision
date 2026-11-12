@@ -39,7 +39,7 @@ from ml-service.
 
 | Variable | Default | |
 |---|---|---|
-| `DATABASE_URL` | `postgresql://fallguard_admin@localhost:5432/fallguard` | Docker Compose builds it from `backend-module/.env` |
+| `DATABASE_URL` | `postgresql://fallguard_admin@localhost:5432/fallguard` | Docker Compose builds it from the root `.env` (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`) |
 | `TENANT` | `demo-facility` | `tenants.slug` or id served (no user accounts yet) |
 | `GATEWAY_URL` | `http://localhost:8080` | `http://gateway-back:8080` in Docker |
 | `ML_URL` | `http://localhost:8000` | ml-service viewer, `http://ml-service:8000` in Docker |

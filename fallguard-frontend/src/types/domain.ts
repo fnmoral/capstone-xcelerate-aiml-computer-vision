@@ -1,10 +1,20 @@
 /**
  * Domain types: the JSON shapes returned by the core backend API (backend-module/api).
  */
-export type CameraStatus = 'online' | 'paused' | 'not_on_gateway' | 'offline' | string;
+export type CameraStatus =
+  | "online"
+  | "paused"
+  | "not_on_gateway"
+  | "offline"
+  | string;
 
 /** What a camera is doing right now (kept by the backend's camera monitor). */
-export type CameraHealth = 'online' | 'paused' | 'not_working' | 'connecting' | 'not_connected';
+export type CameraHealth =
+  | "online"
+  | "paused"
+  | "not_working"
+  | "connecting"
+  | "not_connected";
 
 /** A gateway's camera limits: how many stream at once, how many can be saved (the rest paused). */
 export interface GatewayLimits {
@@ -14,7 +24,7 @@ export interface GatewayLimits {
 
 export interface LivePerson {
   track: number;
-  label: 'upright' | 'falling' | 'lying' | string;
+  label: "upright" | "falling" | "lying" | string;
   confidence: number;
 }
 
@@ -34,10 +44,15 @@ export interface Camera {
   people: LivePerson[];
   last_frame_age_s: number | null;
   active_incidents: number;
+  tenant_id: string; // without credentials
 }
 
-export type IncidentStatus = 'active' | 'recovered' | 'unresolved' | 'false_positive';
-export type Severity = 'low' | 'medium' | 'high' | 'critical';
+export type IncidentStatus =
+  | "active"
+  | "recovered"
+  | "unresolved"
+  | "false_positive";
+export type Severity = "low" | "medium" | "high" | "critical";
 
 export interface IncidentCamera {
   camera_id: string;
@@ -48,7 +63,11 @@ export interface IncidentCamera {
   clip_key?: string | null; // this camera's video of the incident, once saved
 }
 
-export type AlertStatus = 'open' | 'acknowledged' | 'resolved' | 'false_positive';
+export type AlertStatus =
+  | "open"
+  | "acknowledged"
+  | "resolved"
+  | "false_positive";
 
 export interface Alert {
   id: string;
@@ -98,7 +117,11 @@ export interface Prediction {
   camera_id: string;
   label: string;
   confidence: number;
-  output: { torso_angle_deg?: number | null; aspect_ratio?: number; track_id?: number } | null;
+  output: {
+    torso_angle_deg?: number | null;
+    aspect_ratio?: number;
+    track_id?: number;
+  } | null;
 }
 
 export interface Stats {
@@ -109,7 +132,11 @@ export interface Stats {
   avg_down_seconds_7d: number | null;
   false_positives_7d: number;
   per_day: { day: string; count: number }[];
-  per_camera: { camera_id: string; camera_name: string | null; count: number }[];
+  per_camera: {
+    camera_id: string;
+    camera_name: string | null;
+    count: number;
+  }[];
   by_severity: Record<string, number>;
   by_status: Record<string, number>;
   predictions_last_hour: Record<string, number>;
@@ -118,7 +145,7 @@ export interface Stats {
 /** One line of the activity log: a user action, or a camera change the system noticed. */
 export interface LogEntry {
   at: string;
-  kind: 'alert' | 'incident' | 'camera' | 'settings';
+  kind: "alert" | "incident" | "camera" | "settings";
   action: string; // e.g. alert.acknowledged, camera.paused, camera.not_working
   actor: string | null; // null: noticed by the system
   camera_id: string | null;
@@ -160,15 +187,27 @@ export interface DetectionSettings {
   device: string; // as configured: auto, a GPU number, or cpu
   device_in_use: string | null; // what it resolved to, e.g. "GPU 0 (NVIDIA GeForce RTX 3060 Laptop GPU)" or "CPU"
   target_fps: number;
-  analysis: { // measured over the last 30 s
+  analysis: {
+    // measured over the last 30 s
     average_fps: number | null; // frames analysed per second, averaged over cameras receiving video
-    cameras: { camera_id: string; received_fps: number; analysed_fps: number }[];
+    cameras: {
+      camera_id: string;
+      received_fps: number;
+      analysed_fps: number;
+    }[];
   };
   person_confidence: number; // in use now
   person_confidence_default: number; // config.yaml
   saved: { person_confidence?: number }; // set in this app; ml-service applies it within 15 s
-  clips: { enabled: boolean; pre_roll_s: number; post_roll_s: number; max_s: number; max_width: number;
-    retention_days: number; max_total_gb: number };
+  clips: {
+    enabled: boolean;
+    pre_roll_s: number;
+    post_roll_s: number;
+    max_s: number;
+    max_width: number;
+    retention_days: number;
+    max_total_gb: number;
+  };
   rules: Record<string, number>;
   incidents: Record<string, number>;
   zones: Record<string, string[]>;

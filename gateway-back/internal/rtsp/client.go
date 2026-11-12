@@ -38,6 +38,8 @@ type RTSPClient struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	OnStatusChange func(id, status string)
 }
 
 // NewRTSPClient creates a new RTSPClient instance with the given ID, RTSP URL,
@@ -64,7 +66,7 @@ func (c *RTSPClient) Start() error {
 	c.mu.Lock()
 	if c.isRunning {
 		c.mu.Unlock()
-		return fmt.Errorf("Camera [%s] is already running: ", c.ID)
+		return fmt.Errorf("camera [%s] is already running: ", c.ID)
 	}
 	c.isRunning = true
 	c.mu.Unlock()
@@ -106,11 +108,21 @@ func (c *RTSPClient) connectionLoop() {
 
 		if err != nil {
 			log.Printf("[%s] Connection error: %v. Retrying in 5 seconds...", c.ID, err)
+
+			if c.OnStatusChange != nil {
+				c.OnStatusChange(c.ID, "error")
+			}
+
 			time.Sleep(5 * time.Second)
 			continue
 		}
 
 		log.Printf("[%s] Connection ended. Reconnecting in 3 seconds...", c.ID)
+
+		if c.OnStatusChange != nil {
+			c.OnStatusChange(c.ID, "offline")
+		}
+
 		time.Sleep(3 * time.Second)
 	}
 }
@@ -124,13 +136,16 @@ func (c *RTSPClient) connectionLoop() {
 // callback, sends the initial parameter sets (H.264 SPS/PPS or H.265 VPS/SPS/PPS),
 // and executes Play.
 //
+// Every NALU is stamped with a PTS (Unix epoch, ms) derived from the RTP
+// timestamp, so all NALUs of one picture share the same PTS.
+//
 // It blocks until the connection is lost or fails (client.Wait).
 //
 // Returns an error if any of the steps fail.
 func (c *RTSPClient) connectAndStream() error {
 	u, err := base.ParseURL(c.RTSPURL)
 	if err != nil {
-		return fmt.Errorf("Invalid RTSP URL: %w", err)
+		return fmt.Errorf("invalid RTSP URL: %w", err)
 	}
 
 	// We create a NEW Gortsplib client for each connection attempt
@@ -173,7 +188,7 @@ func (c *RTSPClient) connectAndStream() error {
 	}
 
 	if media == nil || len(media.Formats) == 0 {
-		return fmt.Errorf("No valid video track found")
+		return fmt.Errorf("no valid video track found")
 	}
 
 	forma := media.Formats[0]
@@ -185,6 +200,9 @@ func (c *RTSPClient) connectAndStream() error {
 		c.extractor = ext
 	}
 
+	// One mapper per connection: a reconnection re-anchors the timeline.
+	ptsMap := newPTSMapper(c.ID, forma.ClockRate())
+
 	_, err = client.Setup(desc.BaseURL, media, 0, 0)
 	if err != nil {
 		return fmt.Errorf("RTSP Setup error: %w", err)
@@ -194,20 +212,28 @@ func (c *RTSPClient) connectAndStream() error {
 		if pkt == nil || c.extractor == nil || c.sender == nil || c.ctx.Err() != nil {
 			return
 		}
+
+		// Computed for every packet (not only when NALUs come out) so the
+		// mapper tracks the RTP clock continuously.
+		pts := ptsMap.PTS(pkt.Timestamp)
+
 		nalus, _ := c.extractor.ProcessPacket(pkt)
-		for _, nalu := range nalus {
-			if err := c.sender.SendNALU(nalu); err != nil {
-				log.Printf("[%s] Error sending NALU: %v", c.ID, err)
-			}
+		if len(nalus) == 0 {
+			return
+		}
+
+		if err := c.sender.SendAccessUnit(nalus, pts); err != nil {
+			log.Printf("[%s] Error sending NALUs: %v", c.ID, err)
 		}
 	})
 
 	// Parameter sets first (SPS/PPS, or VPS/SPS/PPS for H.265), so the decoder can
 	// start at the first keyframe. ml-service tells the codec apart from these.
+	// They are configuration, not a picture, so the current wall clock is fine.
 	if c.extractor != nil && c.sender != nil {
 		log.Printf("[%s] Video codec: %s", c.ID, c.extractor.Codec)
-		for _, ps := range c.extractor.ParameterSets {
-			_ = c.sender.SendNALU(ps)
+		if err := c.sender.SendAccessUnit(c.extractor.ParameterSets, network.NowPTS()); err != nil {
+			log.Printf("[%s] Error sending parameter sets: %v", c.ID, err)
 		}
 	}
 
@@ -221,6 +247,9 @@ func (c *RTSPClient) connectAndStream() error {
 
 	log.Printf("[%s] RTSP stream established successfully", c.ID)
 
+	if c.OnStatusChange != nil {
+		c.OnStatusChange(c.ID, "online")
+	}
 	// Blocks here until the connection is lost or fails
 	return client.Wait()
 }

@@ -46,25 +46,44 @@ def main() -> None:
     if frame.mean() < 10:
         print(f"warning: webcam {args.index} looks black (privacy shutter closed?); try --index 1")
 
+    print(f"publishing webcam {args.index} ({width}x{height} @ {args.fps} fps) to {args.url}  (Ctrl+C to stop)")
+    sent, wait = 0, RETRY_FIRST_S
     try:
-        out = av.open(args.url, mode="w", format="rtsp", options={"rtsp_transport": "tcp"})
-    except av.FFmpegError as e:
-        sys.exit(f"cannot publish to {args.url}: {e}\nIs the test-camera service running?")
+        while True:
+            try:
+                sent += stream_until_lost(cap, args, width, height)
+                break  # the webcam stopped, or q was pressed
+            except av.FFmpegError as e:
+                # The relay restarted, or the PC ran short of memory: try again instead of quitting.
+                print(f"connection to {args.url} lost or refused ({e}); retrying in {wait:.0f} s")
+                time.sleep(wait)
+                wait = min(wait * 2, RETRY_MAX_S)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        cap.release()
+        cv2.destroyAllWindows()
+        print(f"stopped after {sent} frames")
+
+
+RETRY_FIRST_S, RETRY_MAX_S = 3.0, 30.0
+
+
+def stream_until_lost(cap, args, width: int, height: int) -> int:
+    """Send frames until the webcam stops or q is pressed (returns the count); raises
+    av.FFmpegError if the connection can't be opened or is lost."""
+    out = av.open(args.url, mode="w", format="rtsp", options={"rtsp_transport": "tcp"})
     stream = out.add_stream("libx264", rate=args.fps)
     stream.width, stream.height, stream.pix_fmt = width, height, "yuv420p"
     # Keyframe every 2 s so a receiver that joins late starts decoding quickly.
     stream.options = {"preset": "ultrafast", "tune": "zerolatency", "g": str(args.fps * 2), "bf": "0"}
-
-    print(f"publishing webcam {args.index} ({width}x{height} @ {args.fps} fps) to {args.url}  (Ctrl+C to stop)")
-    start = time.monotonic()
-    last_pts = -1
-    sent = 0
+    start, last_pts, sent = time.monotonic(), -1, 0
     try:
         while True:
             ok, bgr = cap.read()
             if not ok:
                 print("webcam stopped delivering frames")
-                break
+                return sent
             # Timestamps from the wall clock, so a webcam that runs slower than --fps stays in sync.
             pts = max(int((time.monotonic() - start) * args.fps), last_pts + 1)
             last_pts = pts
@@ -77,21 +96,13 @@ def main() -> None:
             if args.show:
                 cv2.imshow("publish_webcam (q to stop)", bgr)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
-                    break
-    except KeyboardInterrupt:
-        pass
-    except av.FFmpegError as e:
-        print(f"connection to {args.url} lost: {e}")
+                    return sent
     finally:
         try:
             out.mux(stream.encode(None))
             out.close()
         except av.FFmpegError:
             pass
-        cap.release()
-        cv2.destroyAllWindows()
-        print(f"stopped after {sent} frames")
-
 
 if __name__ == "__main__":
     main()

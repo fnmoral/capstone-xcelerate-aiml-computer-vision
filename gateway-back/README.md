@@ -117,16 +117,50 @@ gateway-back/
 
 ---
 
+# Frontend Assets (gateway-ui)
+
+The Go backend serves the frontend Single Page Application (SPA) directly from the `cmd/api/dist/` directory.
+
+Whenever you update the frontend project (`gateway-ui`), you must rebuild it and update the `dist` folder inside the backend before running or compiling the Go application.
+
+## Steps
+
+1. Navigate to your frontend project directory (`gateway-ui`).
+
+2. Run the build command:
+
+   ```bash
+   pnpm build
+
+3. Copy or output the generated production files into:
+   ```bash
+   gateway-back/cmd/api/dist/
+
+---
+
 ## Configuration
 
 The gateway reads its configuration from `config.json` in the working directory.
 
-```json
-{
-  "cloud_address": "127.0.0.1:9000",
-  "server_port": "8080"
-}
-```
+In Docker, `docker-entrypoint.sh` creates it on first start from the `GATEWAY_*` settings in the
+project's root `.env` (see `config.example.json` for its fields).
+
+### Registration with the backend
+
+Cameras can only be added once the gateway is registered with the main backend
+(`POST <back_end_address>/api/gateway/add`, which returns the tenant and gateway IDs).
+
+- **Automatic (default):** at start-up, an unregistered gateway registers itself with the values
+  in `config.json`. It retries until the backend is up, then saves the IDs and sets
+  `gateway_information_updated: true`. The log shows `auto-register: registered as ...`.
+- **Editable:** the gateway page (http://localhost:8080, gateway settings, or
+  `PUT /gateway/actions/config`) re-registers with new values at any time. A registered gateway
+  is never re-registered automatically, so changes made there are kept.
+- **Manual only:** `GATEWAY_AUTO_REGISTER=false` turns the automatic step off ("Configure Now"
+  on the gateway page is then required before adding cameras).
+
+The tenant (`tenant_name`, a slug) must already exist in the backend's database; otherwise the
+log shows `auto-register: main backend refused the registration ... tenant ... not found`.
 
 ## Getting Started
 

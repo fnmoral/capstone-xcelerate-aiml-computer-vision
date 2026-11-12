@@ -14,6 +14,10 @@ import (
 	"backend-api/internal/store"
 )
 
+// clipLinkPrefix is where the app opens an incident clip (stream-hub's recordings,
+// served on the same origin as the app under /stream-hub).
+const clipLinkPrefix = "/stream-hub/recordings/clips/"
+
 // actor is who is making the request. There are no user accounts yet, so every action is
 // recorded as "Current user"; once sign-in exists, return the signed-in user here.
 func actor(*gin.Context) string { return "Current user" }
@@ -177,7 +181,7 @@ func (s *Server) exportIncidents(c *gin.Context) {
 			"", "", "", "", "", "", notesCell(i.NoteList, loc), "",
 		}
 		if i.ClipKey != nil { // a link the app can open (same origin as the export)
-			row[18] = "/api/clips/" + path.Base(*i.ClipKey)
+			row[18] = clipLinkPrefix + path.Base(*i.ClipKey)
 		}
 		if i.DurationSeconds != nil {
 			row[3] = strconv.Itoa(*i.DurationSeconds)

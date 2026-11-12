@@ -1,0 +1,10 @@
+{
+  "stream_hub_address": "127.0.0.1:8090",
+  "back_end_address": "127.0.0.1:8000",
+  "server_port": ":8080",
+  "tenant_id": "default_tenant",
+  "tenant_name": "default_tenant_name",
+  "gateway_name_id": "default_gateway_name",
+  "gateway_id": "default_id",
+  "gateway_information_updated": false
+}

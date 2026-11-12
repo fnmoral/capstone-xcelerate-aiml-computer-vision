@@ -58,20 +58,20 @@ func (s *Server) checkCameras(ctx context.Context, noVideoSince map[string]time.
 	if err != nil {
 		return err
 	}
-	// ml-service down: nothing is being analysed, so its cameras count as not working
-	// once the grace period has passed.
-	live, mlErr := s.ml.state(ctx)
+	// ml-service down (stopped reporting its status): nothing is being analysed, so its
+	// cameras count as not working once the grace period has passed.
+	frameAge, mlErr := s.mlFrameAges(ctx)
 
 	now := time.Now()
 	onGateway := map[string]bool{}
 	for _, g := range gw {
 		onGateway[g.ID] = true
 		var want string
-		switch l, ok := live[g.ID]; {
+		switch age, ok := frameAge[g.ID]; {
 		case g.Status == "paused":
 			want = "disabled"
 			delete(noVideoSince, g.ID)
-		case mlErr == nil && ok && l.LastFrameAgeS != nil && *l.LastFrameAgeS < notWorkingAfter.Seconds():
+		case mlErr == nil && ok && age < notWorkingAfter.Seconds():
 			want = "online"
 			delete(noVideoSince, g.ID)
 		default:
@@ -119,7 +119,7 @@ func (s *Server) applyStatus(ctx context.Context, id, name, want string, mlErr e
 	case "error":
 		level, msg = "warning", fmt.Sprintf("Not working: no video for %d seconds", int(notWorkingAfter.Seconds()))
 		if mlErr != nil {
-			msg = "Not working: the detector (ml-service) is unreachable"
+			msg = "Not working: the detector (ml-service) is not running"
 		}
 	case "offline":
 		level, msg = "warning", "Not connected to a gateway"

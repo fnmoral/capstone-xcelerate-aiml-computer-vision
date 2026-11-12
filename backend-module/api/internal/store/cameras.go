@@ -15,14 +15,16 @@ import (
 //
 // Status is kept up to date by the API's camera monitor: online, disabled (paused),
 // error (on the gateway but no video arriving) or offline (not on the gateway).
+// Camera represents the camera entity structure with tenant information.
 type Camera struct {
 	ID           string     `json:"id"`
+	TenantID     string     `json:"tenant_id"` // Added tenant_id field
 	Name         string     `json:"name"`
 	Location     *string    `json:"location"`
 	Zone         *string    `json:"zone"`
-	Status       string     `json:"db_status"`
-	StatusSince  *time.Time `json:"status_since"`  // when Status last changed (metadata.status_since)
-	AlertOffline bool       `json:"alert_offline"` // notify when it stops working (metadata.alert_offline, default on)
+	Status       string     `json:"status"`
+	StatusSince  *time.Time `json:"status_since"`
+	AlertOffline bool       `json:"alert_offline"`
 	CreatedAt    time.Time  `json:"created_at"`
 }
 
@@ -39,12 +41,12 @@ func SafeURL(raw string) string {
 	return u.String()
 }
 
-// Cameras lists the tenant's cameras.
+// Cameras retrieves all cameras for the configured tenant including their tenant_id.
 func (s *Store) Cameras(ctx context.Context) ([]Camera, error) {
 	var out []Camera
 	err := s.tx(ctx, func(tx pgx.Tx, tid string) error {
 		rows, err := tx.Query(ctx, `
-			SELECT c.id::text, c.name, c.location, z.name, c.status,
+			SELECT c.id::text, c.tenant_id::text, c.name, c.location, z.name, c.status,
 			       (c.metadata->>'status_since')::timestamptz,
 			       coalesce((c.metadata->>'alert_offline')::boolean, true), c.created_at
 			FROM cameras c LEFT JOIN zones z ON z.id = c.zone_id
@@ -54,7 +56,8 @@ func (s *Store) Cameras(ctx context.Context) ([]Camera, error) {
 		}
 		out, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (Camera, error) {
 			var c Camera
-			err := r.Scan(&c.ID, &c.Name, &c.Location, &c.Zone, &c.Status, &c.StatusSince, &c.AlertOffline, &c.CreatedAt)
+			// Scanned c.TenantID right after c.ID
+			err := r.Scan(&c.ID, &c.TenantID, &c.Name, &c.Location, &c.Zone, &c.Status, &c.StatusSince, &c.AlertOffline, &c.CreatedAt)
 			return c, err
 		})
 		return err

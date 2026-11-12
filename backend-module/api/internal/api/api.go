@@ -3,11 +3,10 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
-	"net/http/httputil"
-	"net/url"
 	"regexp"
 	"sort"
 	"strings"
@@ -21,7 +20,7 @@ import (
 
 // Config is the backend's runtime configuration (environment variables, see main.go).
 type Config struct {
-	Addr, DatabaseURL, Tenant, GatewayURL, MLURL, StreamHubURL string
+	Addr, DatabaseURL, Tenant, GatewayURL, StreamHubURL string
 }
 
 // Server holds the dependencies of the routes.
@@ -29,29 +28,22 @@ type Server struct {
 	cfg     Config
 	db      *store.Store
 	gateway gateway
-	ml      ml
 	hub     *httpClient
-	mlProxy *httputil.ReverseProxy
+}
+
+type GatewayRegisterRequest struct {
+	TenantName    string `json:"tenant_name"`
+	GatewayNameID string `json:"gateway_name_id"`
+	AuthToken     string `json:"auth_token"` // Optional or default hash
 }
 
 // New creates the server.
 func New(cfg Config, db *store.Store) *Server {
-	mlURL, err := url.Parse(cfg.MLURL)
-	if err != nil {
-		log.Fatalf("ML_URL: %v", err)
-	}
-	proxy := httputil.NewSingleHostReverseProxy(mlURL)
-	proxy.FlushInterval = -1 // stream MJPEG frames through immediately
-	proxy.ErrorHandler = func(w http.ResponseWriter, _ *http.Request, err error) {
-		http.Error(w, "ml-service unavailable: "+err.Error(), http.StatusBadGateway)
-	}
 	return &Server{
 		cfg:     cfg,
 		db:      db,
 		gateway: gateway{newClient("gateway-back", cfg.GatewayURL, 8*time.Second)},
-		ml:      ml{newClient("ml-service", cfg.MLURL, 3*time.Second)},
 		hub:     newClient("stream-hub", cfg.StreamHubURL, 3*time.Second),
-		mlProxy: proxy,
 	}
 }
 
@@ -59,6 +51,7 @@ func New(cfg Config, db *store.Store) *Server {
 func (s *Server) Register(r *gin.Engine) {
 	a := r.Group("/api")
 	a.GET("/health", s.health)
+	a.GET("/health-cloud", s.HealthCheck)
 
 	a.GET("/cameras", s.listCameras)
 	a.POST("/cameras", s.addCamera)
@@ -68,8 +61,6 @@ func (s *Server) Register(r *gin.Engine) {
 	a.POST("/cameras/:id/pause", s.pauseResume("pause", "disabled"))
 	a.POST("/cameras/:id/resume", s.pauseResume("resume", "online"))
 	a.POST("/cameras/:id/switch", s.switchCamera)
-	a.GET("/cameras/:id/stream", s.proxyML(func(id string) string { return "/stream/" + url.PathEscape(id) }))
-	a.GET("/cameras/:id/frame.jpg", s.proxyML(func(id string) string { return "/frame/" + url.PathEscape(id) + ".jpg" }))
 	a.GET("/zones", s.listZones)
 	a.GET("/notifications", s.notifications)
 	a.GET("/logs", s.listLogs)
@@ -87,14 +78,13 @@ func (s *Server) Register(r *gin.Engine) {
 	a.POST("/alerts/:id/reopen", s.reopenAlert)
 
 	a.GET("/stats", s.stats)
-	a.GET("/snapshots/:name", s.snapshot)
-	a.GET("/clips/:name", s.clip)
 	a.GET("/detection", s.detection)
 	a.PUT("/detection", s.saveDetection)
 	a.GET("/settings", s.settings)
 	a.PUT("/settings", s.saveSettings)
 	a.GET("/gateway/config", s.gatewayConfig)
 	a.PUT("/gateway/config", s.gatewayConfig)
+	a.POST("/gateway/add", s.gatewayAdd)
 }
 
 // ---------- helpers ----------
@@ -120,17 +110,19 @@ func fail(c *gin.Context, err error) {
 	}
 }
 
-// RequestLog logs API calls except the frequent polling and video routes.
+// quietRoutes are polled every few seconds by the frontend; RequestLog skips them when they succeed.
+var quietRoutes = map[string]bool{
+	"/api/cameras": true, "/api/stats": true, "/api/health": true, "/api/alerts": true,
+	"/api/notifications": true, "/api/logs": true, "/api/incidents": true, "/api/detection": true,
+}
+
+// RequestLog logs API calls except the frequent polling routes.
 func RequestLog() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		c.Next()
 		p := c.Request.URL.Path
-		if c.Request.Method == http.MethodGet && (strings.HasSuffix(p, "/stream") || strings.HasSuffix(p, "/frame.jpg") ||
-			p == "/api/cameras" || p == "/api/stats" || p == "/api/health" || p == "/api/alerts" ||
-			p == "/api/notifications" || p == "/api/logs" ||
-			strings.HasPrefix(p, "/api/snapshots/") || strings.HasPrefix(p, "/api/clips/") || p == "/api/incidents") &&
-			c.Writer.Status() < 400 {
+		if c.Request.Method == http.MethodGet && quietRoutes[p] && c.Writer.Status() < 400 {
 			return
 		}
 		log.Printf("%s %s %d %s", c.Request.Method, p, c.Writer.Status(), time.Since(start).Round(time.Millisecond))
@@ -138,6 +130,10 @@ func RequestLog() gin.HandlerFunc {
 }
 
 // ---------- health ----------
+
+func (s *Server) HealthCheck(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
 
 func (s *Server) health(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
@@ -152,7 +148,8 @@ func (s *Server) health(c *gin.Context) {
 		"gateway-back": func(ctx context.Context) error {
 			return s.gateway.do(ctx, http.MethodGet, "/gateway/actions/health", nil, nil)
 		},
-		"ml-service": func(ctx context.Context) error { return s.ml.do(ctx, http.MethodGet, "/api/config", nil, nil) },
+		// ml-service has no API of its own: it is up if it keeps reporting its status.
+		"ml-service": func(ctx context.Context) error { _, err := s.mlFrameAges(ctx); return err },
 		"stream-hub": func(ctx context.Context) error { return s.hub.do(ctx, http.MethodGet, "/health", nil, nil) },
 	}
 	out := map[string]check{}
@@ -200,6 +197,23 @@ type CameraView struct {
 	People          []map[string]any `json:"people"`
 	LastFrameAgeS   *float64         `json:"last_frame_age_s"`
 	ActiveIncidents int              `json:"active_incidents"`
+	TenantID        string           `json:"tenant_id"`
+}
+
+// liveState is what ml-service is doing right now, from the database: when it last
+// analysed each camera (ml_status) and who it saw (recent model_predictions).
+type liveState struct {
+	frameAge map[string]float64
+	people   map[string][]map[string]any
+}
+
+func (s *Server) liveState(ctx context.Context) liveState {
+	frameAge, _ := s.mlFrameAges(ctx) // empty if ml-service is down
+	people, err := s.db.RecentPeople(ctx, peopleWindow)
+	if err != nil {
+		log.Printf("recent people: %v", err)
+	}
+	return liveState{frameAge: frameAge, people: people}
 }
 
 func (s *Server) listCameras(c *gin.Context) {
@@ -237,7 +251,7 @@ func (s *Server) listCameras(c *gin.Context) {
 		}
 	}
 
-	live, _ := s.ml.state(ctx) // empty if ml-service is down
+	live := s.liveState(ctx)
 	active := map[string]int{}
 	if list, err := s.db.Incidents(ctx, store.IncidentFilter{Status: "active", Limit: 500}); err == nil {
 		for _, i := range list {
@@ -254,12 +268,13 @@ func (s *Server) listCameras(c *gin.Context) {
 	seen := map[string]bool{}
 	for _, g := range gw {
 		v := CameraView{ID: g.ID, Name: g.Name, Status: g.Status, OnGateway: true,
-			RTSPURL: store.SafeURL(g.RTSPURL), CreatedAt: g.CreatedAt, People: []map[string]any{}}
+			RTSPURL: store.SafeURL(g.RTSPURL), CreatedAt: g.CreatedAt, People: []map[string]any{},
+			TenantID: g.TenantID}
 		d, ok := byID[g.ID]
 		if ok {
 			v.Name, v.Location, v.Zone = d.Name, d.Location, d.Zone
 		}
-		s.addLive(&v, live, active)
+		v.addLive(live, active)
 		v.setHealth(&d, ok)
 		out = append(out, v)
 		seen[g.ID] = true
@@ -270,7 +285,7 @@ func (s *Server) listCameras(c *gin.Context) {
 		}
 		v := CameraView{ID: d.ID, Name: d.Name, Location: d.Location, Zone: d.Zone, Status: "not_on_gateway",
 			CreatedAt: d.CreatedAt, People: []map[string]any{}}
-		s.addLive(&v, live, active)
+		v.addLive(live, active)
 		v.setHealth(&d, true)
 		out = append(out, v)
 	}
@@ -298,12 +313,14 @@ func sortByOrder(out []CameraView, dbCams []store.Camera) {
 	sort.SliceStable(out, func(i, j int) bool { return pos(out[i].ID) < pos(out[j].ID) })
 }
 
-func (s *Server) addLive(v *CameraView, live map[string]MLCamera, active map[string]int) {
-	if l, ok := live[v.ID]; ok {
-		v.Live = l.LastFrameAgeS != nil && *l.LastFrameAgeS < 10
-		v.LastFrameAgeS = l.LastFrameAgeS
-		if l.People != nil {
-			v.People = l.People
+func (v *CameraView) addLive(live liveState, active map[string]int) {
+	if age, ok := live.frameAge[v.ID]; ok {
+		v.Live = age < 10
+		v.LastFrameAgeS = &age
+	}
+	if v.Live {
+		if people := live.people[v.ID]; people != nil {
+			v.People = people
 		}
 	}
 	v.ActiveIncidents = active[v.ID]
@@ -646,54 +663,30 @@ func (s *Server) stats(c *gin.Context) {
 	c.JSON(http.StatusOK, st)
 }
 
-// ---------- pass-through to ml-service and gateway-back ----------
-
-var (
-	snapshotName = regexp.MustCompile(`^[\w.-]+\.jpg$`)
-	clipName     = regexp.MustCompile(`^[\w.-]+\.mp4$`)
-)
-
-func (s *Server) proxyML(path func(id string) string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Request.URL.Path = path(c.Param("id"))
-		c.Request.URL.RawPath = ""
-		c.Request.URL.RawQuery = ""
-		s.mlProxy.ServeHTTP(c.Writer, c.Request)
-	}
-}
-
-func (s *Server) snapshot(c *gin.Context) {
-	name := c.Param("name")
-	if !snapshotName.MatchString(name) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
-		return
-	}
-	c.Request.URL.Path = "/snapshots/" + name
-	c.Request.URL.RawQuery = ""
-	c.Header("Cache-Control", "max-age=86400")
-	s.mlProxy.ServeHTTP(c.Writer, c.Request)
-}
-
-// clip streams an incident video from ml-service. Range requests (seeking) pass through.
-func (s *Server) clip(c *gin.Context) {
-	name := c.Param("name")
-	if !clipName.MatchString(name) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
-		return
-	}
-	c.Request.URL.Path = "/clips/" + name
-	c.Request.URL.RawQuery = ""
-	s.mlProxy.ServeHTTP(c.Writer, c.Request)
-}
-
-// detection: ml-service's settings (what it runs with now) plus "saved", the values set
-// in the frontend. ml-service picks those up within 15 s.
+// detection: ml-service's settings (what it runs with now, from its latest status in
+// ml_status) plus "saved", the values set in the frontend. ml-service picks those up
+// within 15 s. When the status is old, ml-service is down: its live figures (device,
+// analysis rate) are blanked so the page doesn't show them as current.
 func (s *Server) detection(c *gin.Context) {
 	ctx := c.Request.Context()
-	var out map[string]any
-	if err := s.ml.do(ctx, http.MethodGet, "/api/config", nil, &out); err != nil {
+	st, err := s.db.MLStatus(ctx)
+	if err != nil {
 		fail(c, err)
 		return
+	}
+	if st == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": errMLNoStatus.Error(), "service": "ml-service"})
+		return
+	}
+	var out map[string]any
+	if err := json.Unmarshal(st.Payload, &out); err != nil {
+		fail(c, err)
+		return
+	}
+	stale := time.Since(st.UpdatedAt) > mlStatusStale
+	if stale {
+		out["device_in_use"] = nil
+		out["analysis"] = gin.H{"average_fps": nil, "cameras": []any{}}
 	}
 	saved, err := s.db.Detection(ctx)
 	if err != nil {
@@ -701,6 +694,8 @@ func (s *Server) detection(c *gin.Context) {
 		return
 	}
 	out["saved"] = saved
+	out["updated_at"] = st.UpdatedAt
+	out["stale"] = stale
 	c.JSON(http.StatusOK, out)
 }
 
@@ -776,4 +771,43 @@ func (s *Server) gatewayConfig(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, out)
+}
+
+func (s *Server) gatewayAdd(c *gin.Context) {
+	var req GatewayRegisterRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body payload"})
+		return
+	}
+
+	// Validate required fields
+	if req.TenantName == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_name (slug) is required"})
+		return
+	}
+
+	// Default auth token hash if not provided
+	authTokenHash := req.AuthToken
+	if authTokenHash == "" {
+		authTokenHash = "default_hash_placeholder"
+	}
+
+	gatewayName := req.GatewayNameID
+	if gatewayName == "" {
+		gatewayName = "default_gateway"
+	}
+
+	// Call the store method to validate tenant slug, register the gateway, and get IDs.
+	tenantID, gatewayID, err := s.db.RegisterGateway(c.Request.Context(), req.TenantName, gatewayName, authTokenHash)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Return tenant_id and gateway_id back to the gateway.
+	c.JSON(http.StatusOK, gin.H{
+		"tenant_id":  tenantID,
+		"gateway_id": gatewayID,
+		"message":    "Gateway registered successfully",
+	})
 }

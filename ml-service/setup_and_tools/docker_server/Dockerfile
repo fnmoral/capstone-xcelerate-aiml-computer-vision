@@ -84,5 +84,8 @@ print("image check OK:", "${YOLO_WEIGHTS}", [s.type for s in cfg.sources])
 EOF
 
 VOLUME /app/data
-EXPOSE 9999 8000
+# 9999: stream-hub's video + results connection. There is no HTTP port any more: the live
+# viewer is gone (stream-hub now records clips and stores snapshots; the backend reads
+# this service's status from the database's ml_status table).
+EXPOSE 9999
 CMD ["python", "main.py"]

@@ -1,6 +1,7 @@
 """Work on the course server over SSH (it only allows password logins).
 
-The login comes from fanshawe_server_and_WSL_Setup/server/.env (git-ignored; copy .env.example), never from
+The login comes from the project's root .env (SERVER_HOST, SERVER_PORT, SERVER_USER, SERVER_PASSWORD;
+git-ignored, see .env.example) or the same environment variables, never from
 the command line. The server's host key is pinned in fanshawe_server_and_WSL_Setup/server/known_hosts.
 
     python fanshawe_server_and_WSL_Setup/server/ssh.py "<command>"             run a command, print its output
@@ -25,16 +26,27 @@ from pathlib import Path
 import paramiko
 
 HERE = Path(__file__).resolve().parent
-ENV_FILE = Path(os.environ.get("SERVER_ENV_FILE", HERE / ".env"))
+ROOT_ENV = HERE.parents[1] / ".env"   # the project's one settings file
+LEGACY_ENV = HERE / ".env"            # older setups kept the login next to this script
+SERVER_KEYS = ("SERVER_HOST", "SERVER_PORT", "SERVER_USER", "SERVER_PASSWORD")
 KNOWN_HOSTS = HERE / "known_hosts"
 
 
 def load_env() -> dict[str, str]:
-    env = {}
-    for line in ENV_FILE.read_text().splitlines():
-        if "=" in line and not line.lstrip().startswith("#"):
-            key, value = line.split("=", 1)
-            env[key.strip()] = value.strip()
+    """SERVER_* settings: environment variables first (the tunnel container), then the root .env,
+    then the old .env next to this script."""
+    env: dict[str, str] = {}
+    for path in (LEGACY_ENV, Path(os.environ.get("SERVER_ENV_FILE", ROOT_ENV))):
+        if path.is_file():
+            for line in path.read_text().splitlines():
+                if "=" in line and not line.lstrip().startswith("#"):
+                    key, value = line.split("=", 1)
+                    env[key.strip()] = value.split(" #")[0].strip()
+    env.update({k: os.environ[k] for k in SERVER_KEYS if os.environ.get(k)})
+    missing = [k for k in ("SERVER_HOST", "SERVER_USER", "SERVER_PASSWORD") if not env.get(k)]
+    if missing:
+        sys.exit(f"set {', '.join(missing)} in the project's root .env (see .env.example)")
+    env.setdefault("SERVER_PORT", "22")
     return env
 
 

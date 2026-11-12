@@ -79,51 +79,38 @@ If GitHub asks you to sign in, sign in with your GitHub account (you need access
 
 ---
 
-## Step 3. Create the settings files (one time)
+## Step 3. Create the settings file (one time)
 
-The mode and the database passwords live in three files that are never uploaded to
-GitHub. Copy the examples:
+All settings live in **one file**, `.env` in the project folder, which is never uploaded to
+GitHub. Copy the example:
 
 ### Windows (PowerShell)
 ```powershell
 Copy-Item .env.example .env
-Copy-Item backend-module\.env.example backend-module\.env
-Copy-Item ml-service\deploy\.env.example ml-service\deploy\.env
 ```
 
 ### Mac (Terminal)
 ```bash
 cp .env.example .env
-cp backend-module/.env.example backend-module/.env
-cp ml-service/setup_and_tools/docker_server/.env.example ml-service/setup_and_tools/docker_server/.env
 ```
 
-The first one (`.env` in the project folder) sets **dev mode**, which is what you want on
-your own computer: sample data to look around, and your webcam works as a camera (step 6).
+It starts in **dev mode**, which is what you want on your own computer: sample data to look
+around, and your webcam works as a camera (step 6).
 
 **Set the passwords.** The examples (`change-me`) work, but it's better to pick your own.
-Open the two files in any text editor (VS Code, Notepad, TextEdit) and change these lines:
+Open `.env` in any text editor (VS Code, Notepad, TextEdit) and change these two lines at the top:
 
-`backend-module/.env`:
 ```
-# the database admin password
 POSTGRES_PASSWORD=Admin2026pass
-# the AI detector's database password
 ML_SERVICE_PASSWORD=Detector2026pass
 ```
 
-`ml-service/setup_and_tools/docker_server/.env`, the **same** detector password goes between `ml_service:` and `@db`:
-```
-ML_DATABASE_URL=postgresql://ml_service:Detector2026pass@db:5432/fallguard
-```
-
 Rules:
-- Use **letters and digits only** (no `@ : / # ?` or spaces; they break the address).
-- `ML_SERVICE_PASSWORD` and the password in `ML_DATABASE_URL` **must match**, or the detector
-  can't save falls to the database.
+- Use **letters and digits only** (no `@ : / # ?` or spaces).
+- Everything else in the file is optional and already has a working default.
 - Set them **before** the first start (step 4). The database saves the passwords the first
   time it starts; to change them later you have to wipe it (`docker compose down -v`).
-- Never upload or share the `.env` files. Git already ignores them; don't paste them in chat.
+- Never upload or share `.env`. Git already ignores it; don't paste it in chat.
   Each teammate picks their own passwords for their own computer.
 
 **Dev or prod?** In the project folder's `.env`:
@@ -246,9 +233,10 @@ Run these in the project folder.
 | `docker: command not found` or `cannot connect to the Docker daemon` | Open Docker Desktop and wait for **Engine running** |
 | `could not select device driver "nvidia"` | Your computer has no NVIDIA card set up: use the Mac / no NVIDIA command |
 | `port is already allocated` | Another program uses that port (often 3000, 5432 or 8080). Close it, or stop other Docker projects |
-| `set ML_DATABASE_URL in .env` | Step 3 was skipped: create the two `.env` files |
+| `set POSTGRES_PASSWORD in the root .env` (or `ML_SERVICE_PASSWORD`) | Step 3 was skipped: copy `.env.example` to `.env` in the project folder |
 | Settings page shows a service **not running** | `docker compose logs <service name>` and send the last lines to the team |
 | Changed the passwords after the first start and the app can't reach the database | `docker compose down -v` and start again (this wipes the demo data) |
+| Adding a camera fails with `Gateway information must be updated` | The gateway hasn't signed up with the main system yet (it does this by itself within a minute of starting). If it persists, `docker compose logs gateway-back` shows why (lines starting with `auto-register`), or fill in its settings at http://localhost:8080 |
 | Webcam tool says it can't open the camera | Close other apps using the camera (Zoom, Teams). Try `--index 1` at the end of the command |
 | Labels lag or the video is choppy on a Mac / no-NVIDIA computer | Normal: the processor is slower than a graphics card, so fewer frames are checked per second. Falls are still detected |
 

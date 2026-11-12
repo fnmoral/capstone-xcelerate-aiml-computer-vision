@@ -21,9 +21,15 @@ COPY --from=build /out/gateway /usr/local/bin/gateway
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 # config.json and gateway.db live in the working directory, kept on the /data volume.
-# These only seed config.json on first start; after that the UI's settings page owns it.
-ENV GATEWAY_CLOUD_ADDRESS=stream-hub:8090 \
-    GATEWAY_TENANT_ID=demo-facility
+# These only seed config.json on first start; after that the gateway itself owns it (the UI's
+# settings page, and the gateway's own self-registration against the backend — see
+# docker-entrypoint.sh for the full field list it writes).
+ENV GATEWAY_STREAM_HUB_ADDRESS=stream-hub:8090 \
+    GATEWAY_BACKEND_ADDRESS=api:8000 \
+    GATEWAY_TENANT_ID=demo-facility \
+    GATEWAY_TENANT_NAME=demo-facility \
+    GATEWAY_NAME_ID=default_gateway \
+    GATEWAY_ID=default_id
 USER app
 WORKDIR /data
 VOLUME /data

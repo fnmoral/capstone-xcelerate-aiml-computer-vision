@@ -46,39 +46,18 @@ prod:
   # (zones set up in the database's zones table are loaded too; see database: below)
   output:
     sinks: [jsonl, postgres] # backend-module database; the URL comes from ML_DATABASE_URL
-  viewer:
-    host: 0.0.0.0            # inside the container; compose publishes it on 127.0.0.1 only
 
 # ---------------------------------------------------------------------------
 # Shared by both modes. A dev: or prod: section can override any of these.
+#
+# Incident clips and snapshots are not configured here: stream-hub records the clips
+# (its own config.json "recordings" section) and this service only tells it when to
+# start and stop recording. This service still sends the snapshot image itself.
 # ---------------------------------------------------------------------------
 
 # tcp source only. Must match ai_server_addr in stream-hub/config.json
 server:
   port: 9999
-
-# Live viewer in the browser: annotated video + recent incidents (no login: localhost only).
-# The fallguard frontend shows the same video through the backend API.
-viewer:
-  enabled: true
-  host: 127.0.0.1            # http://localhost:8000
-  port: 8000
-  fps: 5                     # frames per second sent to each browser
-  jpeg_quality: 70
-
-# Dashcam-style video clip of every incident (cameras from stream-hub only). Each camera
-# keeps a short loop of compressed video in memory (~1-2 MB); on a fall the loop is saved
-# together with the rest of the incident as an H.264 MP4 under <output dir>/clips.
-clips:
-  enabled: true
-  pre_roll_s: 15             # video kept from before the fall
-  post_roll_s: 10            # and after the person is back up / out of view
-  max_s: 120                 # longest clip
-  max_width: 1280            # scaled down to this width for smaller files
-  crf: 28                    # H.264 quality: lower = better and bigger (18-32)
-  buffer_mb: 64              # cap on each camera's in-memory loop
-  retention_days: 30         # delete clips older than this (0 = keep)
-  max_total_gb: 10           # then the oldest while the clips folder is bigger (0 = no cap)
 
 # backend-module PostgreSQL (used when output.sinks includes postgres).
 database:
@@ -89,14 +68,14 @@ database:
   zones_from_db: true        # also use zones from the zones table + cameras.zone_id
 
 handshake:
-  # stream-hub's ai_worker.go currently sends only camera_id. Set to true once
-  # it also sends tenant_id first, like gateway-back's frame_sender.go does.
-  tenant_in_handshake: false
+  # stream-hub's ai_worker.go sends tenant_id before camera_id. Keep this true, or
+  # every incident is recorded under default_tenant_id instead of the camera's own tenant.
+  tenant_in_handshake: true
   # A tenants.slug or tenants.id from the database (demo-facility = seed.sql's tenant).
   default_tenant_id: demo-facility
 
 inference:
-  weights: models/yolo26n-pose-finetuned-mcfDataset-111026.pt   # fine-tuned for falls (models/README.md); the standard model: models/yolo26n-pose.pt
+  weights: models/yolo26n-pose-finetuned-mcfDataset-111026.pt   # fine-tuned for falls; the standard model: models/yolo26n-pose.pt (see models/README.md)
   device: auto               # auto = GPU 0 if CUDA is available, else CPU; or a GPU index, or cpu
   half: false                # FP16 on GPU; measure first, it was slower on an RTX 3060 laptop
   conf: 0.4                  # a person is reported once detected this confidently
@@ -104,7 +83,7 @@ inference:
   imgsz: 640
   target_fps: 10             # frames per second sent to the model, per camera
   tracker: bytetrack.yaml
-
+ 
 fall:
   min_keypoint_conf: 0.3
   classifier: rules          # rules (picture angles) or learned (trained model, see learned_model)
@@ -123,7 +102,7 @@ fall:
   high_after_seconds: 60
   critical_after_seconds: 300   # 5min=300 Seconds; if the person is still down after this long, mark the incident as critical
   merge_window_seconds: 10   # zones: falls on different cameras of a zone starting this close together are one incident
-
+ 
 output:
   dir: data
   prediction_interval_s: 1.0 # at most one model_predictions row per person per second

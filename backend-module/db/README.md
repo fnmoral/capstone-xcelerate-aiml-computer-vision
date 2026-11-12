@@ -15,8 +15,7 @@ PostgreSQL 15+ schema for the platform, plus dev seed data.
 
 ```bash
 cd backend-module
-cp .env.example .env          # set POSTGRES_PASSWORD and ML_SERVICE_PASSWORD
-docker compose up -d
+docker compose --env-file ../.env up -d   # settings: the root .env (cp ../.env.example ../.env, set the passwords)
 docker compose logs -f db     # wait for "database system is ready to accept connections"
 ```
 
@@ -45,8 +44,9 @@ networks:
 `postgresql://ml_service:<ML_SERVICE_PASSWORD>@db:5432/fallguard`. URL-encode special
 characters in passwords (`@` → `%40`, `:` → `%3A`).
 
-**From your machine** (psql, a DB tool, ml-service run outside Docker): `localhost:5432`.
-The port is bound to `127.0.0.1` only; set `DB_BIND=0.0.0.0` in `.env` to open it to the network.
+**From your machine** (psql, a DB tool, ml-service run outside Docker): `localhost:5433`
+(`DB_PORT` in the root `.env`). The port is bound to `127.0.0.1` only; set `DB_BIND=0.0.0.0`
+in the root `.env` to open it to the network.
 
 | Task | Command |
 |---|---|
