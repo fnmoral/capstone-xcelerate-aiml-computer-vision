@@ -1,0 +1,16 @@
+.auth-page { min-height: 100dvh; display: grid; place-content: center; justify-items: center; gap: 16px; padding: 32px 16px; background: var(--bg); }
+.auth-card { width: min(440px, calc(100vw - 32px)); padding: 28px; }
+.auth-brand { display: flex; align-items: center; gap: 10px; font-size: 17px; margin-bottom: 20px; }
+.auth-logo { width: 34px; height: 34px; border-radius: 8px; object-fit: cover; }
+.auth-title { font-size: 22px; letter-spacing: -0.01em; margin: 0 0 6px; }
+.auth-subtitle { margin: 0 0 18px; color: var(--text-muted); }
+.auth-form { gap: 14px; margin-top: 8px; }
+.auth-form .btn--primary { height: 42px; }
+.auth-password { display: flex; gap: 6px; }
+.auth-password input { flex: 1; }
+.auth-password .btn { height: auto; }
+.auth-check { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--text-muted); }
+.auth-check input { margin-top: 3px; }
+.auth-links { margin: 14px 0 0; font-size: 14px; }
+.auth-footer { margin: 0; font-size: 14px; color: var(--text-muted); }
+.auth-page a, .auth-links a { color: var(--accent); }

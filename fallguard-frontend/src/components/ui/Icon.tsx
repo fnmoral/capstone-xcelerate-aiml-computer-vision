@@ -22,6 +22,10 @@ const PATHS: Record<string, string> = {
   check: 'M5 12l5 5 9-10',
   download: 'M12 4v11M7 10l5 5 5-5M5 20h14',
   log: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
+  users: 'M9 11a4 4 0 100-8 4 4 0 000 8zM2 21c0-4 3-6 7-6s7 2 7 6M16 3.5a4 4 0 010 7.5M18 15c2.5.5 4 2.5 4 6',
+  mail: 'M3 6h18v12H3zM3 7l9 6 9-6',
+  file: 'M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h7',
+  logout: 'M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10',
 };
 
 export function Icon({ name, size = 20 }: { name: string; size?: number }) {

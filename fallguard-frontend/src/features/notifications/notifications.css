@@ -1,0 +1,31 @@
+.notif-section { padding: 20px; min-width: 0; }
+.notif-two { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
+
+.notif-matrix { min-width: 480px; }
+.notif-matrix__sev { text-align: center !important; width: 110px; }
+.notif-matrix__ch { display: grid; gap: 2px; text-align: left; font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--text); font-size: 14px; white-space: normal; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.notif-matrix__ch small { font-weight: 400; font-size: 12px; }
+.notif-matrix__cell { text-align: center; }
+.notif-matrix__cell input { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
+.notif-matrix__cell input:disabled { cursor: not-allowed; opacity: .4; }
+.notif-recipients { min-width: 460px; }
+.notif-recipients .notif-matrix__sev { width: 70px; }
+
+.notif-add { display: grid; gap: 10px; margin-top: 12px; }
+.notif-add__manual { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.notif-add__manual .field { flex: 1; min-width: min(100%, 160px); }
+
+.notif-template { border: 0; padding: 0; margin: 0; display: grid; gap: 12px; min-width: 0; }
+.notif-template:disabled { opacity: .7; }
+.notif-placeholders summary { cursor: pointer; font-size: 14px; color: var(--accent); }
+.notif-placeholders ul { columns: 2 220px; font-size: 13px; padding-left: 18px; }
+.notif-placeholders code { font-family: var(--mono); font-size: 12px; }
+.notif-preview { padding: 14px; background: var(--surface-2); font-size: 14px; }
+.notif-preview pre { white-space: pre-wrap; font-family: inherit; margin: 8px 0; overflow-wrap: anywhere; }
+
+.notif-savebar { position: sticky; bottom: 12px; z-index: 5; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 4px 16px rgb(0 0 0 / .08); }
+.notif-savebar .notice { margin: 0; flex-basis: 100%; }
+.notif-radio { font-size: 14px; gap: 6px; cursor: pointer; }
+.notif-test { align-items: center; }
+.notif-test__sep { flex: 1; }
+.notif-test input { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; min-width: 0; width: 220px; max-width: 100%; }

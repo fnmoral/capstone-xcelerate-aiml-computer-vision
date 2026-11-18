@@ -3,6 +3,8 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { useUiStore, type LiveLayout, type Theme } from '../../store/uiStore';
 import { TimeZoneSettings } from './TimeZoneSettings';
+import { OrgProfileSettings } from './OrgProfileSettings';
+import { PERM, useAuth } from '../auth/AuthContext';
 import { api } from '../../services/api/fallguard';
 import { usePolling } from '../../services/api/usePolling';
 import type { GatewayConfig } from '../../types/domain';
@@ -60,10 +62,12 @@ function GatewaySettings() {
 export default function SettingsPage() {
   const { theme, setTheme, liveLayout, setLiveLayout } = useUiStore();
   const { data: health, error } = usePolling(() => api.health(), 5000);
+  const { me, can } = useAuth();
+  const manage = can(PERM.manageSettings);
 
   return (
     <>
-      <PageHeader title="Settings" description="System status, gateway connection and appearance. User accounts come later." />
+      <PageHeader title="Settings" description="Organization details, system status, gateway connection and appearance." />
       <div className="stack" style={{ maxWidth: 720 }}>
         <section className="card" style={{ padding: 20 }}>
           <h2 className="section-title">System status</h2>
@@ -86,9 +90,13 @@ export default function SettingsPage() {
           )}
         </section>
 
-        <TimeZoneSettings />
+        <OrgProfileSettings editable={manage} />
 
-        <GatewaySettings />
+        <fieldset disabled={!manage} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+          <TimeZoneSettings />
+        </fieldset>
+
+        {manage && me?.org.has_gateway && <GatewaySettings />}
 
         <section className="card" style={{ padding: 20 }}>
           <h2 className="section-title">Appearance</h2>

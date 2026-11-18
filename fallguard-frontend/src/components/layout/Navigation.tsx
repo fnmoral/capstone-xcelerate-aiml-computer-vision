@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom';
 import { NAV_ITEMS, SECTION_LABELS, type NavSection } from '../../config/navigation';
 import { useUiStore } from '../../store/uiStore';
 import { Icon } from '../ui/Icon';
+import { useAuth } from '../../features/auth/AuthContext';
 import { SidebarClock } from './SidebarClock';
 import './Navigation.css';
 
@@ -9,17 +10,19 @@ const SECTIONS: NavSection[] = ['monitor', 'manage', 'system'];
 
 export function Navigation() {
   const { navOpen, navCollapsed, navPinned, closeNav, toggleCollapsed, togglePinned } = useUiStore();
+  const { can } = useAuth();
+  const visible = NAV_ITEMS.filter((i) => i.perm.length === 0 || i.perm.some(can));
   const cls = ['nav', navOpen && 'nav--open', navCollapsed && 'nav--collapsed'].filter(Boolean).join(' ');
 
   return (
     <>
       <div className={`nav-scrim${navOpen ? ' nav-scrim--show' : ''}`} onClick={closeNav} aria-hidden="true" />
       <nav id="primary-nav" className={cls} aria-label="Primary">
-        {SECTIONS.map((section) => (
+        {SECTIONS.filter((s) => visible.some((i) => i.section === s)).map((section) => (
           <div className="nav__group" key={section}>
             <p className="nav__heading">{SECTION_LABELS[section]}</p>
             <ul>
-              {NAV_ITEMS.filter((i) => i.section === section).map((item) => (
+              {visible.filter((i) => i.section === section).map((item) => (
                 <li key={item.path}>
                   <NavLink to={item.path} onClick={closeNav} title={navCollapsed ? item.label : undefined}
                     className={({ isActive }) => `nav__link${isActive ? ' nav__link--active' : ''}`}>

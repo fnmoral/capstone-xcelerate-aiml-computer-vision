@@ -4,6 +4,7 @@ import { api } from "../../services/api/fallguard";
 import { usePolling } from "../../services/api/usePolling";
 import { Icon } from "../ui/Icon";
 import { NotificationsMenu } from "./NotificationsMenu";
+import { UserMenu } from "./UserMenu";
 import "./Header.css";
 
 export function Header() {
@@ -40,9 +41,7 @@ export function Header() {
       )}
       <div className="header__actions">
         <NotificationsMenu />
-        <Link to="/settings" className="header__icon-btn" aria-label="Settings">
-          <Icon name="user" />
-        </Link>
+        <UserMenu />
       </div>
     </header>
   );

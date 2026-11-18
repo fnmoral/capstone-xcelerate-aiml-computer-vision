@@ -9,6 +9,7 @@ import { usePolling } from '../../services/api/usePolling';
 import type { Camera } from '../../types/domain';
 import { formatTime } from '../../lib/format';
 import { CameraOrder } from './CameraOrder';
+import { PERM, useAuth } from '../auth/AuthContext';
 import './cameras.css';
 
 const EMPTY: CameraInput = { name: '', rtsp_url: '', username: '', password: '', location: '', zone: '', alert_offline: true };
@@ -93,8 +94,8 @@ function SwitchTo({ cam, streaming, busy, run }: {
   );
 }
 
-function CameraRow({ cam, onChange, full, streaming }: {
-  cam: Camera; onChange: () => void; full: boolean; streaming: Camera[];
+function CameraRow({ cam, onChange, full, streaming, manage }: {
+  cam: Camera; onChange: () => void; full: boolean; streaming: Camera[]; manage: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [location, setLocation] = useState(cam.location ?? '');
@@ -136,7 +137,7 @@ function CameraRow({ cam, onChange, full, streaming }: {
             <br /><span className="mono">{cam.rtsp_url || 'Registered in the database only'}</span>
           </p>
         )}
-        {cam.on_gateway && (
+        {cam.on_gateway && manage && (
           <label className="switch">
             <input type="checkbox" checked={cam.alert_offline} disabled={busy}
               onChange={(e) => run(() => api.updateCamera(cam.id, { alert_offline: e.target.checked }))} />
@@ -149,7 +150,7 @@ function CameraRow({ cam, onChange, full, streaming }: {
         <Link className="btn btn--sm" to={`/camera-logs?camera=${encodeURIComponent(cam.id)}`}>
           <Icon name="log" size={14} /> Log
         </Link>
-        {editing ? (
+        {manage && (editing ? (
           <>
             <button className="btn btn--primary btn--sm" disabled={busy}
               onClick={() => run(async () => { await api.updateCamera(cam.id, { location, zone }); setEditing(false); })}>Save</button>
@@ -157,8 +158,8 @@ function CameraRow({ cam, onChange, full, streaming }: {
           </>
         ) : (
           <button className="btn btn--sm" onClick={() => setEditing(true)}>Edit</button>
-        )}
-        {cam.on_gateway && (paused && full ? (
+        ))}
+        {manage && cam.on_gateway && (paused && full ? (
           <SwitchTo cam={cam} streaming={streaming} busy={busy} run={run} />
         ) : (
           <button className="btn btn--sm" disabled={busy}
@@ -167,10 +168,10 @@ function CameraRow({ cam, onChange, full, streaming }: {
             <Icon name={paused ? 'play' : 'pause'} size={14} /> {paused ? 'Resume' : 'Pause'}
           </button>
         ))}
-        <button className="btn btn--sm btn--danger" disabled={busy}
+        {manage && <button className="btn btn--sm btn--danger" disabled={busy}
           onClick={() => confirm(`Remove "${cam.name}"? Its past incidents are kept.`) && run(() => api.deleteCamera(cam.id))}>
           <Icon name="trash" size={14} /> Remove
-        </button>
+        </button>}
       </div>
     </li>
   );
@@ -178,6 +179,9 @@ function CameraRow({ cam, onChange, full, streaming }: {
 
 export default function CamerasPage() {
   const { data, error, loading, reload } = usePolling(() => api.cameras(), 5000);
+  const { me, can } = useAuth();
+  const manage = can(PERM.manageCameras);
+  const canAdd = manage && !!me?.org.has_gateway;
   const [adding, setAdding] = useState(false);
   const cameras = data?.cameras ?? [];
   const zones = [...new Set(cameras.map((c) => c.zone).filter((z): z is string => Boolean(z)))].sort();
@@ -194,12 +198,14 @@ export default function CamerasPage() {
         description={`Streaming ${streaming.length} of ${maxStreaming} at a time · ${onGateway.length - streaming.length} paused (standby) · `
           + `${onGateway.length} of ${maxSaved} saved. A paused camera keeps its address and login, so you can switch `
           + 'which cameras stream without removing and adding them again.'}
-        actions={!adding && (
+        actions={canAdd && !adding && (
           <button className="btn btn--primary" disabled={onGateway.length >= maxSaved} onClick={() => setAdding(true)}>
             <Icon name="plus" size={16} /> {onGateway.length >= maxSaved ? `Gateway full (${maxSaved})` : 'Add camera'}
           </button>
         )} />
       {error && <p className="notice notice--error">{error}</p>}
+      {!manage && <p className="notice">View only: your role can't change cameras.</p>}
+      {manage && me && !me.org.has_gateway && <p className="notice">No gateway is connected to this organization yet, so cameras can't be added here.</p>}
       {data?.gateway_error && <p className="notice notice--error">Gateway unavailable: {data.gateway_error}</p>}
       {notice && <p className="notice" role="status">{notice}</p>}
       {adding && (
@@ -211,13 +217,13 @@ export default function CamerasPage() {
             void reload();
           }} />
       )}
-      {cameras.length > 1 && <CameraOrder cameras={cameras} onSaved={reload} />}
+      {manage && cameras.length > 1 && <CameraOrder cameras={cameras} onSaved={reload} />}
       {loading && !data ? <p className="muted">Loading…</p> : cameras.length === 0 ? (
         <EmptyState icon="camera" title="No cameras yet" body="Add an IP camera's RTSP address to start monitoring." />
       ) : (
         <ul className="cams-list">
           {cameras.map((c) => (
-            <CameraRow key={c.id} cam={c} onChange={() => void reload()} full={full} streaming={streaming} />
+            <CameraRow key={c.id} cam={c} onChange={() => void reload()} full={full} streaming={streaming} manage={manage} />
           ))}
         </ul>
       )}
