@@ -1,8 +1,9 @@
 // Package store holds the PostgreSQL queries of the backend API.
 //
-// Every query runs in a transaction with app.tenant_id set (row-level security), for the
-// single tenant this API serves (TENANT, a tenants.slug or UUID). User accounts are not
-// implemented yet, so there is no per-user tenant switching.
+// Every query runs in a transaction with app.tenant_id set (row-level security). The tenant
+// (organization) comes from the request context (WithTenant: the signed-in user's current
+// organization); background jobs without one use the home tenant (TENANT, a tenants.slug or
+// UUID), which owns the gateway and the ML pipeline.
 package store
 
 import (
@@ -47,8 +48,23 @@ func (s *Store) Close() { s.pool.Close() }
 // Ping checks the database is reachable.
 func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
 
-// TenantID resolves the configured tenant (slug or UUID) once.
+type tenantKey struct{}
+
+// WithTenant returns a context whose queries run for the given tenant UUID.
+func WithTenant(ctx context.Context, tenantID string) context.Context {
+	return context.WithValue(ctx, tenantKey{}, tenantID)
+}
+
+// TenantID is the tenant queries run for: the context's (WithTenant), else the home tenant.
 func (s *Store) TenantID(ctx context.Context) (string, error) {
+	if tid, ok := ctx.Value(tenantKey{}).(string); ok && tid != "" {
+		return tid, nil
+	}
+	return s.HomeTenantID(ctx)
+}
+
+// HomeTenantID resolves the configured tenant (slug or UUID) once.
+func (s *Store) HomeTenantID(ctx context.Context) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.tenantID != "" {

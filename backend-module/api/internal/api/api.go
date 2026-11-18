@@ -15,12 +15,21 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"backend-api/internal/auth"
+	"backend-api/internal/notify"
 	"backend-api/internal/store"
 )
 
 // Config is the backend's runtime configuration (environment variables, see main.go).
 type Config struct {
 	Addr, DatabaseURL, Tenant, GatewayURL, StreamHubURL string
+
+	AppURL          string               // web app address for links in emails ("" = from the request)
+	AppSecret       string               // encrypts provider passwords ("" = a key kept in the database)
+	CookieSecure    bool                 // session cookie only over HTTPS
+	LinksInResponse bool                 // return email links in API answers when no email provider is set (demos)
+	AllowedOrigins  []string             // other web origins allowed to call the API
+	SMTP            notify.EmailProvider // server SMTP for account emails (Type "smtp" when SMTP_HOST is set)
 }
 
 // Server holds the dependencies of the routes.
@@ -29,6 +38,7 @@ type Server struct {
 	db      *store.Store
 	gateway gateway
 	hub     *httpClient
+	box     *notify.Box // encrypts email / SMS provider secrets
 }
 
 type GatewayRegisterRequest struct {
@@ -39,52 +49,128 @@ type GatewayRegisterRequest struct {
 
 // New creates the server.
 func New(cfg Config, db *store.Store) *Server {
+	secret := cfg.AppSecret
+	if secret == "" {
+		var err error
+		if secret, err = db.PlatformSecret(context.Background(), "provider_key"); err != nil {
+			log.Fatalf("encryption key: %v", err)
+		}
+		log.Printf("APP_SECRET not set: provider passwords are encrypted with a key kept in the database")
+	}
+	box, err := notify.NewBox(secret)
+	if err != nil {
+		log.Fatalf("encryption key: %v", err)
+	}
 	return &Server{
 		cfg:     cfg,
 		db:      db,
 		gateway: gateway{newClient("gateway-back", cfg.GatewayURL, 8*time.Second)},
 		hub:     newClient("stream-hub", cfg.StreamHubURL, 3*time.Second),
+		box:     box,
 	}
 }
 
-// Register adds all routes.
+// Register adds all routes. Everything except health, sign-in / sign-up and the gateway's
+// own registration needs a signed-in session; each route also checks the role's permission.
 func (s *Server) Register(r *gin.Engine) {
-	a := r.Group("/api")
+	a := r.Group("/api", sameOrigin(s.cfg.AllowedOrigins))
 	a.GET("/health", s.health)
 	a.GET("/health-cloud", s.HealthCheck)
+	a.POST("/gateway/add", s.gatewayAdd) // called by gateway-back at start-up (machine to machine)
 
-	a.GET("/cameras", s.listCameras)
-	a.POST("/cameras", s.addCamera)
-	a.PATCH("/cameras/:id", s.updateCamera)
-	a.PUT("/cameras/order", s.cameraOrder)
-	a.DELETE("/cameras/:id", s.deleteCamera)
-	a.POST("/cameras/:id/pause", s.pauseResume("pause", "disabled"))
-	a.POST("/cameras/:id/resume", s.pauseResume("resume", "online"))
-	a.POST("/cameras/:id/switch", s.switchCamera)
-	a.GET("/zones", s.listZones)
-	a.GET("/notifications", s.notifications)
-	a.GET("/logs", s.listLogs)
-	a.GET("/export/incidents.csv", s.exportIncidents)
-	a.GET("/export/logs.csv", s.exportLogs)
+	// ---- accounts (public) ----
+	strict := newLimiter(10, 5*time.Minute).middleware // per IP and route
+	a.POST("/auth/signup", strict, s.signup)
+	a.POST("/auth/login", newLimiter(20, 5*time.Minute).middleware, s.login)
+	a.POST("/auth/logout", s.logout)
+	a.POST("/auth/verify-email", strict, s.verifyEmail)
+	a.POST("/auth/resend-verification", strict, s.resendVerification)
+	a.POST("/auth/forgot-password", strict, s.forgotPassword)
+	a.POST("/auth/reset-password", strict, s.resetPassword)
+	a.GET("/auth/invitations/:token", strict, s.invitationInfo)
+	a.POST("/auth/invitations/:token/accept", strict, s.acceptInvitation)
+	a.GET("/auth/check", s.authCheck) // nginx auth_request for stream-hub video
 
-	a.GET("/incidents", s.listIncidents)
-	a.GET("/incidents/:id", s.getIncident)
-	a.PATCH("/incidents/:id", s.updateIncident)
-	a.POST("/incidents/:id/notes", s.addNote)
-	a.GET("/alerts", s.listAlerts)
-	a.POST("/alerts/:id/acknowledge", s.alertStatus("acknowledged"))
-	a.POST("/alerts/:id/resolve", s.alertStatus("resolved"))
-	a.POST("/alerts/:id/false-positive", s.alertStatus("false_positive"))
-	a.POST("/alerts/:id/reopen", s.reopenAlert)
+	u := a.Group("", s.requireAuth)
+	u.GET("/auth/me", s.me)
+	u.PATCH("/auth/me", s.updateMe)
+	u.POST("/auth/change-password", strict, s.changePassword)
+	u.POST("/auth/logout-all", s.logoutAll)
+	u.POST("/auth/switch-org", s.switchOrg)
+	u.POST("/org/leave", s.leaveOrg)
 
-	a.GET("/stats", s.stats)
-	a.GET("/detection", s.detection)
-	a.PUT("/detection", s.saveDetection)
-	a.GET("/settings", s.settings)
-	a.PUT("/settings", s.saveSettings)
-	a.GET("/gateway/config", s.gatewayConfig)
-	a.PUT("/gateway/config", s.gatewayConfig)
-	a.POST("/gateway/add", s.gatewayAdd)
+	// ---- organization and members ----
+	u.GET("/org", s.getOrg)
+	u.PUT("/org", s.can(auth.ManageSettings), s.saveOrg)
+	u.GET("/org/members", s.can(auth.ViewMembers), s.listMembers)
+	u.POST("/org/invitations", s.can(auth.ManageMembers), s.invite)
+	u.POST("/org/invitations/:id/resend", s.can(auth.ManageMembers), s.resendInvitation)
+	u.DELETE("/org/invitations/:id", s.can(auth.ManageMembers), s.revokeInvitation)
+	u.PATCH("/org/members/:id", s.can(auth.ManageMembers), s.setMemberRole)
+	u.DELETE("/org/members/:id", s.can(auth.ManageMembers), s.removeMember)
+	u.GET("/org/permissions", s.can(auth.ViewMembers), s.rolePermissions)
+	u.PUT("/org/permissions", s.can(auth.ManageRoles), s.saveRolePermissions)
+
+	// ---- cameras ----
+	watch := s.canAny(auth.ViewLive, auth.ViewEvents, auth.ManageCameras, auth.ViewLogs)
+	cams := s.can(auth.ManageCameras)
+	u.GET("/cameras", watch, s.listCameras)
+	u.POST("/cameras", cams, s.homeOrgOnly, s.addCamera)
+	u.PATCH("/cameras/:id", cams, s.updateCamera)
+	u.PUT("/cameras/order", cams, s.cameraOrder)
+	u.DELETE("/cameras/:id", cams, s.homeOrgOnly, s.deleteCamera)
+	u.POST("/cameras/:id/pause", cams, s.homeOrgOnly, s.pauseResume("pause", "disabled"))
+	u.POST("/cameras/:id/resume", cams, s.homeOrgOnly, s.pauseResume("resume", "online"))
+	u.POST("/cameras/:id/switch", cams, s.homeOrgOnly, s.switchCamera)
+	u.GET("/zones", watch, s.listZones)
+	u.GET("/notifications", s.notifications)
+	u.GET("/logs", s.can(auth.ViewLogs), s.listLogs)
+	u.GET("/export/incidents.csv", s.can(auth.ViewReports), s.exportIncidents)
+	u.GET("/export/logs.csv", s.canAny(auth.ViewLogs, auth.ViewReports), s.exportLogs)
+
+	// ---- incidents and alerts ----
+	events := s.canAny(auth.ViewEvents, auth.ViewReports)
+	respond := s.can(auth.ManageAlerts)
+	u.GET("/incidents", events, s.listIncidents)
+	u.GET("/incidents/:id", events, s.getIncident)
+	u.PATCH("/incidents/:id", respond, s.updateIncident)
+	u.POST("/incidents/:id/notes", respond, s.addNote)
+	u.GET("/alerts", events, s.listAlerts)
+	u.POST("/alerts/:id/acknowledge", respond, s.alertStatus("acknowledged"))
+	u.POST("/alerts/:id/resolve", respond, s.alertStatus("resolved"))
+	u.POST("/alerts/:id/false-positive", respond, s.alertStatus("false_positive"))
+	u.POST("/alerts/:id/reopen", respond, s.reopenAlert)
+
+	// ---- incident reports (WSIB / OHSA / OSHA / internal) ----
+	reports := s.canAny(auth.ViewReports, auth.CreateReports)
+	writeReports := s.can(auth.CreateReports)
+	u.GET("/incident-reports", reports, s.listIncidentReports)
+	u.GET("/incident-reports/:id", reports, s.getIncidentReport)
+	u.PUT("/incident-reports/:id", writeReports, s.updateIncidentReport)
+	u.DELETE("/incident-reports/:id", writeReports, s.deleteIncidentReport)
+	u.GET("/incidents/:id/reports", reports, s.listIncidentReports)
+	u.GET("/incidents/:id/report-facts", writeReports, s.reportFacts)
+	u.POST("/incidents/:id/reports", writeReports, s.createIncidentReport)
+
+	// ---- notifications ----
+	notif := s.can(auth.ManageNotifications)
+	u.GET("/notification-settings", notif, s.notificationSettings)
+	u.PUT("/notification-settings", notif, s.saveNotificationSettings)
+	u.PUT("/notification-settings/email-provider", notif, s.saveEmailProvider)
+	u.PUT("/notification-settings/sms-provider", notif, s.saveSMSProvider)
+	u.POST("/notification-settings/test-email", notif, strict, s.testEmail)
+	u.POST("/notification-settings/test-sms", notif, strict, s.testSMS)
+	u.POST("/notification-settings/preview", notif, s.previewTemplate)
+	u.GET("/notification-settings/deliveries", notif, s.notificationDeliveries)
+
+	// ---- settings ----
+	u.GET("/stats", s.stats)
+	u.GET("/detection", s.detection)
+	u.PUT("/detection", s.can(auth.ManageDetection), s.saveDetection)
+	u.GET("/settings", s.settings)
+	u.PUT("/settings", s.can(auth.ManageSettings), s.saveSettings)
+	u.GET("/gateway/config", s.can(auth.ManageSettings), s.homeOrgOnly, s.gatewayConfig)
+	u.PUT("/gateway/config", s.can(auth.ManageSettings), s.homeOrgOnly, s.gatewayConfig)
 }
 
 // ---------- helpers ----------
@@ -218,7 +304,12 @@ func (s *Server) liveState(ctx context.Context) liveState {
 
 func (s *Server) listCameras(c *gin.Context) {
 	ctx := c.Request.Context()
-	gw, gwErr := s.gateway.cameras(ctx)
+	// The gateway belongs to the home organization; others only see their own database cameras.
+	var gw []GatewayCamera
+	var gwErr error
+	if s.isHomeOrg(c) {
+		gw, gwErr = s.gateway.cameras(ctx)
+	}
 	dbCams, err := s.db.Cameras(ctx)
 	if err != nil {
 		fail(c, err)
@@ -593,8 +684,8 @@ func (s *Server) updateIncident(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-// addNote appends a note. author is the name typed in the app; there are no user
-// accounts yet, so it falls back to actor() ("Current user").
+// addNote appends a note. The author is the signed-in user (the name typed in the app is
+// only used by API clients without a session).
 func (s *Server) addNote(c *gin.Context) {
 	var in struct {
 		Author string `json:"author"`
@@ -609,7 +700,7 @@ func (s *Server) addNote(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "text is required (at most 4000 characters); author at most 80"})
 		return
 	}
-	if author == "" {
+	if session(c) != nil || author == "" {
 		author = actor(c)
 	}
 	note, err := s.db.AddNote(c.Request.Context(), c.Param("id"), author, text)

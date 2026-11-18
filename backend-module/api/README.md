@@ -35,32 +35,94 @@ from ml-service.
 | `PUT /api/detection` | `{person_confidence}` (0.05–0.95; `{}` = back to config.yaml). Stored in the fall rule's `parsed_config.detection`; ml-service applies it within 15 s. Logged as `settings.detection` |
 | `GET` · `PUT /api/gateway/config` | gateway-back's settings (stream-hub address) |
 
+## Accounts, roles and organizations
+
+Every route except `/api/health*`, `/api/gateway/add` (gateway start-up) and the public
+`/api/auth/*` routes below needs a signed-in session (HttpOnly cookie `fg_session`, 7 days,
+extended while used). The session's organization is the tenant of every query
+(`store.WithTenant`); its user is the actor in the activity log (`audit_logs.user_id` and
+`details.actor`). Each route also checks a permission of the user's role
+(`internal/auth/perms.go`): **admin** can do everything; **member** everything except
+managing people and roles; **viewer** read-only. Admins can tick what members and viewers
+may do (`tenants.role_permissions`); managing members and roles stays admin-only.
+
+| Route | Does |
+|---|---|
+| `POST /api/auth/signup` | `{org_name, first_name, last_name, email, password}` → account + organization (the user is its admin) + verification email. One account per email (409). The **first** sign-up takes over the home tenant (`TENANT`: gateway, cameras, history); later ones get a new, empty organization |
+| `POST /api/auth/verify-email` | `{token}` from the email link (48 h, once) → verified and signed in. Sign-in is refused until the email is verified |
+| `POST /api/auth/login` · `/logout` · `/logout-all` | 5 wrong passwords lock the account for 15 min; unknown emails get the same answer as wrong passwords |
+| `POST /api/auth/forgot-password` · `/reset-password` | Reset link (1 h, once); a reset signs out every session. Always answers ok |
+| `POST /api/auth/resend-verification` | Always answers ok |
+| `GET /api/auth/invitations/:token` · `POST …/accept` | Invitation page: new people set name + password (the link verifies the email); existing accounts confirm with their password and join a second organization |
+| `GET` · `PATCH /api/auth/me` | User, organization, role, permissions, organizations; name and phone (E.164) |
+| `POST /api/auth/change-password` · `/switch-org` · `/api/org/leave` | Changing the password signs out the other sessions |
+| `GET /api/auth/check` | 204 / 401: nginx `auth_request` for `/stream-hub` (live video, clips, snapshots) |
+| `GET` · `PUT /api/org` | Organization name and profile (address, WSIB firm number…; used by incident reports) |
+| `GET /api/org/members` · `PATCH` · `DELETE /api/org/members/:id` | Members; change role / remove (signs them out). The last admin can't be demoted or removed (409) |
+| `POST /api/org/invitations` · `…/:id/resend` · `DELETE …/:id` | Invite by email with a role (7 days) |
+| `GET` · `PUT /api/org/permissions` | Permission catalog and what members / viewers may do |
+
+Organizations other than the home one have no gateway yet: adding, pausing or removing
+cameras answers 409 `no_gateway` (ml-service still serves the home tenant only).
+
+## Notifications
+
+| Route | Does |
+|---|---|
+| `GET` · `PUT /api/notification-settings` | Severity × channel matrix (`app`, `email`, `sms` × medium / high / critical), email and SMS recipients (each with its severities), follow-ups (recovered, false alarm, resolved), templates per event (custom or default, `{{placeholders}}`), app address for links |
+| `PUT /api/notification-settings/email-provider` · `/sms-provider` | `log` (default: messages go to the API log) or SMTP / Twilio. Passwords and tokens are stored encrypted (AES-GCM, `APP_SECRET`) and never returned |
+| `POST /api/notification-settings/test-email` · `/test-sms` | Send a test with the saved or the unsaved (`provider`) settings; the error tells what failed |
+| `POST /api/notification-settings/preview` · `GET …/deliveries` | Template preview with sample data; latest messages and their status |
+
+`RunNotifier` checks every 5 s: each time an alert reaches a new severity it emails / texts
+the recipients of that severity (once per alert and level, `notification_events`), then the
+follow-ups to the people who got the alert. Failed messages are retried 3 times
+(`notification_deliveries`). In-app: `GET /api/notifications` leaves out severities switched
+off for the app. Account emails (verification, reset, invitations) use `SMTP_*` from the
+environment, else the organization's (or home organization's) SMTP provider, else the log.
+
+## Incident reports
+
+| Route | Does |
+|---|---|
+| `GET /api/incidents/:id/report-facts` | Everything known about an incident for a report: incident, cameras, alert timeline, notes, organization profile, preparer |
+| `POST /api/incidents/:id/reports` · `GET /api/incidents/:id/reports` | `{form, title, content}`; forms `wsib_form7`, `ohsa_notice`, `osha_301`, `internal`. The frontend fills the form's fields from the facts (`features/incident-reports/forms.ts`) |
+| `GET /api/incident-reports` · `GET` · `PUT` · `DELETE /api/incident-reports/:id` | List / edit (`status` draft or final; final records who and when) / delete |
+
 ## Configuration (environment)
 
 | Variable | Default | |
 |---|---|---|
 | `DATABASE_URL` | `postgresql://fallguard_admin@localhost:5432/fallguard` | Docker Compose builds it from the root `.env` (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`) |
-| `TENANT` | `demo-facility` | `tenants.slug` or id served (no user accounts yet) |
+| `TENANT` | `demo-facility` | Home tenant (`tenants.slug` or id): owns the gateway and ML pipeline; the first sign-up takes it over |
+| `APP_URL` | (request address) | Web app address for links in emails |
+| `APP_SECRET` | (key in the database) | Encrypts SMTP passwords / Twilio tokens saved in the app |
+| `COOKIE_SECURE` | `false` | Session cookie over HTTPS only |
+| `EMAIL_LINKS_IN_RESPONSE` | `false` | Without an email provider, return verification / reset / invitation links in API answers (demos only) |
+| `ALLOWED_ORIGINS` | | Other web origins allowed to send requests (same origin always is) |
+| `SMTP_HOST` `SMTP_PORT` `SMTP_SECURITY` `SMTP_USERNAME` `SMTP_PASSWORD` `SMTP_FROM` `SMTP_FROM_NAME` | | Mail server for account emails |
 | `GATEWAY_URL` | `http://localhost:8080` | `http://gateway-back:8080` in Docker |
 | `ML_URL` | `http://localhost:8000` | ml-service viewer, `http://ml-service:8000` in Docker |
 | `STREAM_HUB_URL` | `http://localhost:9000` | health check only |
 | `API_ADDR` | `:8000` | listen address |
 
-Every query sets `app.tenant_id` in its transaction (row-level security). For now it
-connects as the table owner; once user accounts exist, give it its own restricted role.
+Every query sets `app.tenant_id` (the signed-in organization) in its transaction
+(row-level security) and filters on it. It still connects as the table owner; a restricted
+role is a later step.
 
 ## Who did what (activity log)
 
 Acknowledge / resolve / false alarm, incident status and notes, and camera add / edit /
 pause / resume / remove / alert setting are written to `audit_logs` (`action` such as
-`alert.acknowledged`, `details.actor` = who, `details.message`). There are no user
-accounts yet, so the actor is always **"Current user"**: `actor()` in
-`internal/api/reports.go` is the one place to return the signed-in user later.
+`alert.acknowledged`, `details.actor` = who, `details.message`), with `user_id` = the
+signed-in user (`actor()` in `internal/api/auth.go`). Member, role, invitation, report and
+notification-setting changes are logged the same way.
 
 ## Migrations
 
 At start the API brings an existing database up to date (idempotent statements in
-`internal/store/settings.go`), e.g. `incident_cameras.clip_key`. New databases get the same
+`internal/store/settings.go` and `migrations_accounts.go`), e.g. `incident_cameras.clip_key`
+and the account, notification and report tables. New databases get the same
 from `db/schema.sql`.
 
 ## Dev mode
