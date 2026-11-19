@@ -91,6 +91,10 @@ func (s *Server) Register(r *gin.Engine) {
 	a.POST("/auth/invitations/:token/accept", strict, s.acceptInvitation)
 	a.GET("/auth/check", s.authCheck) // nginx auth_request for stream-hub video
 
+	// ---- shared incident video (public, view-only; the token is the permission) ----
+	a.GET("/shared/:token", newLimiter(60, 5*time.Minute).middleware, s.sharedView)
+	a.GET("/shared/:token/media/:kind/:name", s.sharedFile)
+
 	u := a.Group("", s.requireAuth)
 	u.GET("/auth/me", s.me)
 	u.PATCH("/auth/me", s.updateMe)
@@ -145,12 +149,17 @@ func (s *Server) Register(r *gin.Engine) {
 	reports := s.canAny(auth.ViewReports, auth.CreateReports)
 	writeReports := s.can(auth.CreateReports)
 	u.GET("/incident-reports", reports, s.listIncidentReports)
+	u.GET("/incident-reports/deleted", writeReports, s.listDeletedIncidentReports)
 	u.GET("/incident-reports/:id", reports, s.getIncidentReport)
 	u.PUT("/incident-reports/:id", writeReports, s.updateIncidentReport)
 	u.DELETE("/incident-reports/:id", writeReports, s.deleteIncidentReport)
+	u.POST("/incident-reports/:id/restore", writeReports, s.restoreIncidentReport)
 	u.GET("/incidents/:id/reports", reports, s.listIncidentReports)
 	u.GET("/incidents/:id/report-facts", writeReports, s.reportFacts)
 	u.POST("/incidents/:id/reports", writeReports, s.createIncidentReport)
+	u.GET("/incidents/:id/share-links", writeReports, s.listShareLinks)
+	u.POST("/incidents/:id/share-links", writeReports, s.createShareLink)
+	u.DELETE("/share-links/:id", writeReports, s.revokeShareLink)
 
 	// ---- notifications ----
 	notif := s.can(auth.ManageNotifications)
@@ -191,7 +200,7 @@ func fail(c *gin.Context, err error) {
 	case strings.Contains(err.Error(), "unreachable"):
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 	default:
-		log.Printf("%s %s: %v", c.Request.Method, c.Request.URL.Path, err)
+		log.Printf("%s %s: %v", c.Request.Method, redactShareToken(c.Request.URL.Path), err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 	}
 }
@@ -207,7 +216,7 @@ func RequestLog() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		c.Next()
-		p := c.Request.URL.Path
+		p := redactShareToken(c.Request.URL.Path)
 		if c.Request.Method == http.MethodGet && quietRoutes[p] && c.Writer.Status() < 400 {
 			return
 		}

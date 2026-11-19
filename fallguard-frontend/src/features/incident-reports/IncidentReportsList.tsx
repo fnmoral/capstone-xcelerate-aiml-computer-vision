@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Icon } from '../../components/ui/Icon';
 import { incidentReports, type IncidentReport } from '../../services/api/accounts';
 import { usePolling } from '../../services/api/usePolling';
 import { formatTime } from '../../lib/format';
+import { PERM, useAuth } from '../auth/AuthContext';
 import { formById } from './forms';
 
 const csvCell = (s: string) => {
@@ -29,16 +31,68 @@ function downloadOsha300(reports: IncidentReport[]) {
   URL.revokeObjectURL(a.href);
 }
 
+/** Deleted reports that can still be restored, with the date each is removed for good. */
+function RecentlyDeleted({ onRestored }: { onRestored: () => unknown }) {
+  const { data, error, reload } = usePolling(() => incidentReports.deleted(), 60000);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const reports = data?.reports ?? [];
+  if (reports.length === 0 && !msg && !error) return null;
+
+  const restore = async (r: IncidentReport) => {
+    setBusy(r.id);
+    try {
+      await incidentReports.restore(r.id);
+      setMsg({ ok: true, text: `Restored: ${r.title}` });
+      await Promise.all([reload(), onRestored()]);
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <>
+      <h3 className="section-title" style={{ marginTop: 20 }}>Recently deleted</h3>
+      <p className="muted rp-note">Deleted reports can be restored until the date shown, then they are removed for good (Settings → Organization sets how long).</p>
+      {error && <p className="notice notice--error">{error}</p>}
+      {msg && <p className={`notice${msg.ok ? '' : ' notice--error'}`} role="status">{msg.text}</p>}
+      {reports.length > 0 && (
+        <div className="table-wrap">
+          <table className="table">
+            <thead><tr><th>Report</th><th>Incident</th><th>Deleted</th><th>Removed for good</th><th /></tr></thead>
+            <tbody>
+              {reports.map((r) => (
+                <tr key={r.id}>
+                  <td><strong>{formById(r.form)?.short ?? r.form}</strong>
+                    <div className="muted" style={{ fontSize: 12 }}>{r.title}</div></td>
+                  <td><Link to={`/events/${r.incident_id}`}>{r.camera_name ?? 'Incident'}</Link>
+                    <div className="muted" style={{ fontSize: 12 }}>{formatTime(r.incident_started_at)}</div></td>
+                  <td className="muted">{formatTime(r.deleted_at)}{r.deleted_by ? ` by ${r.deleted_by}` : ''}</td>
+                  <td className="muted">{formatTime(r.purge_at)}</td>
+                  <td><button className="btn btn--sm" disabled={!!busy} onClick={() => void restore(r)}>{busy === r.id ? 'Restoring…' : 'Restore'}</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
 /** Every incident report of the organization (Reports & Export page). */
 export function IncidentReportsList() {
-  const { data, error } = usePolling(() => incidentReports.list(), 30000);
+  const { can } = useAuth();
+  const { data, error, reload } = usePolling(() => incidentReports.list(), 30000);
   const reports = data?.reports ?? [];
   const osha = reports.filter((r) => r.form === 'osha_301').length;
 
   return (
     <section className="card rp-section">
       <div className="rp-head">
-        <h2 className="section-title">Incident reports</h2>
+        <h2 className="section-title">Incident report forms</h2>
         {osha > 0 && (
           <button className="btn" onClick={() => downloadOsha300(reports)}>
             <Icon name="download" size={16} /> OSHA 300 Log (CSV)
@@ -67,6 +121,7 @@ export function IncidentReportsList() {
           </table>
         </div>
       )}
+      {can(PERM.incidentReports) && <RecentlyDeleted onRestored={reload} />}
     </section>
   );
 }

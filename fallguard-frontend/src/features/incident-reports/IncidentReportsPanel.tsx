@@ -6,7 +6,7 @@ import { incidentReports, type ReportForm } from '../../services/api/accounts';
 import { usePolling } from '../../services/api/usePolling';
 import { formatTime } from '../../lib/format';
 import { PERM, useAuth } from '../auth/AuthContext';
-import { autoFill, FORMS, formById } from './forms';
+import { autoFill, carryOver, FORMS, formById } from './forms';
 import './reports.css';
 
 /** Incident page section: this incident's reports, and starting a new one from a form. */
@@ -23,11 +23,15 @@ export function IncidentReportsPanel({ incidentId }: { incidentId: string }) {
     setCreateError(null);
     try {
       const def = formById(form)!;
-      const facts = await incidentReports.facts(incidentId);
-      const { fields, auto } = autoFill(def, facts);
+      // Earlier reports supply what people already typed (the same person, the employer...).
+      const [facts, earlier] = await Promise.all([
+        incidentReports.facts(incidentId),
+        incidentReports.list().then((r) => r.reports).catch(() => []),
+      ]);
+      const { fields, auto, from } = carryOver(def, incidentId, autoFill(def, facts), earlier);
       const { report } = await incidentReports.create(incidentId, {
         form, title: `${def.short}: ${facts.incident.camera_name ?? 'fall'} ${fields.accident_date ?? fields.incident_date ?? fields.injury_date ?? fields.occurrence_date ?? ''}`.trim(),
-        content: { fields, auto, facts_at: facts.generated_at },
+        content: { fields, auto, from, facts_at: facts.generated_at },
       });
       navigate(`/incident-reports/${report.id}`);
     } catch (e) {

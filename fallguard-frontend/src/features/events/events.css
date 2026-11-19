@@ -36,3 +36,9 @@
 .ev-video-bar .tabs { margin-bottom: 0; }
 .ev-thumb-wrap { position: relative; display: inline-block; }
 .ev-thumb-play { position: absolute; right: 4px; bottom: 4px; padding: 0 5px; border-radius: 4px; background: rgba(0, 0, 0, .7); color: #fff; font-size: 10px; line-height: 16px; }
+
+/* Share video (view-only links for regulators) */
+.share-form { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin: 4px 0 12px; }
+.share-form .field:first-child { flex: 1 1 240px; }
+.share-created__row { display: flex; gap: 8px; margin-top: 8px; }
+.share-created__row input { flex: 1; min-width: 0; font-family: var(--font-mono, monospace); font-size: 12px; }

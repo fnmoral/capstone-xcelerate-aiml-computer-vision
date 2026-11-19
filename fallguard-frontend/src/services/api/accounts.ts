@@ -92,6 +92,8 @@ export interface OrgProfile {
   wsib_rate_group: string;
   business_type: string;
   establishment: string;
+  /** Days a deleted incident report can be restored (default 14). */
+  report_retention_days: number;
 }
 
 // ---- notifications ----
@@ -186,12 +188,18 @@ export interface IncidentReport {
   finalized_at: string | null;
   camera_name?: string | null;
   incident_started_at?: string | null;
+  /** Recently deleted reports only: when, by whom, and when it is removed for good. */
+  deleted_at?: string;
+  deleted_by?: string | null;
+  purge_at?: string;
 }
 
-/** Field values of a report; auto lists fields filled from FallGuard records. */
+/** Field values of a report; auto lists fields filled from FallGuard records, from the fields
+ *  copied from an earlier report (field key -> where from, e.g. "WSIB Form 7"). */
 export interface ReportContent {
   fields?: Record<string, string>;
   auto?: string[];
+  from?: Record<string, string>;
   facts_at?: string;
 }
 
@@ -271,5 +279,48 @@ export const incidentReports = {
     apiRequest<{ report: IncidentReport }>("/incidents/" + enc(incidentId) + "/reports", post(b)),
   save: (id: string, b: { title: string; status: "draft" | "final"; content: ReportContent }) =>
     apiRequest<{ report: IncidentReport }>("/incident-reports/" + enc(id), { method: "PUT", ...json(b) }),
-  remove: (id: string) => apiRequest("/incident-reports/" + enc(id), { method: "DELETE" }),
+  /** Moves it to Recently deleted, restorable for restorable_days. */
+  remove: (id: string) => apiRequest<{ ok: boolean; restorable_days: number }>("/incident-reports/" + enc(id), { method: "DELETE" }),
+  deleted: () => apiRequest<{ reports: IncidentReport[] }>("/incident-reports/deleted"),
+  restore: (id: string) => apiRequest<{ report: IncidentReport }>("/incident-reports/" + enc(id) + "/restore", { method: "POST" }),
+};
+
+// ---- view-only share links (incident video for regulators) ----
+
+export interface ShareLink {
+  id: string;
+  incident_id: string;
+  recipient: string;
+  created_by: string | null;
+  created_at: string;
+  expires_at: string;
+  revoked_at: string | null;
+  views: number;
+  last_viewed_at: string | null;
+}
+
+/** What the public /shared/:token page shows. Media URLs are API paths. */
+export interface SharedView {
+  organization: string;
+  incident: {
+    started_at: string;
+    recovered_at: string | null;
+    duration_seconds: number | null;
+    status: string;
+    location: string | null;
+    zone: string | null;
+  };
+  timezone: string;
+  expires_at: string;
+  media: { camera: string; clip: string | null; snapshot: string | null }[] | null;
+}
+
+export const shareLinks = {
+  list: (incidentId: string) => apiRequest<{ links: ShareLink[] }>("/incidents/" + enc(incidentId) + "/share-links"),
+  /** url is shown only here: the server keeps just a hash of the token. */
+  create: (incidentId: string, b: { recipient: string; days: number }) =>
+    apiRequest<{ link: ShareLink; url: string }>("/incidents/" + enc(incidentId) + "/share-links", post(b)),
+  revoke: (id: string) => apiRequest("/share-links/" + enc(id), { method: "DELETE" }),
+  /** Public: no account needed, the token is the permission. */
+  view: (token: string) => apiRequest<SharedView>("/shared/" + enc(token)),
 };

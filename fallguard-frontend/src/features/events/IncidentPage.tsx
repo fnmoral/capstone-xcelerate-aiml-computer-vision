@@ -10,6 +10,7 @@ import type { Incident, LogEntry, Prediction } from '../../types/domain';
 import { IncidentVideos } from './IncidentVideos';
 import { Notes } from './Notes';
 import { IncidentReportsPanel } from '../incident-reports/IncidentReportsPanel';
+import { ShareLinksPanel } from './ShareLinksPanel';
 import { PERM, useAuth } from '../auth/AuthContext';
 import './events.css';
 
@@ -160,6 +161,12 @@ export default function IncidentPage() {
             <h2 className="section-title">Incident reports</h2>
             <IncidentReportsPanel incidentId={inc.id} />
           </section>
+          {can(PERM.incidentReports) && (
+            <section className="card ev-section">
+              <h2 className="section-title">Share video</h2>
+              <ShareLinksPanel incidentId={inc.id} />
+            </section>
+          )}
           <section className="card ev-section">
             <h2 className="section-title">Cameras that saw it</h2>
             <ul className="ev-list">

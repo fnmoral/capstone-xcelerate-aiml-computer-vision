@@ -87,7 +87,10 @@ environment, else the organization's (or home organization's) SMTP provider, els
 |---|---|
 | `GET /api/incidents/:id/report-facts` | Everything known about an incident for a report: incident, cameras, alert timeline, notes, organization profile, preparer |
 | `POST /api/incidents/:id/reports` · `GET /api/incidents/:id/reports` | `{form, title, content}`; forms `wsib_form7`, `ohsa_notice`, `osha_301`, `internal`. The frontend fills the form's fields from the facts (`features/incident-reports/forms.ts`) |
-| `GET /api/incident-reports` · `GET` · `PUT` · `DELETE /api/incident-reports/:id` | List / edit (`status` draft or final; final records who and when) / delete |
+| `GET /api/incident-reports` · `GET` · `PUT` · `DELETE /api/incident-reports/:id` | List / edit (`status` draft or final; final records who and when; reopening is logged as such) / delete. Delete moves the report to Recently deleted |
+| `GET /api/incident-reports/deleted` · `POST /api/incident-reports/:id/restore` | Recently deleted reports (with `purge_at`) and restoring one. They are removed for good after the organization's `report_retention_days` (profile, default 14, 1–365), checked hourly |
+| `GET` · `POST /api/incidents/:id/share-links` · `DELETE /api/share-links/:id` | View-only links to an incident's video for people without an account (regulators). `{recipient, days}` (1–90, default 14); the URL is returned once (only the token's hash is stored); delete = revoke |
+| `GET /api/shared/:token` · `GET /api/shared/:token/media/:kind/:name` | Public (the token is the permission): the incident's time, place and outcome, and its clips / snapshots streamed from stream-hub (only that incident's files; seeking works). Each page view is counted and logged. Tokens are redacted from the API and nginx logs |
 
 ## Configuration (environment)
 

@@ -449,9 +449,30 @@ CREATE TABLE reports (
     file_key      TEXT,                         -- PDF in object storage
     generated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     reviewed_by   UUID,
-    reviewed_at   TIMESTAMPTZ
+    reviewed_at   TIMESTAMPTZ,
+    deleted_at    TIMESTAMPTZ,                  -- restorable until the org's report_retention_days pass
+    deleted_by    UUID
 );
 CREATE INDEX idx_reports_incident ON reports (tenant_id, incident_id);
+
+-- View-only links to an incident's video, for people without an account (regulators).
+-- Only the token's hash is kept. No row-level security: the public page looks a token up
+-- before any tenant is known (like invitations); every other query filters on tenant_id.
+CREATE TABLE shared_links (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id      UUID NOT NULL,
+    incident_id    UUID NOT NULL,
+    recipient      TEXT NOT NULL,
+    token_hash     TEXT NOT NULL UNIQUE,
+    created_by     UUID,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at     TIMESTAMPTZ NOT NULL,
+    revoked_at     TIMESTAMPTZ,
+    revoked_by     UUID,
+    views          INT NOT NULL DEFAULT 0,
+    last_viewed_at TIMESTAMPTZ
+);
+CREATE INDEX idx_shared_links_incident ON shared_links (tenant_id, incident_id);
 
 -- ---------- Monthly partitions ----------
 -- create_monthly_partitions(from_month, months) creates <table>_YYYY_MM for every partitioned

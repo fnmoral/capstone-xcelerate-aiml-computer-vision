@@ -108,5 +108,28 @@ func init() {
 			ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now()`,
 		`ALTER TABLE reports DROP CONSTRAINT IF EXISTS reports_status_check`,
 		`ALTER TABLE reports ADD CONSTRAINT reports_status_check CHECK (status IN ('draft','generated','reviewed','final'))`,
+		// Deleted reports stay restorable for the organization's report_retention_days.
+		`ALTER TABLE reports
+			ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ,
+			ADD COLUMN IF NOT EXISTS deleted_by UUID`,
+
+		// View-only links to an incident's video, for people without an account (regulators).
+		// No row-level security: the public page looks a token up before any tenant is known
+		// (like invitations); every other query filters on tenant_id.
+		`CREATE TABLE IF NOT EXISTS shared_links (
+			id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			tenant_id      UUID NOT NULL,
+			incident_id    UUID NOT NULL,
+			recipient      TEXT NOT NULL,
+			token_hash     TEXT NOT NULL UNIQUE,
+			created_by     UUID,
+			created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+			expires_at     TIMESTAMPTZ NOT NULL,
+			revoked_at     TIMESTAMPTZ,
+			revoked_by     UUID,
+			views          INT NOT NULL DEFAULT 0,
+			last_viewed_at TIMESTAMPTZ
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_shared_links_incident ON shared_links (tenant_id, incident_id)`,
 	)
 }

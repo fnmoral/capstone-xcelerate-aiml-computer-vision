@@ -762,6 +762,8 @@ type OrgProfile struct {
 	WSIBRateGroup string `json:"wsib_rate_group"`
 	BusinessType  string `json:"business_type"`
 	Establishment string `json:"establishment"` // OSHA establishment name
+	// Days a deleted incident report can be restored (DefaultReportRetentionDays if unset).
+	ReportRetentionDays int `json:"report_retention_days"`
 }
 
 // Org returns the current organization's profile.
@@ -772,7 +774,13 @@ func (s *Store) Org(ctx context.Context) (*OrgProfile, error) {
 		if err := tx.QueryRow(ctx, `SELECT name, slug::text, profile FROM tenants WHERE id = $1`, tid).Scan(&p.Name, &p.Slug, &raw); err != nil {
 			return err
 		}
-		return json.Unmarshal(raw, &p)
+		if err := json.Unmarshal(raw, &p); err != nil {
+			return err
+		}
+		if p.ReportRetentionDays <= 0 {
+			p.ReportRetentionDays = DefaultReportRetentionDays
+		}
+		return nil
 	})
 	return &p, err
 }
@@ -780,10 +788,11 @@ func (s *Store) Org(ctx context.Context) (*OrgProfile, error) {
 // SetOrg saves the organization's name and profile.
 func (s *Store) SetOrg(ctx context.Context, p OrgProfile, actor string) error {
 	return s.tx(ctx, func(tx pgx.Tx, tid string) error {
-		profile := map[string]string{
+		profile := map[string]any{
 			"legal_name": p.LegalName, "address": p.Address, "city": p.City, "province": p.Province,
 			"postal_code": p.PostalCode, "country": p.Country, "phone": p.Phone, "wsib_firm_number": p.WSIBFirmNo,
 			"wsib_rate_group": p.WSIBRateGroup, "business_type": p.BusinessType, "establishment": p.Establishment,
+			"report_retention_days": p.ReportRetentionDays,
 		}
 		if _, err := tx.Exec(ctx, `UPDATE tenants SET name = $2, profile = $3 WHERE id = $1`, tid, p.Name, profile); err != nil {
 			return err

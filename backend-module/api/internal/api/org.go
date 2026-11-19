@@ -216,6 +216,13 @@ func (s *Server) saveOrg(c *gin.Context) {
 			return
 		}
 	}
+	if in.ReportRetentionDays == 0 {
+		in.ReportRetentionDays = store.DefaultReportRetentionDays
+	}
+	if in.ReportRetentionDays < 1 || in.ReportRetentionDays > 365 {
+		badRequest(c, "deleted reports must be kept between 1 and 365 days")
+		return
+	}
 	if err := s.db.SetOrg(c.Request.Context(), in, actor(c)); err != nil {
 		fail(c, err)
 		return

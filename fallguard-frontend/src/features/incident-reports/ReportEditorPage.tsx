@@ -7,21 +7,22 @@ import { incidentReports, type IncidentReport, type ReportFacts } from '../../se
 import { snapshotUrl } from '../../services/api/fallguard';
 import { formatTime } from '../../lib/format';
 import { PERM, useAuth } from '../auth/AuthContext';
-import { autoFill, formById, missing, type Field } from './forms';
+import { autoFill, formById, hasBlanks, missing, type Field } from './forms';
 import './reports.css';
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message.charAt(0).toUpperCase() + e.message.slice(1) : String(e));
 
-function FieldInput({ f, value, onChange, disabled, auto }: {
-  f: Field; value: string; onChange: (v: string) => void; disabled: boolean; auto: boolean;
+function FieldInput({ f, value, onChange, disabled, auto, from }: {
+  f: Field; value: string; onChange: (v: string) => void; disabled: boolean; auto: boolean; from?: string;
 }) {
   const id = `fld-${f.key}`;
-  const empty = f.required && !value.trim();
+  const empty = (f.required && !value.trim()) || hasBlanks(value);
   const label = (
     <span className="rep-label">
       {f.label}{f.required && <span aria-hidden="true" className="rep-req"> *</span>}
       {auto && <span className="rep-chip" title="Filled in from FallGuard records. Check it.">Auto-filled</span>}
-      {empty && <span className="rep-chip rep-chip--need">Needs input</span>}
+      {from && <span className="rep-chip" title="Copied from what was typed in an earlier report. Check it still applies.">From {from}</span>}
+      {empty && <span className="rep-chip rep-chip--need">{hasBlanks(value) ? 'Fill in the [ ] parts' : 'Needs input'}</span>}
     </span>
   );
   const common = { id, value, disabled, required: f.required, onChange: (e: { target: { value: string } }) => onChange(e.target.value) };
@@ -103,6 +104,7 @@ export default function ReportEditorPage() {
   const [report, setReport] = useState<IncidentReport | null>(null);
   const [fields, setFields] = useState<Record<string, string>>({});
   const [auto, setAuto] = useState<string[]>([]);
+  const [from, setFrom] = useState<Record<string, string>>({});
   const [title, setTitle] = useState('');
   const [facts, setFacts] = useState<ReportFacts | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -110,15 +112,18 @@ export default function ReportEditorPage() {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const canEdit = can(PERM.incidentReports);
+  // Depends on the boolean, not on can(): can() is a new function each time the session is
+  // refreshed (every minute), and reloading here would wipe what is being typed.
   useEffect(() => {
     incidentReports.get(id).then(({ report: r }) => {
       setReport(r);
       setFields(r.content.fields ?? {});
       setAuto(r.content.auto ?? []);
+      setFrom(r.content.from ?? {});
       setTitle(r.title);
-      if (can(PERM.incidentReports)) incidentReports.facts(r.incident_id).then(setFacts).catch(() => undefined);
+      if (canEdit) incidentReports.facts(r.incident_id).then(setFacts).catch(() => undefined);
     }).catch((e) => setMsg({ ok: false, text: errorText(e) }));
-  }, [id, can]);
+  }, [id, canEdit]);
   useEffect(() => {
     if (!dirty) return;
     const warn = (e: BeforeUnloadEvent) => e.preventDefault();
@@ -134,16 +139,17 @@ export default function ReportEditorPage() {
   const change = (key: string, v: string) => {
     setFields({ ...fields, [key]: v });
     setAuto(auto.filter((k) => k !== key)); // edited by a person: no longer "auto-filled"
+    if (from[key]) setFrom(Object.fromEntries(Object.entries(from).filter(([k]) => k !== key))); // nor "copied"
     setDirty(true);
     setMsg(null);
   };
 
   const save = async (status: 'draft' | 'final') => {
     if (status === 'final' && need.length > 0 &&
-      !confirm(`${need.length} required field${need.length > 1 ? 's are' : ' is'} still empty. Mark as final anyway?`)) return;
+      !confirm(`${need.length} field${need.length > 1 ? 's' : ''} still need${need.length > 1 ? '' : 's'} input (empty, or [ ] parts not filled in). Mark as final anyway?`)) return;
     setBusy(true);
     try {
-      const { report: r } = await incidentReports.save(report.id, { title, status, content: { fields, auto, facts_at: report.content.facts_at } });
+      const { report: r } = await incidentReports.save(report.id, { title, status, content: { fields, auto, from, facts_at: report.content.facts_at } });
       setReport(r);
       setDirty(false);
       setMsg({ ok: true, text: status === 'final' ? 'Marked as final. It can no longer be edited unless reopened.' : 'Saved.' });
@@ -214,7 +220,7 @@ export default function ReportEditorPage() {
               <div className="rep-grid">
                 {s.fields.map((f) => (
                   <FieldInput key={f.key} f={f} value={fields[f.key] ?? ''} disabled={locked} auto={auto.includes(f.key)}
-                    onChange={(v) => change(f.key, v)} />
+                    from={from[f.key]} onChange={(v) => change(f.key, v)} />
                 ))}
               </div>
             </section>
@@ -235,11 +241,22 @@ export default function ReportEditorPage() {
             )}
             <span style={{ flex: 1 }} />
             {dirty && <span className="muted">Unsaved changes</span>}
+            <button className="btn" onClick={() => window.print()}><Icon name="download" size={16} /> Print / save as PDF</button>
+          </div>
+        )}
+
+        {/* At the very end of the page, outside the floating action bar, so it isn't clicked by mistake. */}
+        {canEdit && (
+          <section className="card rep-delete">
+            <div>
+              <strong>Delete this report</strong>
+              <p className="muted">It moves to Reports &amp; Export → Recently deleted, where it can be restored until the organization's retention period ends (14 days unless changed in Settings).</p>
+            </div>
             <button className="btn btn--danger" disabled={busy} onClick={async () => {
-              if (!confirm('Delete this report? This cannot be undone.')) return;
+              if (!confirm('Delete this report? It can be restored from Reports & Export → Recently deleted until the retention period ends.')) return;
               try { await incidentReports.remove(report.id); navigate(`/events/${report.incident_id}`); } catch (e) { setMsg({ ok: false, text: errorText(e) }); }
             }}><Icon name="trash" size={16} /> Delete</button>
-          </div>
+          </section>
         )}
       </div>
       <PrintView report={{ ...report, title }} fields={fields} facts={facts} />

@@ -35,6 +35,8 @@ export const router = createRouter([
   { path: '/forgot-password', element: <ForgotPasswordPage /> },
   { path: '/reset-password', element: <ResetPasswordPage /> },
   { path: '/invite/:token', element: <InvitePage /> },
+  // Public, view-only incident video from a share link (no account needed).
+  { path: '/shared/:token', ...page(() => import('../features/shared/SharedIncidentPage')) },
   {
     path: '/',
     element: <RequireAuth><AppLayout /></RequireAuth>,

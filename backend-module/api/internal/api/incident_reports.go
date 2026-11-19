@@ -1,7 +1,9 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -198,10 +200,54 @@ func (s *Server) updateIncidentReport(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"report": r})
 }
 
+// deleteIncidentReport moves the report to Recently deleted (restorable for the
+// organization's report_retention_days).
 func (s *Server) deleteIncidentReport(c *gin.Context) {
-	if err := s.db.DeleteIncidentReport(c.Request.Context(), c.Param("id"), actor(c)); err != nil {
+	ctx := c.Request.Context()
+	if err := s.db.DeleteIncidentReport(ctx, c.Param("id"), actor(c)); err != nil {
 		fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	days := store.DefaultReportRetentionDays
+	if org, err := s.db.Org(ctx); err == nil {
+		days = org.ReportRetentionDays
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true, "restorable_days": days})
+}
+
+func (s *Server) listDeletedIncidentReports(c *gin.Context) {
+	list, err := s.db.DeletedIncidentReports(c.Request.Context())
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"reports": list})
+}
+
+func (s *Server) restoreIncidentReport(c *gin.Context) {
+	r, err := s.db.RestoreIncidentReport(c.Request.Context(), c.Param("id"), actor(c))
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"report": r})
+}
+
+// PurgeDeletedReports removes deleted reports once their organization's retention has
+// passed, at start-up and then every hour. Runs until ctx is cancelled.
+func (s *Server) PurgeDeletedReports(ctx context.Context) {
+	t := time.NewTicker(time.Hour)
+	defer t.Stop()
+	for {
+		if n, err := s.db.PurgeDeletedReports(ctx); err != nil {
+			log.Printf("deleted reports: %v", err)
+		} else if n > 0 {
+			log.Printf("deleted reports: removed %d past their retention", n)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
 }

@@ -1,4 +1,4 @@
-import type { ReportFacts, ReportForm } from '../../services/api/accounts';
+import type { IncidentReport, ReportFacts, ReportForm } from '../../services/api/accounts';
 
 /**
  * Incident report forms. Each field may have `auto`, which fills it from FallGuard's
@@ -11,6 +11,12 @@ import type { ReportFacts, ReportForm } from '../../services/api/accounts';
 
 export type FieldType = 'text' | 'textarea' | 'date' | 'time' | 'select' | 'number';
 
+/** Which earlier reports a new report copies a field from (what a person typed there):
+ *  incident = this incident's other reports (the same person and injury) — the copy replaces
+ *  an auto-filled value; org = any report, preparer = reports by the same preparer — these
+ *  only fill a field left empty (the organization profile comes first). */
+export type Reuse = 'incident' | 'org' | 'preparer';
+
 export interface Field {
   key: string;
   label: string;
@@ -20,6 +26,9 @@ export interface Field {
   required?: boolean;
   wide?: boolean;
   auto?: (f: ReportFacts) => string;
+  reuse?: Reuse;
+  /** The same question in other forms when the key differs (worker_name = person_name). */
+  same?: string;
 }
 
 export interface Section {
@@ -130,7 +139,8 @@ export function evidence(f: ReportFacts): string {
   const i = f.incident;
   const lines = [
     `FallGuard incident ${i.id}`,
-    `Link: ${f.app_url}/events/${i.id}`,
+    `Video (view-only link for the recipient): [share link]`,
+    `Incident page (staff with a FallGuard account): ${f.app_url}/events/${i.id}`,
     `Cameras: ${f.cameras.map((c) => [c.name, c.location].filter(Boolean).join(' – ')).join('; ')}`,
     `Video clips saved: ${f.cameras.filter((c) => c.clip_key).length}; snapshots: ${f.cameras.filter((c) => c.snapshot_key).length}`,
     `Detection: peak confidence ${i.peak_confidence?.toFixed(2) ?? 'n/a'}, ${f.prediction_count} per-second readings${f.model ? `, model ${f.model}` : ''}`,
@@ -143,10 +153,14 @@ const incDate = (f: ReportFacts) => when(f, f.incident.started_at)!.date;
 const incTime = (f: ReportFacts) => when(f, f.incident.started_at)!.time;
 const reportedTo = (f: ReportFacts) => firstAction(f, 'alert.acknowledged')?.actor ?? f.prepared_by.name;
 const reportedDate = (f: ReportFacts) => when(f, firstAction(f, 'alert.acknowledged')?.at ?? f.incident.started_at)!.date;
-const witnessText = (f: ReportFacts) => {
+/** A sentence to edit, not a finding: the people who acted on the alert in the app are only a
+ *  suggestion for who responded (the app user may not have been at the scene). The [ ] parts
+ *  are for people to fill in. */
+const witnessText = (contact: string) => (f: ReportFacts) => {
   const r = responders(f);
-  return r.length ? `Staff who responded (from FallGuard records): ${r.join(', ')}. Add other witnesses and their contact details.` : '';
+  return `Witnesses: [name], [job title], [${contact}].\nResponded at the scene: ${r.length ? r.join(', ') : '[names]'}.`;
 };
+const WITNESS_HELP = 'A suggested wording: change the names or the sentence. "Responded at the scene" lists who acted on the alert in FallGuard; they may not have been there.';
 
 // ---------- shared field groups ----------
 
@@ -154,8 +168,8 @@ const preparedBy = (extra: Field[] = []): Section => ({
   title: 'Prepared by',
   fields: [
     { key: 'preparer_name', label: 'Name', required: true, auto: (f) => f.prepared_by.name },
-    { key: 'preparer_title', label: 'Title / position', required: true },
-    { key: 'preparer_phone', label: 'Phone', auto: (f) => f.prepared_by.phone ?? f.org.phone },
+    { key: 'preparer_title', label: 'Title / position', required: true, reuse: 'preparer' },
+    { key: 'preparer_phone', label: 'Phone', auto: (f) => f.prepared_by.phone ?? f.org.phone, reuse: 'preparer' },
     { key: 'preparer_email', label: 'Email', auto: (f) => f.prepared_by.email },
     { key: 'date_prepared', label: 'Date prepared', type: 'date', required: true, auto: today },
     ...extra,
@@ -166,7 +180,10 @@ const fallGuardEvidence: Section = {
   title: 'FallGuard records (video and detection evidence)',
   note: 'Keep the video clips and snapshots: authorities and insurers may ask for them.',
   fields: [
-    { key: 'evidence_summary', label: 'Evidence', type: 'textarea', wide: true, auto: evidence },
+    {
+      key: 'evidence_summary', label: 'Evidence', type: 'textarea', wide: true, auto: evidence,
+      help: 'Create a view-only link under "Share video" on the incident page and paste it in place of [share link].',
+    },
     { key: 'timeline', label: 'Timeline', type: 'textarea', wide: true, auto: timeline },
   ],
 };
@@ -189,26 +206,26 @@ export const FORMS: FormDef[] = [
       {
         title: 'A. Worker',
         fields: [
-          { key: 'worker_name', label: 'Worker full name', required: true },
-          { key: 'worker_job_title', label: 'Job title / occupation', required: true },
-          { key: 'worker_address', label: 'Home address', wide: true },
-          { key: 'worker_phone', label: 'Phone' },
-          { key: 'worker_dob', label: 'Date of birth', type: 'date' },
-          { key: 'worker_hire_date', label: 'Date hired', type: 'date' },
-          { key: 'worker_language', label: 'Preferred language', options: ['English', 'French', 'Other'], type: 'select' },
-          { key: 'worker_employment', label: 'Employment type', type: 'select', options: ['Full-time', 'Part-time', 'Casual', 'Seasonal', 'Student / trainee', 'Other'] },
+          { key: 'worker_name', label: 'Worker full name', required: true, reuse: 'incident', same: 'person_name' },
+          { key: 'worker_job_title', label: 'Job title / occupation', required: true, reuse: 'incident', same: 'person_job' },
+          { key: 'worker_address', label: 'Home address', wide: true, reuse: 'incident', same: 'person_address' },
+          { key: 'worker_phone', label: 'Phone', reuse: 'incident' },
+          { key: 'worker_dob', label: 'Date of birth', type: 'date', reuse: 'incident', same: 'person_dob' },
+          { key: 'worker_hire_date', label: 'Date hired', type: 'date', reuse: 'incident', same: 'person_hired' },
+          { key: 'worker_language', label: 'Preferred language', options: ['English', 'French', 'Other'], type: 'select', reuse: 'incident' },
+          { key: 'worker_employment', label: 'Employment type', type: 'select', options: ['Full-time', 'Part-time', 'Casual', 'Seasonal', 'Student / trainee', 'Other'], reuse: 'incident' },
         ],
       },
       {
         title: 'B. Employer',
         fields: [
-          { key: 'employer_name', label: 'Legal name', required: true, auto: orgName },
-          { key: 'employer_trade_name', label: 'Trade name', auto: (f) => f.org.name },
-          { key: 'employer_address', label: 'Address', wide: true, auto: orgAddress },
-          { key: 'employer_phone', label: 'Phone', auto: (f) => f.org.phone },
-          { key: 'wsib_firm_number', label: 'WSIB firm number', required: true, auto: (f) => f.org.wsib_firm_number },
-          { key: 'wsib_rate_group', label: 'Rate group / classification unit', auto: (f) => f.org.wsib_rate_group },
-          { key: 'business_type', label: 'Type of business', auto: (f) => f.org.business_type },
+          { key: 'employer_name', label: 'Legal name', required: true, auto: orgName, reuse: 'org' },
+          { key: 'employer_trade_name', label: 'Trade name', auto: (f) => f.org.name, reuse: 'org' },
+          { key: 'employer_address', label: 'Address', wide: true, auto: orgAddress, reuse: 'org' },
+          { key: 'employer_phone', label: 'Phone', auto: (f) => f.org.phone, reuse: 'org' },
+          { key: 'wsib_firm_number', label: 'WSIB firm number', required: true, auto: (f) => f.org.wsib_firm_number, reuse: 'org' },
+          { key: 'wsib_rate_group', label: 'Rate group / classification unit', auto: (f) => f.org.wsib_rate_group, reuse: 'org' },
+          { key: 'business_type', label: 'Type of business', auto: (f) => f.org.business_type, reuse: 'org' },
         ],
       },
       {
@@ -220,26 +237,26 @@ export const FORMS: FormDef[] = [
           { key: 'reported_to', label: 'Reported to (name)', auto: reportedTo },
           { key: 'accident_location', label: 'Where it happened', wide: true, required: true, auto: place },
           { key: 'on_premises', label: "On the employer's premises?", type: 'select', options: YES_NO, auto: () => 'Yes' },
-          { key: 'how_it_happened', label: 'Describe how the accident happened', type: 'textarea', wide: true, required: true, auto: narrative },
-          { key: 'activity', label: 'What was the worker doing at the time?', type: 'textarea', wide: true, required: true },
-          { key: 'body_part', label: 'Part(s) of body injured', required: true },
-          { key: 'body_side', label: 'Side of body', type: 'select', options: ['Left', 'Right', 'Both', 'Not applicable'] },
-          { key: 'injury_nature', label: 'Nature of injury (e.g. sprain, fracture, bruise)', required: true },
-          { key: 'equipment', label: 'Equipment, materials or conditions involved', wide: true },
-          { key: 'witnesses', label: 'Witnesses', type: 'textarea', wide: true, auto: witnessText },
-          { key: 'first_aid', label: 'First aid given?', type: 'select', options: YES_NO },
-          { key: 'health_care_date', label: 'Date health care first received', type: 'date' },
-          { key: 'health_care_provider', label: 'Health care provider / facility', wide: true },
+          { key: 'how_it_happened', label: 'Describe how the accident happened', type: 'textarea', wide: true, required: true, auto: narrative, reuse: 'incident', same: 'what_happened' },
+          { key: 'activity', label: 'What was the worker doing at the time?', type: 'textarea', wide: true, required: true, reuse: 'incident' },
+          { key: 'body_part', label: 'Part(s) of body injured', required: true, reuse: 'incident' },
+          { key: 'body_side', label: 'Side of body', type: 'select', options: ['Left', 'Right', 'Both', 'Not applicable'], reuse: 'incident' },
+          { key: 'injury_nature', label: 'Nature of injury (e.g. sprain, fracture, bruise)', required: true, reuse: 'incident' },
+          { key: 'equipment', label: 'Equipment, materials or conditions involved', wide: true, reuse: 'incident' },
+          { key: 'witnesses', label: 'Witnesses', type: 'textarea', wide: true, auto: witnessText('phone or email'), help: WITNESS_HELP, reuse: 'incident' },
+          { key: 'first_aid', label: 'First aid given?', type: 'select', options: YES_NO, reuse: 'incident' },
+          { key: 'health_care_date', label: 'Date health care first received', type: 'date', reuse: 'incident' },
+          { key: 'health_care_provider', label: 'Health care provider / facility', wide: true, reuse: 'incident' },
         ],
       },
       {
         title: 'D. Lost time and return to work',
         fields: [
-          { key: 'lost_time', label: 'Lost time beyond the day of injury?', type: 'select', options: YES_NO_UNKNOWN },
-          { key: 'last_day_worked', label: 'Last day worked', type: 'date' },
-          { key: 'modified_work', label: 'Modified work offered?', type: 'select', options: YES_NO_UNKNOWN },
-          { key: 'return_date', label: 'Return-to-work date', type: 'date' },
-          { key: 'regular_hours', label: 'Regular work schedule / hours', wide: true },
+          { key: 'lost_time', label: 'Lost time beyond the day of injury?', type: 'select', options: YES_NO_UNKNOWN, reuse: 'incident' },
+          { key: 'last_day_worked', label: 'Last day worked', type: 'date', reuse: 'incident' },
+          { key: 'modified_work', label: 'Modified work offered?', type: 'select', options: YES_NO_UNKNOWN, reuse: 'incident' },
+          { key: 'return_date', label: 'Return-to-work date', type: 'date', reuse: 'incident' },
+          { key: 'regular_hours', label: 'Regular work schedule / hours', wide: true, reuse: 'incident' },
         ],
       },
       fallGuardEvidence,
@@ -260,20 +277,20 @@ export const FORMS: FormDef[] = [
         fields: [
           {
             key: 'notice_type', label: 'Type of notice', type: 'select', required: true, wide: true,
-            options: ['s.51: critical injury or death', 's.52(1): accident, explosion or fire causing disability or medical attention', 's.52(2): occupational illness'],
+            options: ['s.51: critical injury or death', 's.52(1): accident, explosion or fire causing disability or medical attention', 's.52(2): occupational illness'], reuse: 'incident',
           },
-          { key: 'mol_notified', label: 'Inspector / Ministry notified (date, time, by phone?)', wide: true },
-          { key: 'jhsc_notified', label: 'Joint H&S committee or representative notified', wide: true },
-          { key: 'union_notified', label: 'Trade union notified (if any)', wide: true },
-          { key: 'scene_preserved', label: 'Scene preserved (s.51(2))?', type: 'select', options: ['Yes', 'No', 'Not applicable'] },
+          { key: 'mol_notified', label: 'Inspector / Ministry notified (date, time, by phone?)', wide: true, reuse: 'incident' },
+          { key: 'jhsc_notified', label: 'Joint H&S committee or representative notified', wide: true, reuse: 'incident' },
+          { key: 'union_notified', label: 'Trade union notified (if any)', wide: true, reuse: 'incident' },
+          { key: 'scene_preserved', label: 'Scene preserved (s.51(2))?', type: 'select', options: ['Yes', 'No', 'Not applicable'], reuse: 'incident' },
         ],
       },
       {
         title: 'Employer and workplace',
         fields: [
-          { key: 'employer_name', label: 'Employer name', required: true, auto: orgName },
-          { key: 'employer_address', label: 'Employer address', wide: true, auto: orgAddress },
-          { key: 'employer_phone', label: 'Phone', auto: (f) => f.org.phone },
+          { key: 'employer_name', label: 'Employer name', required: true, auto: orgName, reuse: 'org' },
+          { key: 'employer_address', label: 'Employer address', wide: true, auto: orgAddress, reuse: 'org' },
+          { key: 'employer_phone', label: 'Phone', auto: (f) => f.org.phone, reuse: 'org' },
           { key: 'workplace', label: 'Where the occurrence happened', wide: true, required: true, auto: place },
           { key: 'occurrence_date', label: 'Date', type: 'date', required: true, auto: incDate },
           { key: 'occurrence_time', label: 'Time', type: 'time', required: true, auto: incTime },
@@ -282,21 +299,21 @@ export const FORMS: FormDef[] = [
       {
         title: 'Injured person',
         fields: [
-          { key: 'person_name', label: 'Name', required: true },
-          { key: 'person_address', label: 'Address', wide: true },
-          { key: 'person_occupation', label: 'Occupation / job title' },
-          { key: 'person_employer', label: 'Employer (if not the employer above)' },
+          { key: 'person_name', label: 'Name', required: true, reuse: 'incident' },
+          { key: 'person_address', label: 'Address', wide: true, reuse: 'incident' },
+          { key: 'person_occupation', label: 'Occupation / job title', reuse: 'incident', same: 'person_job' },
+          { key: 'person_employer', label: 'Employer (if not the employer above)', reuse: 'incident' },
         ],
       },
       {
         title: 'Occurrence',
         fields: [
-          { key: 'circumstances', label: 'Nature and circumstances of the occurrence', type: 'textarea', wide: true, required: true, auto: narrative },
-          { key: 'bodily_injury', label: 'Description of the bodily injury', type: 'textarea', wide: true, required: true },
-          { key: 'equipment', label: 'Machinery, equipment or materials involved', type: 'textarea', wide: true },
-          { key: 'witnesses', label: 'Names and addresses of witnesses', type: 'textarea', wide: true, auto: witnessText },
-          { key: 'physician', label: 'Name and address of attending physician / health care provider', wide: true },
-          { key: 'prevention', label: 'Steps taken to prevent a recurrence', type: 'textarea', wide: true, required: true },
+          { key: 'circumstances', label: 'Nature and circumstances of the occurrence', type: 'textarea', wide: true, required: true, auto: narrative, reuse: 'incident', same: 'what_happened' },
+          { key: 'bodily_injury', label: 'Description of the bodily injury', type: 'textarea', wide: true, required: true, reuse: 'incident', same: 'injury' },
+          { key: 'equipment', label: 'Machinery, equipment or materials involved', type: 'textarea', wide: true, reuse: 'incident' },
+          { key: 'witnesses', label: 'Names and addresses of witnesses', type: 'textarea', wide: true, auto: witnessText('address'), help: WITNESS_HELP, reuse: 'incident' },
+          { key: 'physician', label: 'Name and address of attending physician / health care provider', wide: true, reuse: 'incident', same: 'health_care_provider' },
+          { key: 'prevention', label: 'Steps taken to prevent a recurrence', type: 'textarea', wide: true, required: true, reuse: 'incident', same: 'corrective_actions' },
         ],
       },
       fallGuardEvidence,
@@ -315,48 +332,48 @@ export const FORMS: FormDef[] = [
       {
         title: 'Information about the employee',
         fields: [
-          { key: 'employee_name', label: '1. Full name', required: true },
-          { key: 'employee_street', label: '2. Street', wide: true },
-          { key: 'employee_city', label: 'City, state, ZIP' },
-          { key: 'employee_dob', label: '3. Date of birth', type: 'date' },
-          { key: 'employee_hired', label: '4. Date hired', type: 'date' },
-          { key: 'employee_sex', label: '5. Sex', type: 'select', options: ['Male', 'Female', 'Not stated'] },
-          { key: 'employee_job', label: 'Job title (300 Log)', required: true },
+          { key: 'employee_name', label: '1. Full name', required: true, reuse: 'incident', same: 'person_name' },
+          { key: 'employee_street', label: '2. Street', wide: true, reuse: 'incident' },
+          { key: 'employee_city', label: 'City, state, ZIP', reuse: 'incident' },
+          { key: 'employee_dob', label: '3. Date of birth', type: 'date', reuse: 'incident', same: 'person_dob' },
+          { key: 'employee_hired', label: '4. Date hired', type: 'date', reuse: 'incident', same: 'person_hired' },
+          { key: 'employee_sex', label: '5. Sex', type: 'select', options: ['Male', 'Female', 'Not stated'], reuse: 'incident' },
+          { key: 'employee_job', label: 'Job title (300 Log)', required: true, reuse: 'incident', same: 'person_job' },
         ],
       },
       {
         title: 'Information about the physician or other health care professional',
         fields: [
-          { key: 'physician', label: '6. Name of physician or health care professional' },
-          { key: 'facility', label: '7. If treated away from the worksite: facility name and address', wide: true },
-          { key: 'emergency_room', label: '8. Treated in an emergency room?', type: 'select', options: YES_NO },
-          { key: 'hospitalized', label: '9. Hospitalized overnight as an in-patient?', type: 'select', options: YES_NO },
+          { key: 'physician', label: '6. Name of physician or health care professional', reuse: 'incident' },
+          { key: 'facility', label: '7. If treated away from the worksite: facility name and address', wide: true, reuse: 'incident', same: 'health_care_provider' },
+          { key: 'emergency_room', label: '8. Treated in an emergency room?', type: 'select', options: YES_NO, reuse: 'incident' },
+          { key: 'hospitalized', label: '9. Hospitalized overnight as an in-patient?', type: 'select', options: YES_NO, reuse: 'incident' },
         ],
       },
       {
         title: 'Information about the case',
         fields: [
-          { key: 'case_number', label: '10. Case number from the Log', required: true },
+          { key: 'case_number', label: '10. Case number from the Log', required: true, reuse: 'incident' },
           { key: 'injury_date', label: '11. Date of injury or illness', type: 'date', required: true, auto: incDate },
-          { key: 'began_work', label: '12. Time employee began work', type: 'time' },
+          { key: 'began_work', label: '12. Time employee began work', type: 'time', reuse: 'incident' },
           { key: 'event_time', label: '13. Time of event', type: 'time', auto: incTime },
-          { key: 'doing_before', label: '14. What was the employee doing just before the incident occurred?', type: 'textarea', wide: true, required: true },
-          { key: 'what_happened', label: '15. What happened? Tell us how the injury occurred.', type: 'textarea', wide: true, required: true, auto: narrative },
-          { key: 'injury', label: '16. What was the injury or illness? (part of body and how it was affected)', type: 'textarea', wide: true, required: true },
+          { key: 'doing_before', label: '14. What was the employee doing just before the incident occurred?', type: 'textarea', wide: true, required: true, reuse: 'incident', same: 'activity' },
+          { key: 'what_happened', label: '15. What happened? Tell us how the injury occurred.', type: 'textarea', wide: true, required: true, auto: narrative, reuse: 'incident' },
+          { key: 'injury', label: '16. What was the injury or illness? (part of body and how it was affected)', type: 'textarea', wide: true, required: true, reuse: 'incident' },
           { key: 'object', label: '17. What object or substance directly harmed the employee?', wide: true, auto: () => 'Floor / ground surface (fall)' },
-          { key: 'death_date', label: '18. If the employee died, date of death', type: 'date' },
+          { key: 'death_date', label: '18. If the employee died, date of death', type: 'date', reuse: 'incident' },
         ],
       },
       {
         title: 'OSHA 300 Log entry',
         fields: [
           { key: 'where', label: 'Where the event occurred', wide: true, auto: place },
-          { key: 'classification', label: 'Classify the case', type: 'select', required: true, options: ['Death', 'Days away from work', 'Job transfer or restriction', 'Other recordable case'] },
-          { key: 'days_away', label: 'Days away from work', type: 'number' },
-          { key: 'days_restricted', label: 'Days on job transfer or restriction', type: 'number' },
+          { key: 'classification', label: 'Classify the case', type: 'select', required: true, options: ['Death', 'Days away from work', 'Job transfer or restriction', 'Other recordable case'], reuse: 'incident' },
+          { key: 'days_away', label: 'Days away from work', type: 'number', reuse: 'incident' },
+          { key: 'days_restricted', label: 'Days on job transfer or restriction', type: 'number', reuse: 'incident' },
           { key: 'injury_type', label: 'Injury or illness type', type: 'select', options: ['Injury', 'Skin disorder', 'Respiratory condition', 'Poisoning', 'Hearing loss', 'All other illnesses'], auto: () => 'Injury' },
-          { key: 'privacy_case', label: 'Privacy case (name withheld on the Log)?', type: 'select', options: YES_NO },
-          { key: 'establishment', label: 'Establishment name', auto: (f) => f.org.establishment || f.org.name },
+          { key: 'privacy_case', label: 'Privacy case (name withheld on the Log)?', type: 'select', options: YES_NO, reuse: 'incident' },
+          { key: 'establishment', label: 'Establishment name', auto: (f) => f.org.establishment || f.org.name, reuse: 'org' },
         ],
       },
       fallGuardEvidence,
@@ -392,31 +409,31 @@ export const FORMS: FormDef[] = [
       {
         title: 'Person involved',
         fields: [
-          { key: 'person_type', label: 'Person', type: 'select', required: true, options: ['Employee', 'Resident', 'Patient', 'Visitor', 'Contractor', 'Unknown'] },
-          { key: 'person_name', label: 'Name (or identifier)' },
-          { key: 'injury_level', label: 'Injury', type: 'select', required: true, options: ['No injury', 'Minor (first aid)', 'Medical treatment', 'Serious / hospitalized', 'Fatal', 'Not known yet'] },
-          { key: 'injury_details', label: 'Injury details', type: 'textarea', wide: true },
+          { key: 'person_type', label: 'Person', type: 'select', required: true, options: ['Employee', 'Resident', 'Patient', 'Visitor', 'Contractor', 'Unknown'], reuse: 'incident' },
+          { key: 'person_name', label: 'Name (or identifier)', reuse: 'incident' },
+          { key: 'injury_level', label: 'Injury', type: 'select', required: true, options: ['No injury', 'Minor (first aid)', 'Medical treatment', 'Serious / hospitalized', 'Fatal', 'Not known yet'], reuse: 'incident' },
+          { key: 'injury_details', label: 'Injury details', type: 'textarea', wide: true, reuse: 'incident', same: 'injury' },
         ],
       },
       {
         title: 'What happened and the response',
         fields: [
-          { key: 'description', label: 'Description', type: 'textarea', wide: true, required: true, auto: narrative },
+          { key: 'description', label: 'Description', type: 'textarea', wide: true, required: true, auto: narrative, reuse: 'incident', same: 'what_happened' },
           { key: 'immediate_actions', label: 'Immediate actions taken', type: 'textarea', wide: true, required: true, auto: notesText },
-          { key: 'witnesses', label: 'Witnesses / responders', type: 'textarea', wide: true, auto: witnessText },
-          { key: 'notified', label: 'Who was notified (family, physician, management, authorities)', type: 'textarea', wide: true },
+          { key: 'witnesses', label: 'Witnesses / responders', type: 'textarea', wide: true, auto: witnessText('phone or email'), help: WITNESS_HELP, reuse: 'incident' },
+          { key: 'notified', label: 'Who was notified (family, physician, management, authorities)', type: 'textarea', wide: true, reuse: 'incident' },
         ],
       },
       {
         title: 'Investigation',
         fields: [
           {
-            key: 'factors', label: 'Contributing factors', type: 'textarea', wide: true,
+            key: 'factors', label: 'Contributing factors', type: 'textarea', wide: true, reuse: 'incident',
             help: 'e.g. wet or uneven floor, lighting, footwear, mobility or balance, medication, equipment, staffing, procedure not followed',
           },
-          { key: 'root_cause', label: 'Root cause', type: 'textarea', wide: true, required: true },
-          { key: 'corrective_actions', label: 'Corrective actions (action, owner, due date)', type: 'textarea', wide: true, required: true },
-          { key: 'follow_up_date', label: 'Follow-up review date', type: 'date' },
+          { key: 'root_cause', label: 'Root cause', type: 'textarea', wide: true, required: true, reuse: 'incident' },
+          { key: 'corrective_actions', label: 'Corrective actions (action, owner, due date)', type: 'textarea', wide: true, required: true, reuse: 'incident' },
+          { key: 'follow_up_date', label: 'Follow-up review date', type: 'date', reuse: 'incident' },
         ],
       },
       fallGuardEvidence,
@@ -451,7 +468,45 @@ export function autoFill(form: FormDef, facts: ReportFacts): { fields: Record<st
   return { fields, auto };
 }
 
-/** Required fields still empty. */
+const concept = (f: Field) => f.same ?? f.key;
+const norm = (s: string | undefined) => (s ?? '').trim().toLowerCase();
+
+/**
+ * Adds to a new report what people typed in earlier reports (see Reuse), so the same answers
+ * aren't typed again. `filled` is the new report's auto-fill; `earlier` the organization's
+ * reports, newest first (the newest answer wins). Auto-filled values in earlier reports are
+ * skipped: those are recalculated from each incident's records. `from` names the source of
+ * each copied field, to show next to it.
+ */
+export function carryOver(form: FormDef, incidentId: string, filled: { fields: Record<string, string>; auto: string[] },
+  earlier: IncidentReport[]): { fields: Record<string, string>; auto: string[]; from: Record<string, string> } {
+  const fields = { ...filled.fields };
+  const auto = new Set(filled.auto);
+  const from: Record<string, string> = {};
+  const preparer = norm(fields.preparer_name);
+  for (const fd of form.sections.flatMap((s) => s.fields)) {
+    if (!fd.reuse) continue;
+    if (fd.reuse !== 'incident' && (fields[fd.key] ?? '').trim()) continue; // the profile / auto-fill comes first
+    for (const r of earlier) {
+      if (fd.reuse === 'incident' && r.incident_id !== incidentId) continue;
+      if (fd.reuse === 'preparer' && (!preparer || norm(r.content.fields?.preparer_name) !== preparer)) continue;
+      const src = formById(r.form)?.sections.flatMap((s) => s.fields).find((s) => s.reuse && concept(s) === concept(fd));
+      const value = src && r.content.fields?.[src.key];
+      if (!src || !value?.trim() || r.content.auto?.includes(src.key)) continue;
+      fields[fd.key] = value;
+      auto.delete(fd.key);
+      from[fd.key] = formById(r.form)!.short + (r.incident_id === incidentId ? '' : ', an earlier incident');
+      break;
+    }
+  }
+  return { fields, auto: [...auto], from };
+}
+
+/** A template blank still to fill in, such as "[name]" in the witness sentence. */
+export const hasBlanks = (value: string | undefined) => /\[[^\]\n]{1,40}\]/.test(value ?? '');
+
+/** Required fields still empty, and any field with template blanks ([name]) left in. */
 export function missing(form: FormDef, fields: Record<string, string>): Field[] {
-  return form.sections.flatMap((s) => s.fields).filter((f) => f.required && !(fields[f.key] ?? '').trim());
+  return form.sections.flatMap((s) => s.fields)
+    .filter((f) => (f.required && !(fields[f.key] ?? '').trim()) || hasBlanks(fields[f.key]));
 }

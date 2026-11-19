@@ -2,7 +2,9 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { accounts, type OrgProfile } from '../../services/api/accounts';
 import { useAuth } from '../auth/AuthContext';
 
-const FIELDS: { key: keyof OrgProfile; label: string; hint?: string; wide?: boolean }[] = [
+type TextKey = Exclude<keyof OrgProfile, 'report_retention_days'>;
+
+const FIELDS: { key: TextKey; label: string; hint?: string; wide?: boolean }[] = [
   { key: 'name', label: 'Organization name' },
   { key: 'legal_name', label: 'Legal name', hint: 'If different; used on government reports' },
   { key: 'address', label: 'Street address', wide: true },
@@ -57,6 +59,11 @@ export function OrgProfileSettings({ editable }: { editable: boolean }) {
                   {f.hint && <small>{f.hint}</small>}
                 </label>
               ))}
+              <label className="field">Keep deleted incident reports for (days)
+                <input type="number" min={1} max={365} required value={p.report_retention_days || ''}
+                  onChange={(e) => setP({ ...p, report_retention_days: Number(e.target.value) })} />
+                <small>A deleted report can be restored from Reports &amp; Export until then (1–365, default 14)</small>
+              </label>
             </div>
             {editable && <div style={{ marginTop: 12 }}><button className="btn btn--primary" disabled={busy}>{busy ? 'Saving…' : 'Save'}</button></div>}
           </fieldset>

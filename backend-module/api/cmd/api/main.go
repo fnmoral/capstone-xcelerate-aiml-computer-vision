@@ -72,8 +72,9 @@ func main() {
 	}
 	server := api.New(cfg, db)
 	server.Register(r)
-	go server.WatchCameras(context.Background()) // camera status + "not working" log
-	go server.RunNotifier(context.Background())  // email / SMS for alerts (Notifications page)
+	go server.WatchCameras(context.Background())        // camera status + "not working" log
+	go server.RunNotifier(context.Background())         // email / SMS for alerts (Notifications page)
+	go server.PurgeDeletedReports(context.Background()) // deleted reports past their retention
 	devMode := strings.ToLower(env("PROD_MODE", "true")) == "false"
 	if devMode {
 		go server.DevWebcam(context.Background())

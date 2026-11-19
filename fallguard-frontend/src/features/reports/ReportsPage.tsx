@@ -124,7 +124,7 @@ export default function ReportsPage() {
 
       <section className="card rp-section">
         <div className="rp-head">
-          <h2 className="section-title">Incident report</h2>
+          <h2 className="section-title">Incident log</h2>
           <a className="btn btn--primary" href={exportUrl.incidents(incidentQuery(f, range))} download>
             <Icon name="download" size={16} /> Download incidents (CSV)
           </a>
