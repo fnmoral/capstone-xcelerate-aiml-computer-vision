@@ -28,3 +28,15 @@
 .cams-switch label { display: inline-flex; align-items: center; gap: 6px; }
 .cams-switch select { font: inherit; height: 30px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); padding: 0 6px; max-width: 180px; }
 .cams-form__standby { margin: 14px 0 0; }
+
+/* Phone cameras: badge, and the one-time setup panel with the QR code */
+.cams-row__phone::before { display: none; }
+.phone-setup { display: grid; gap: 14px; margin-bottom: 16px; }
+.phone-setup .section-title, .phone-setup .notice { margin: 0; }
+.phone-setup__steps { margin: 0; padding-left: 20px; display: grid; gap: 6px; line-height: 1.5; }
+.phone-setup__tips { margin: 0; font-size: 13px; }
+.phone-setup__manual { display: grid; gap: 10px; }
+.phone-setup__manual .muted { margin: 0; font-size: 13px; }
+.phone-setup__field .row { flex-wrap: nowrap; }
+.phone-setup__field input { flex: 1; min-width: 0; font-size: 12px; }
+.phone-setup > .btn { justify-self: start; }

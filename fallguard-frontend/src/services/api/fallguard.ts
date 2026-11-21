@@ -63,6 +63,31 @@ export interface CameraInput {
   alert_offline?: boolean; // notify when it stops working (default on)
 }
 
+/** An account email (invitation, email check, password reset) and whether it went out. */
+export interface AccountEmail {
+  id: string;
+  kind: string;
+  recipient: string;
+  subject: string;
+  from_email: string;
+  via: string;
+  status: "sent" | "logged" | "failed" | string;
+  error: string | null;
+  created_at: string;
+}
+
+/** How a phone connects: Larix setup link (as a QR code) or the address for another app. */
+export interface PhoneLinks {
+  id: string;
+  status?: string;
+  name: string;
+  publish_url: string;
+  server_url: string;
+  stream_key: string;
+  setup_url: string;
+  path: string;
+}
+
 /** Every call the frontend makes to the core backend (backend-module/api). */
 export const api = {
   health: () => apiRequest<Health>("/health"),
@@ -74,7 +99,17 @@ export const api = {
       cameras: Camera[];
       gateway_error?: string;
       limits?: GatewayLimits;
+      phone_cameras?: boolean; // the server can take phone cameras
     }>("/cameras"),
+  /** Settings > Emails sent. */
+  accountEmails: () =>
+    apiRequest<{ emails: AccountEmail[]; server_from: string; kept_days: number }>("/org/emails"),
+  /** A phone that streams to the camera relay; the links (password inside) are shown once. */
+  addPhoneCamera: (c: { name: string; location?: string; zone?: string }) =>
+    apiRequest<PhoneLinks>("/cameras/phone", { method: "POST", ...json(c) }),
+  /** New password and QR code for a phone camera (the old one stops working). */
+  newPhoneLink: (id: string) =>
+    apiRequest<PhoneLinks>("/cameras/" + enc(id) + "/phone-link", { method: "POST" }),
   /** status "paused" = saved on standby (the gateway is at its streaming limit). */
   addCamera: (c: CameraInput) =>
     apiRequest<{ id: string; status: string }>("/cameras", {

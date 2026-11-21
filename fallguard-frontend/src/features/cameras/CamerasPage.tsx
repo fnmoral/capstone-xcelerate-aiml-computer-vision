@@ -4,11 +4,12 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Icon } from '../../components/ui/Icon';
-import { api, type CameraInput } from '../../services/api/fallguard';
+import { api, type CameraInput, type PhoneLinks } from '../../services/api/fallguard';
 import { usePolling } from '../../services/api/usePolling';
 import type { Camera } from '../../types/domain';
 import { formatTime } from '../../lib/format';
 import { CameraOrder } from './CameraOrder';
+import { AddPhoneCameraForm, PhoneSetup } from './PhoneCamera';
 import { PERM, useAuth } from '../auth/AuthContext';
 import './cameras.css';
 
@@ -102,6 +103,7 @@ function CameraRow({ cam, onChange, full, streaming, manage }: {
   const [zone, setZone] = useState(cam.zone ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [links, setLinks] = useState<PhoneLinks | null>(null);
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -122,6 +124,7 @@ function CameraRow({ cam, onChange, full, streaming, manage }: {
       <div className="cams-row__main">
         <div className="cams-row__title">
           <strong>{cam.name}</strong>
+          {cam.phone && <span className="badge cams-row__phone">Phone</span>}
           <StatusBadge value={cam.health} />
           <span className="muted cams-row__since">since {formatTime(cam.health_since)}</span>
           {cam.active_incidents > 0 && <StatusBadge value="active" label={`${cam.active_incidents} active incident(s)`} />}
@@ -145,6 +148,7 @@ function CameraRow({ cam, onChange, full, streaming, manage }: {
           </label>
         )}
         {error && <p className="notice notice--error">{error}</p>}
+        {links && <PhoneSetup links={links} onClose={() => setLinks(null)} />}
       </div>
       <div className="row cams-row__actions">
         <Link className="btn btn--sm" to={`/camera-logs?camera=${encodeURIComponent(cam.id)}`}>
@@ -168,6 +172,13 @@ function CameraRow({ cam, onChange, full, streaming, manage }: {
             <Icon name={paused ? 'play' : 'pause'} size={14} /> {paused ? 'Resume' : 'Pause'}
           </button>
         ))}
+        {manage && cam.phone && (
+          <button className="btn btn--sm" disabled={busy} title="Show a new QR code for this phone; the old one stops working"
+            onClick={() => confirm(`Make a new QR code for "${cam.name}"? The phone has to scan it again; the old one stops working.`)
+              && run(async () => setLinks(await api.newPhoneLink(cam.id)))}>
+            New QR code
+          </button>
+        )}
         {manage && <button className="btn btn--sm btn--danger" disabled={busy}
           onClick={() => confirm(`Remove "${cam.name}"? Its past incidents are kept.`) && run(() => api.deleteCamera(cam.id))}>
           <Icon name="trash" size={14} /> Remove
@@ -182,7 +193,8 @@ export default function CamerasPage() {
   const { me, can } = useAuth();
   const manage = can(PERM.manageCameras);
   const canAdd = manage && !!me?.org.has_gateway;
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState<'ip' | 'phone' | null>(null);
+  const [phoneLinks, setPhoneLinks] = useState<PhoneLinks | null>(null);
   const cameras = data?.cameras ?? [];
   const zones = [...new Set(cameras.map((c) => c.zone).filter((z): z is string => Boolean(z)))].sort();
   const [notice, setNotice] = useState<string | null>(null);
@@ -198,21 +210,37 @@ export default function CamerasPage() {
         description={`Streaming ${streaming.length} of ${maxStreaming} at a time · ${onGateway.length - streaming.length} paused (standby) · `
           + `${onGateway.length} of ${maxSaved} saved. A paused camera keeps its address and login, so you can switch `
           + 'which cameras stream without removing and adding them again.'}
-        actions={canAdd && !adding && (
-          <button className="btn btn--primary" disabled={onGateway.length >= maxSaved} onClick={() => setAdding(true)}>
-            <Icon name="plus" size={16} /> {onGateway.length >= maxSaved ? `Gateway full (${maxSaved})` : 'Add camera'}
-          </button>
+        actions={canAdd && !adding && !phoneLinks && (
+          <div className="row">
+            {data?.phone_cameras && (
+              <button className="btn" disabled={onGateway.length >= maxSaved} onClick={() => setAdding('phone')}>
+                <Icon name="plus" size={16} /> Add phone camera
+              </button>
+            )}
+            <button className="btn btn--primary" disabled={onGateway.length >= maxSaved} onClick={() => setAdding('ip')}>
+              <Icon name="plus" size={16} /> {onGateway.length >= maxSaved ? `Gateway full (${maxSaved})` : 'Add camera'}
+            </button>
+          </div>
         )} />
       {error && <p className="notice notice--error">{error}</p>}
       {!manage && <p className="notice">View only: your role can't change cameras.</p>}
       {manage && me && !me.org.has_gateway && <p className="notice">No gateway is connected to this organization yet, so cameras can't be added here.</p>}
       {data?.gateway_error && <p className="notice notice--error">Gateway unavailable: {data.gateway_error}</p>}
       {notice && <p className="notice" role="status">{notice}</p>}
-      {adding && (
+      {adding === 'phone' && (
+        <AddPhoneCameraForm onDone={(links) => {
+          setAdding(null);
+          setPhoneLinks(links ?? null);
+          setNotice(links?.status === 'paused' ? 'Phone camera saved on standby (paused): every streaming slot is in use. Use "Switch to this" on it to stream it.' : null);
+          void reload();
+        }} />
+      )}
+      {phoneLinks && <PhoneSetup links={phoneLinks} onClose={() => setPhoneLinks(null)} />}
+      {adding === 'ip' && (
         <AddCameraForm
           standby={full ? `${streaming.length} cameras are already streaming, the most at once: this one will be saved paused (standby). Use "Switch to this" to stream it instead of another.` : null}
           onDone={(status) => {
-            setAdding(false);
+            setAdding(null);
             setNotice(status === 'paused' ? 'Camera saved on standby (paused). Use "Switch to this" on it to stream it instead of another camera.' : null);
             void reload();
           }} />

@@ -45,6 +45,7 @@ export interface Camera {
   last_frame_age_s: number | null;
   active_incidents: number;
   tenant_id: string; // without credentials
+  phone?: boolean; // a phone streaming to the camera relay (can get a new QR code)
 }
 
 export type IncidentStatus =

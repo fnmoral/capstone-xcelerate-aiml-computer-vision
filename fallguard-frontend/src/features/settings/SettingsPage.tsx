@@ -4,6 +4,7 @@ import { StatusBadge } from '../../components/ui/StatusBadge';
 import { useUiStore, type LiveLayout, type Theme } from '../../store/uiStore';
 import { TimeZoneSettings } from './TimeZoneSettings';
 import { OrgProfileSettings } from './OrgProfileSettings';
+import { EmailsSentSettings } from './EmailsSentSettings';
 import { PERM, useAuth } from '../auth/AuthContext';
 import { api } from '../../services/api/fallguard';
 import { usePolling } from '../../services/api/usePolling';
@@ -111,7 +112,7 @@ export default function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Settings" description="Organization details, system status, gateway connection and appearance." />
+      <PageHeader title="Settings" description="Organization details, system status, gateway connection, emails sent and appearance." />
       <div className="stack" style={{ maxWidth: 720 }}>
         <section className="card" style={{ padding: 20 }}>
           <h2 className="section-title">System status</h2>
@@ -141,6 +142,8 @@ export default function SettingsPage() {
         </fieldset>
 
         {manage && me?.org.has_gateway && <GatewaySettings />}
+
+        {can(PERM.viewEmails) && <EmailsSentSettings />}
 
         <section className="card" style={{ padding: 20 }}>
           <h2 className="section-title">Appearance</h2>

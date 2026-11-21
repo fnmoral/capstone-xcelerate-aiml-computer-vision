@@ -83,6 +83,7 @@ export const PERM = {
   manageDetection: 'detection.manage',
   manageNotifications: 'notifications.manage',
   manageSettings: 'settings.manage',
+  viewEmails: 'emails.view',
   viewMembers: 'members.view',
   manageMembers: 'members.manage',
   manageRoles: 'roles.manage',
