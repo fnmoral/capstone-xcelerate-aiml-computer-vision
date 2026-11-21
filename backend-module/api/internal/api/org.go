@@ -52,7 +52,9 @@ func (s *Server) sendInvitation(c *gin.Context, inv *store.Invitation, token str
 		Text: fmt.Sprintf("Hi,\n\n%s invited you to join %s on FallGuard as a %s.\n\nAccept the invitation:\n\n%s\n\n"+
 			"The link expires in 7 days.\n\n— FallGuard", se.User.DisplayName(), se.OrgName, inv.Role, link),
 	})
-	return s.mailed(res, link, gin.H{"invitation": inv})
+	// The admin who invites also gets the link, to share it directly (copy or QR code), for
+	// example when the email is slow or no email server is set up.
+	return s.mailed(res, link, gin.H{"invitation": inv, "url": link})
 }
 
 func (s *Server) invite(c *gin.Context) {

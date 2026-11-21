@@ -62,7 +62,7 @@ may do (`tenants.role_permissions`); managing members and roles stays admin-only
 | `GET` · `POST /api/org/guest-links` · `DELETE …/:id` | Admins: list / create (`{label, hours}` 1–720; the URL with its token is returned only now) / end a demo link (its visitors are signed out) |
 | `GET` · `PUT /api/org` | Organization name and profile (address, WSIB firm number…; used by incident reports) |
 | `GET /api/org/members` · `PATCH` · `DELETE /api/org/members/:id` | Members; change role / remove (signs them out). The last admin can't be demoted or removed (409) |
-| `POST /api/org/invitations` · `…/:id/resend` · `DELETE …/:id` | Invite by email with a role (7 days) |
+| `POST /api/org/invitations` · `…/:id/resend` · `DELETE …/:id` | Invite by email with a role (7 days); the answer also has the link (`url`) so the admin can share it directly (copy / QR code) |
 | `GET` · `PUT /api/org/permissions` | Permission catalog and what members / viewers may do |
 
 Organizations other than the home one have no gateway yet: adding, pausing or removing
