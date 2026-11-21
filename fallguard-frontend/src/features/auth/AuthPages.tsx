@@ -4,6 +4,7 @@ import { accounts, type InvitationInfo, type Mailed } from '../../services/api/a
 import { ApiError } from '../../services/api/client';
 import { useAuth } from './AuthContext';
 import { BrandLogo, PoweredBy } from '../../components/ui/Brand';
+import { ThemeToggle } from '../../components/ui/ThemeToggle';
 import './auth.css';
 
 const MIN_PASSWORD = 10;
@@ -17,6 +18,7 @@ function AuthCard({ title, subtitle, children, footer }: { title: string; subtit
   useEffect(() => { document.title = `${title} · FallGuard Vision`; }, [title]);
   return (
     <main className="auth-page">
+      <ThemeToggle className="theme-toggle--corner" />
       <div className="auth-card card">
         <div className="auth-brand"><BrandLogo height={44} /></div>
         <h1 className="auth-title">{title}</h1>
@@ -396,7 +398,7 @@ export function InvitePage() {
   );
 }
 
-/** Demo access link: signs this browser in as a view-only visitor, no account needed. */
+/** Temporary access link: signs this browser in as a view-only visitor, no account needed. */
 export function DemoPage() {
   const { token = '' } = useParams();
   const { me, refresh } = useAuth();
@@ -430,17 +432,17 @@ export function DemoPage() {
   }, [token]);
 
   if (error) {
-    return <AuthCard title="Demo link not valid" footer={<Link to="/login">Go to sign in</Link>}>
+    return <AuthCard title="Link not valid" footer={<Link to="/login">Go to sign in</Link>}>
       <p className="notice notice--error">{error}</p></AuthCard>;
   }
   return (
-    <AuthCard title={info ? `Demo of ${info.org_name}` : 'Opening the demo…'}
+    <AuthCard title={info ? info.org_name : 'Opening…'}
       subtitle={info ? <>View-only access until {new Date(info.expires_at).toLocaleString()}. No account needed.</> : undefined}>
       {me && info && !busy ? (
         <>
-          <p className="notice">You're signed in as {me.user.email}. Opening the demo signs you out of your account in this browser.</p>
+          <p className="notice">You're signed in as {me.user.email}. Continuing signs you out of your account in this browser.</p>
           <div className="row">
-            <button className="btn btn--primary" onClick={() => void enter()}>Open the demo</button>
+            <button className="btn btn--primary" onClick={() => void enter()}>Continue with temporary access</button>
             <button className="btn" onClick={() => navigate('/', { replace: true })}>Stay signed in</button>
           </div>
         </>

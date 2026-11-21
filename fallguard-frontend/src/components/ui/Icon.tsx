@@ -26,6 +26,8 @@ const PATHS: Record<string, string> = {
   mail: 'M3 6h18v12H3zM3 7l9 6 9-6',
   file: 'M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h7',
   logout: 'M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10',
+  sun: 'M12 16a4 4 0 100-8 4 4 0 000 8zM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4',
+  moon: 'M20 14.5A8 8 0 019.5 4 8 8 0 1020 14.5z',
 };
 
 export function Icon({ name, size = 20 }: { name: string; size?: number }) {

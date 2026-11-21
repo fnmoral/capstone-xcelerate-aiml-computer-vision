@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { shareLinks, type SharedView } from '../../services/api/accounts';
 import { apiUrl } from '../../services/api/client';
 import { BrandLogo, PoweredBy } from '../../components/ui/Brand';
+import { ThemeToggle } from '../../components/ui/ThemeToggle';
 import '../auth/auth.css';
 import './shared.css';
 
@@ -44,6 +45,7 @@ export default function SharedIncidentPage() {
 
   return (
     <main className="auth-page shared-page">
+      <ThemeToggle className="theme-toggle--corner" />
       <div className="card shared-card">
         <div className="auth-brand"><BrandLogo height={40} /></div>
         {error && (

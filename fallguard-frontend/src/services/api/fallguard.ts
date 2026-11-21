@@ -145,7 +145,10 @@ export const api = {
     apiRequest<{ entries: LogEntry[] }>("/logs" + query(q)),
 
   /** Facility-wide settings: timezone null = each browser's own. */
-  settings: () => apiRequest<{ timezone: string | null }>("/settings"),
+  settings: () => apiRequest<{ timezone: string | null; theme: "light" | "dark" | "system" | null }>("/settings"),
+  /** The organization's default theme (people who chose their own keep it). */
+  saveDefaultTheme: (theme: "light" | "dark" | "system") =>
+    apiRequest("/settings/theme", { method: "PUT", ...json({ theme }) }),
   saveSettings: (s: { timezone: string | null }) =>
     apiRequest("/settings", { method: "PUT", ...json(s) }),
 

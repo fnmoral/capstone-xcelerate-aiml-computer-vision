@@ -22,6 +22,12 @@ export function formatTime(iso: string | null | undefined): string {
 /** Full date and time, e.g. for logs. */
 export const formatDateTime = (iso: string) => new Date(iso).toLocaleString([], { timeZone: appTimeZone() });
 
+/** Date only, in the app's time zone (e.g. "Nov 20, 2026"). */
+export function formatDate(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric', timeZone: appTimeZone() });
+}
+
 /** A wall-clock time typed in a datetime-local field ("2026-10-23T08:00"), read in the app's
  *  time zone, as an ISO instant. */
 export function zonedToIso(local: string, timeZone = appTimeZone()): string {

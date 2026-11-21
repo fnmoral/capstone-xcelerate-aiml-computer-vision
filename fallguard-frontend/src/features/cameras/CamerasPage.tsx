@@ -83,7 +83,7 @@ function SwitchTo({ cam, streaming, busy, run }: {
   return (
     <span className="cams-switch">
       <label>Stop
-        <select value={replace} onChange={(e) => setReplace(e.target.value)} aria-label="Camera to stop streaming">
+        <select className="select select--sm" value={replace} onChange={(e) => setReplace(e.target.value)} aria-label="Camera to stop streaming">
           {streaming.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
       </label>

@@ -10,7 +10,8 @@
     <script>
       // Apply the saved theme before the first paint (no light flash in dark mode).
       try {
-        var t = JSON.parse(localStorage.getItem('fallguard-ui') || '{}').state?.theme;
+        var s = JSON.parse(localStorage.getItem('fallguard-ui') || '{}').state || {};
+        var t = (s.theme && s.theme !== 'system' ? s.theme : null) || s.orgTheme || 'light';
         if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
       } catch (e) {}
     </script>

@@ -9,7 +9,51 @@ import { api } from '../../services/api/fallguard';
 import { usePolling } from '../../services/api/usePolling';
 import type { GatewayConfig } from '../../types/domain';
 
-const THEMES: Theme[] = ['system', 'light', 'dark'];
+const THEMES: Theme[] = ['light', 'dark', 'system'];
+const THEME_LABEL: Record<Theme, string> = { light: 'Light', dark: 'Dark', system: 'Same as this device' };
+
+/** Theme: this browser's choice (or the organization's default), and the default itself. */
+function ThemeSettings({ manage }: { manage: boolean }) {
+  const { theme, orgTheme, setTheme, setOrgTheme } = useUiStore();
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const orgLabel = THEME_LABEL[orgTheme ?? 'light'];
+  const saveOrg = async (t: Theme) => {
+    try {
+      await api.saveDefaultTheme(t);
+      setOrgTheme(t);
+      setMsg({ ok: true, text: `Organization default set to ${THEME_LABEL[t].toLowerCase()}. People who chose their own theme keep it.` });
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
+    }
+  };
+  return (
+    <>
+      <p className="field" style={{ margin: '0 0 6px' }}>Your theme (this browser)</p>
+      <div role="radiogroup" aria-label="Your theme" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button role="radio" aria-checked={theme === null} onClick={() => setTheme(null)}
+          className={`btn${theme === null ? ' btn--primary' : ''}`}>Organization default ({orgLabel})</button>
+        {THEMES.map((t) => (
+          <button key={t} role="radio" aria-checked={theme === t} onClick={() => setTheme(t)}
+            className={`btn${theme === t ? ' btn--primary' : ''}`}>{THEME_LABEL[t]}</button>
+        ))}
+      </div>
+      {manage && (
+        <>
+          <p className="field" style={{ margin: '16px 0 6px' }}>Organization default
+            <small>What everyone sees until they choose their own (also the sign-in page in their browser). Light if not set.</small>
+          </p>
+          <div role="radiogroup" aria-label="Organization default theme" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {THEMES.map((t) => (
+              <button key={t} role="radio" aria-checked={(orgTheme ?? 'light') === t} onClick={() => void saveOrg(t)}
+                className={`btn${(orgTheme ?? 'light') === t ? ' btn--primary' : ''}`}>{THEME_LABEL[t]}</button>
+            ))}
+          </div>
+        </>
+      )}
+      {msg && <p className={`notice${msg.ok ? '' : ' notice--error'}`} style={{ marginTop: 12 }}>{msg.text}</p>}
+    </>
+  );
+}
 
 const SERVICES: Record<string, string> = {
   database: 'Database (PostgreSQL)',
@@ -60,7 +104,7 @@ function GatewaySettings() {
 }
 
 export default function SettingsPage() {
-  const { theme, setTheme, liveLayout, setLiveLayout } = useUiStore();
+  const { liveLayout, setLiveLayout } = useUiStore();
   const { data: health, error } = usePolling(() => api.health(), 5000);
   const { me, can } = useAuth();
   const manage = can(PERM.manageSettings);
@@ -100,12 +144,7 @@ export default function SettingsPage() {
 
         <section className="card" style={{ padding: 20 }}>
           <h2 className="section-title">Appearance</h2>
-          <div role="radiogroup" aria-label="Theme" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {THEMES.map((t) => (
-              <button key={t} role="radio" aria-checked={theme === t} onClick={() => setTheme(t)}
-                className={`btn${theme === t ? ' btn--primary' : ''}`} style={{ textTransform: 'capitalize' }}>{t}</button>
-            ))}
-          </div>
+          <ThemeSettings manage={manage} />
           <label className="field" style={{ marginTop: 16, maxWidth: 320 }}>Live View default layout
             <select value={liveLayout} onChange={(e) => setLiveLayout(e.target.value as LiveLayout)}>
               <option value="auto">Auto: every camera, scroll for more</option>

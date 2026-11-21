@@ -58,7 +58,7 @@ export function UserMenu() {
           <div className="user-panel__who">
             <strong>{name}</strong>
             {!me.user.is_guest && <span className="muted">{me.user.email}</span>}
-            <span className="muted">{me.org.name} · {me.user.is_guest ? 'Demo access, view-only' : ROLE_LABEL[me.role] ?? me.role}</span>
+            <span className="muted">{me.org.name} · {me.user.is_guest ? 'Temporary access, view-only' : ROLE_LABEL[me.role] ?? me.role}</span>
             {me.user.is_guest && me.user.access_until && (
               <span className="muted">Until {new Date(me.user.access_until).toLocaleString()}</span>
             )}

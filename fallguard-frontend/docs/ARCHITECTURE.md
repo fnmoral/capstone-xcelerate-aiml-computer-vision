@@ -138,7 +138,7 @@ the API refuses the action anyway, so hiding is about clarity, not security.
 |---|---|---|
 | `/login`, `/signup`, `/verify-email`, `/forgot-password`, `/reset-password` | Account pages (public) | |
 | `/invite/:token` | Accept an invitation (public) | |
-| `/demo/:token` | Demo access link: view-only visitor, no account (public) | |
+| `/demo/:token` | Temporary access link ("demo link" in the code): view-only visitor, no account (public) | |
 | `/shared/:token` | View-only incident video for an outside recipient (public) | |
 | `/` | redirect to the first page the role may open (usually `/live`) | |
 | `/live` | Live View | Monitor |
@@ -319,7 +319,7 @@ Notifications (severity x channel, recipients, follow-ups, templates, providers)
 
 ![Notifications](screenshots/12-notifications.png)
 
-Members & Roles (roles, invitations, demo links, permission table) and a new demo link with its QR code:
+Members & Roles (members, invite a team member and temporary access links side by side, permission table) and a new temporary access link with its QR code:
 
 | Members & Roles | Demo link with QR code |
 |---|---|

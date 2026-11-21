@@ -4,7 +4,7 @@ import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Icon } from '../../components/ui/Icon';
 import { accounts, type Invitation, type Mailed, type Member, type Role, type RolePermissions } from '../../services/api/accounts';
 import { usePolling } from '../../services/api/usePolling';
-import { formatTime } from '../../lib/format';
+import { formatDate, formatTime } from '../../lib/format';
 import { PERM, useAuth } from '../auth/AuthContext';
 import { DemoLinks } from './DemoLinks';
 import { ShareLink } from '../../components/ui/ShareLink';
@@ -200,7 +200,7 @@ function MemberRow({ m, self, manage, onChanged }: { m: Member; self: boolean; m
       </td>
       <td>
         {manage ? (
-          <select value={m.role} disabled={busy} aria-label={`Role of ${name}`}
+          <select className="select select--sm" value={m.role} disabled={busy} aria-label={`Role of ${name}`}
             onChange={(e) => {
               const role = e.target.value as Role;
               if (self && role !== 'admin' && !confirm('Change your own role? You will lose admin access.')) return;
@@ -211,8 +211,8 @@ function MemberRow({ m, self, manage, onChanged }: { m: Member; self: boolean; m
         ) : <StatusBadge value={m.role === 'admin' ? 'online' : 'paused'} label={ROLE_INFO[m.role].label} />}
       </td>
       <td className="muted">{m.email_verified ? 'Verified' : 'Not verified'}</td>
-      <td className="muted">{m.last_login_at ? formatTime(m.last_login_at) : 'Never'}</td>
-      <td className="muted">{formatTime(m.joined_at)}</td>
+      <td className="muted">{m.last_login_at ? formatDate(m.last_login_at) : 'Never'}</td>
+      <td className="muted">{formatDate(m.joined_at)}</td>
       <td className="num">
         {manage && !self && (
           <button className="btn btn--sm btn--danger" disabled={busy}
@@ -293,14 +293,6 @@ export default function MembersPage() {
       </section>
 
       <div className="stack">
-        {manage && (
-          <section className="card members-section">
-            <h2 className="section-title">Invite someone</h2>
-            <p className="muted" style={{ marginTop: -6 }}>They get an email with a link to create their account (or join with the one they have). Opening the link verifies their email.</p>
-            <InviteForm onSent={changed} />
-          </section>
-        )}
-
         <section className="card members-section">
           <h2 className="section-title">Members ({data?.members.length ?? 0})</h2>
           <div className="table-wrap">
@@ -315,7 +307,17 @@ export default function MembersPage() {
           </div>
         </section>
 
-        {manage && <DemoLinks />}
+        {/* Adding people: team members (accounts) and temporary visitors, side by side */}
+        {manage && (
+          <div className="members-pair">
+            <section className="card members-section">
+              <h2 className="section-title">Invite team member</h2>
+              <p className="muted" style={{ marginTop: -6 }}>They get an email with a link to create their account (or join with the one they have). Opening the link verifies their email.</p>
+              <InviteForm onSent={changed} />
+            </section>
+            <DemoLinks />
+          </div>
+        )}
 
         {manage && (data?.invitations.length ?? 0) > 0 && (
           <section className="card members-section">

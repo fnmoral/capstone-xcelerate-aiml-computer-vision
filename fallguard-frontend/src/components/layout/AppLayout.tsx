@@ -11,10 +11,14 @@ import './AppLayout.css';
 
 /** App shell: Header + Navigation + MainContainer(page, Footer). */
 export function AppLayout() {
-  const { navCollapsed, navPinned, closeNav, setTimeZone } = useUiStore();
+  const { navCollapsed, navPinned, closeNav, setTimeZone, setOrgTheme } = useUiStore();
   // Facility settings (time zone): picked up by every page, re-checked every minute.
   const { data: settings } = usePolling(() => api.settings(), 60000);
-  useEffect(() => { if (settings) setTimeZone(settings.timezone); }, [settings, setTimeZone]);
+  useEffect(() => {
+    if (!settings) return;
+    setTimeZone(settings.timezone);
+    setOrgTheme(settings.theme ?? null);
+  }, [settings, setTimeZone, setOrgTheme]);
   const { pathname } = useLocation();
 
   useEffect(() => closeNav(), [pathname, closeNav]);
