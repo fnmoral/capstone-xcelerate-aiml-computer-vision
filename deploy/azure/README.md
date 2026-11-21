@@ -33,14 +33,17 @@ az vm deallocate -g fallguard-rg -n fallguard-vm   # end of session
 
 ## Deploy and update
 
-Push the code to the VM, then on the VM:
+**Pushing the deploy branch to the VM deploys it automatically** (a git hook rebuilds in the
+background, about 2-5 minutes):
 
 ```bash
-cd ~/capstone && git pull && docker compose -f docker-compose.yml -f docker-compose.azure.yml up -d --build \
-    db partitions api stream-hub gateway-back frontend caddy
+git push azure US_ml_module      # 'azure' = the VM; log on the VM: ~/capstone/deploy.log
 ```
 
-- First-time VM setup: `sudo bash deploy/azure/vm_setup.sh`.
+- The deploy branch is in `/data/repo.git/deploy-branch` on the VM (`US_ml_module` now, `main` later).
+- Rebuild by hand on the VM: `bash ~/capstone/deploy/azure/deploy.sh`.
+- First-time VM setup: `sudo bash deploy/azure/vm_setup.sh`, then install the hook:
+  `cp deploy/azure/post-receive /data/repo.git/hooks/ && chmod +x /data/repo.git/hooks/post-receive`.
 - `~/capstone/.env` (not in git): as `.env.example`, plus `PROD_MODE=true`, `SITE_ADDRESS` and
   `APP_URL` = the web address, `COOKIE_SECURE=true`, SMTP settings, `APP_SECRET`.
 
@@ -64,7 +67,7 @@ To do: create the `tunnel` user (port forwarding only) and check outbound SSH fr
 - **Cameras:** a video relay on the VM that phones send to (e.g. Larix Broadcaster), so cameras
   work from any network.
 - **Schedule:** start/stop windows with Azure Automation (e.g. weekdays 8 AM–8 PM ≈ $28/month).
-- **Auto-deploy:** rebuild the VM on every push to `main` (GitHub Actions).
+- **Auto-deploy from GitHub:** rebuild on every push to `main` on GitHub, from anyone's machine (GitHub Actions).
 
 ## Backup
 

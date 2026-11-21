@@ -1,0 +1,18 @@
+#!/bin/bash
+# Git hook for the VM's repository (/data/repo.git/hooks/post-receive): a push of the deploy
+# branch updates ~/capstone and rebuilds the app in the background.
+# Deploy branch: /data/repo.git/deploy-branch (default US_ml_module; set it to main later).
+BRANCH=$(cat /data/repo.git/deploy-branch 2>/dev/null || echo US_ml_module)
+while read -r _old _new ref; do
+  [ "$ref" = "refs/heads/$BRANCH" ] || continue
+  echo "FallGuard: deploying $BRANCH in the background (log: ~/capstone/deploy.log)"
+  (
+    unset GIT_DIR GIT_WORK_TREE
+    cd /data/capstone
+    git fetch -q origin "$BRANCH"
+    git checkout -q "$BRANCH" 2>/dev/null || git checkout -q -b "$BRANCH" "origin/$BRANCH"
+    git reset -q --hard "origin/$BRANCH"
+    bash deploy/azure/deploy.sh
+  ) > /data/capstone/deploy.log 2>&1 < /dev/null &
+  disown
+done
