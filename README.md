@@ -48,7 +48,8 @@ It takes 10–20 minutes the first time. When it is done, the app opens in a web
 2. Fill in your **organization name**, your **first and last name**, your **work email** and a
    **password** (at least 10 characters, with letters and a number or symbol).
 3. FallGuard sends you an email with a link. **Open the link to verify your email.** You can't
-   sign in until you do. The link works for 48 hours.
+   sign in until you do. The link works for 48 hours. (For demos, the installation can switch this
+   step off: you are then signed in straight away.)
 
 You are now the **admin** of your organization.
 
@@ -143,6 +144,22 @@ A few rules always apply:
    password to join yours.
 4. Pending invitations appear on the same page: **Resend** sends a new link (the old one stops
    working), **Cancel** withdraws the invitation.
+
+### Letting visitors look around (demo links)
+
+For a demo you can let people in **without an account**:
+
+1. **Members & Roles → Demo access links**: give the link a name (for example "Demo day") and choose
+   how long it works: 12 hours, 1, 3, 7, 14 or 30 days.
+2. Copy the link and share it (chat, QR code, slide). For safety it is shown only once; if you
+   lose it, make a new one.
+3. Anyone who opens it goes straight in, **view-only**: they can watch the cameras and look at fall
+   events, analytics, reports and logs. They can't change anything, can't respond to alerts and
+   can't see the members list.
+4. When the time is up, everyone using the link is out. **End now** stops it early. The list shows
+   how many times each link was opened.
+
+Only admins can create demo links.
 
 ## Notifications
 
@@ -251,6 +268,7 @@ Then:
 | Question | Answer |
 |---|---|
 | I signed up but didn't get the email | Check spam, or click "send it again" on the sign-in page. If no email server is connected yet, ask your administrator: the link is in the server log (`docker compose logs api \| grep -A3 "email:log"`). |
+| A demo link says it expired | Its time ran out or an admin ended it. Ask for a new link. |
 | I signed up and my organization is empty | Someone else signed up first and took over this installation's cameras. Ask them to invite you instead. |
 | "Your role doesn't allow this" | Your role doesn't include that action. Ask an admin. |
 | Another organization can't add cameras | For now, only the organization that signed up first is connected to the camera gateway. |
@@ -334,6 +352,16 @@ flowchart TD
   deletes all sessions, a password change deletes all others.
 - **Invitations** (`invitations`): hashed token, 7 days, resend rotates the token, revoke;
   accepting creates a verified account or, for an existing account, requires its password.
+- **Email verification switch**: `REQUIRE_EMAIL_VERIFICATION=false` skips the verification email
+  and signs new accounts in at once (demos); only the exact value `false` turns it off. The
+  sign-up page reads `GET /api/auth/config`.
+- **Demo access links** (`guest_links`): an admin picks a label and 1–720 hours; the link's token
+  is shown once (hash stored). Each link has a hidden visitor user (`users.guest_link_id`, viewer
+  member, `.invalid` email, no password, excluded from members, sign-in and resets). Opening
+  `/demo/<token>` creates a session capped at the link's end; `SessionByToken` re-checks the link
+  on every request, so expiry or "End now" cuts access immediately. Visitors' permissions are the
+  viewer grants intersected with the read-only set (`auth.GuestGrants`); account self-service is
+  refused (`notGuest`). Visitor users of links ended over 30 days ago are purged hourly.
 - **CSRF**: SameSite=Lax plus a same-origin check on non-GET requests (`Origin` must match
   `Host` / `X-Forwarded-Host` or `ALLOWED_ORIGINS`). Per-IP rate limits on auth routes.
 - **Permissions** (`internal/auth/perms.go`): every route has `s.can(perm)` or
@@ -392,7 +420,7 @@ The backend is the authority; the UI only hides what would be refused.
 
 All settings are in the root `.env` (copy `.env.example`; every option is explained there).
 Account and notification settings: `APP_URL`, `APP_SECRET`, `COOKIE_SECURE`,
-`EMAIL_LINKS_IN_RESPONSE`, `ALLOWED_ORIGINS`, `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURITY` /
+`REQUIRE_EMAIL_VERIFICATION`, `EMAIL_LINKS_IN_RESPONSE`, `ALLOWED_ORIGINS`, `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURITY` /
 `SMTP_USERNAME` / `SMTP_PASSWORD` / `SMTP_FROM` / `SMTP_FROM_NAME`.
 
 Database changes are additive migrations run by the API at every start

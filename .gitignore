@@ -215,3 +215,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Claude Code working guide (local only, copied by hand between devices)
+CLAUDE.md
