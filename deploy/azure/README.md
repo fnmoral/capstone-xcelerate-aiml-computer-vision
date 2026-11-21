@@ -40,6 +40,17 @@ background, about 2-5 minutes):
 git push azure US_ml_module      # 'azure' = the VM; log on the VM: ~/capstone/deploy.log
 ```
 
+**How long a deploy takes** (B2ps_v2):
+
+| Change | Time | Notes |
+|---|---|---|
+| Code only (usual) | **1-2 min** | Measured 2026-11-21: frontend, API, stream-hub and gateway rebuilt in about 1 min |
+| New dependencies (`go.mod`, `package-lock.json`) | about 3-5 min (estimate) | Packages are downloaded again |
+| From scratch (new VM) | about 10 min (estimate) | Every image is built |
+
+Only the services that changed restart, for about 10-30 seconds (the app may show "can't reach
+the backend" briefly). Sign-ins, data and video are kept.
+
 - The deploy branch is in `/data/repo.git/deploy-branch` on the VM (`US_ml_module` now, `main` later).
 - Rebuild by hand on the VM: `bash ~/capstone/deploy/azure/deploy.sh`.
 - First-time VM setup: `sudo bash deploy/azure/vm_setup.sh`, then install the hook:
