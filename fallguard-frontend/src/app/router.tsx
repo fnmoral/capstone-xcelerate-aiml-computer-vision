@@ -2,6 +2,8 @@ import { createBrowserRouter, createHashRouter, Navigate } from 'react-router-do
 import { AppLayout } from '../components/layout/AppLayout';
 import { homePath, NAV_ITEMS } from '../config/navigation';
 import { NotFoundPage } from '../features/not-found/NotFoundPage';
+import { RouteError } from '../components/ui/RouteError';
+import '../features/auth/auth.css';
 import { RequireAuth, RequirePermission, useAuth } from '../features/auth/AuthContext';
 import {
   DemoPage, ForgotPasswordPage, InvitePage, LoginPage, ResetPasswordPage, SignupPage, VerifyEmailPage,
@@ -28,7 +30,10 @@ const page = (load: () => Promise<{ default: React.ComponentType }>, perm: strin
   },
 });
 
-export const router = createRouter([
+export const router = createRouter([{
+  // Any page that fails (or a page file missing after an update) gets a friendly screen.
+  errorElement: <RouteError />,
+  children: [
   { path: '/login', element: <LoginPage /> },
   { path: '/signup', element: <SignupPage /> },
   { path: '/verify-email', element: <VerifyEmailPage /> },
@@ -42,7 +47,10 @@ export const router = createRouter([
   {
     path: '/',
     element: <RequireAuth><AppLayout /></RequireAuth>,
-    children: [
+    children: [{
+      // Errors inside the app keep the header and menu around them.
+      errorElement: <RouteError inApp />,
+      children: [
       { index: true, element: <Home /> },
       ...NAV_ITEMS.map((item) => ({ path: item.path.slice(1), ...page(item.load, item.perm) })),
       // Detail pages (not in the navigation)
@@ -53,6 +61,8 @@ export const router = createRouter([
       },
       { path: 'account', ...page(() => import('../features/account/AccountPage')) },
       { path: '*', element: <NotFoundPage /> },
-    ],
+      ],
+    }],
   },
-]);
+  ],
+}]);
