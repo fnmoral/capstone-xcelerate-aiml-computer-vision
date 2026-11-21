@@ -23,6 +23,40 @@ This page has two parts:
 
 # Part 1 — For users
 
+## Why FallGuard
+
+**Purpose: reduce the liability and losses a business faces when someone falls on its premises.**
+
+In Ontario, a fall is a legal risk as well as a safety risk:
+
+- **Visitors, customers, patients and students** can sue under the *Occupiers' Liability Act*,
+  which requires reasonable care to keep people safe on the premises.
+- **Workers** are covered by the *Occupational Health and Safety Act* (OHSA). Maximum fines are
+  **$2 million** per corporation and **$1.5 million** for directors and officers. The WSIB
+  Form 7 is due within **3 business days**; late reports cost $250, or $1,000 after 30 days.
+- **Falls are common and costly:** about **1 in 5** allowed WSIB lost-time claims are falls
+  (20.6% in 2018), WSIB paid **$2.64 billion** in claims in 2024, and lost-time claims were
+  up **6%** in Q4 2025 compared with Q4 2024.
+
+FallGuard helps a business show it took reasonable care:
+
+| What courts and regulators look for | What FallGuard provides |
+|---|---|
+| Quick response | An alert within seconds, escalating at 1 and 5 minutes, by app, email and SMS |
+| An evidence trail | A timestamped event with photo, video, who responded, notes and an activity log |
+| Timely reporting | WSIB Form 7, OHSA notice and OSHA 301 drafts filled in from the event |
+| Corrective action | Analytics by camera and zone show where falls keep happening |
+
+A system alone is not a defence: staff still need to respond and fix hazards. This is
+background, not legal advice.
+
+Sources: [Occupiers' Liability Act](https://www.ontario.ca/laws/statute/90o02) ·
+[OHSA penalties](https://www.ontario.ca/document/guide-occupational-health-and-safety-act/part-ix-offences-and-penalties) ·
+[WSIB Form 7 guide](https://wsib.ca/en/employers-report-injury-disease-form-7-reference-guide-businesses) ·
+[Ontario falls inspection blitz](https://www.ontario.ca/page/inspection-blitz-results-slips-trips-and-falls) ·
+[WSIB 2024 Annual Report](https://www.wsib.ca/sites/default/files/2025-11/2024_annual_report_20250429_final_with_signatures.pdf) ·
+[WSIB corporate reports](https://www.wsib.ca/en/corporate-reports)
+
 ## What FallGuard does
 
 | Feature | What it means for you |
