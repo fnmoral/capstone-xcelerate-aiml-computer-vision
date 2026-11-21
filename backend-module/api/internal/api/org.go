@@ -10,7 +10,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"backend-api/internal/auth"
-	"backend-api/internal/notify"
 	"backend-api/internal/store"
 )
 
@@ -46,12 +45,14 @@ func (s *Server) listMembers(c *gin.Context) {
 func (s *Server) sendInvitation(c *gin.Context, inv *store.Invitation, token string) gin.H {
 	se := session(c)
 	link := s.appURL(c) + "/invite/" + url.PathEscape(token)
-	res, _ := s.systemEmail(c.Request.Context(), se.TenantID, notify.Email{
-		To:      inv.Email,
-		Subject: fmt.Sprintf("%s invited you to %s on FallGuard", se.User.DisplayName(), se.OrgName),
-		Text: fmt.Sprintf("Hi,\n\n%s invited you to join %s on FallGuard as a %s.\n\nAccept the invitation:\n\n%s\n\n"+
-			"The link expires in 7 days.\n\n— FallGuard", se.User.DisplayName(), se.OrgName, inv.Role, link),
-	})
+	res, _ := s.systemEmail(c.Request.Context(), se.TenantID, "invitation", s.accountEmail(c, inv.Email,
+		fmt.Sprintf("%s invited you to %s on FallGuard Vision", se.User.DisplayName(), se.OrgName), accountMail{
+			Greeting: "Hi,",
+			Lines: []string{fmt.Sprintf("%s invited you to join %s on FallGuard Vision as a %s.",
+				se.User.DisplayName(), se.OrgName, inv.Role)},
+			Button: "Accept the invitation", Link: link,
+			Note: "The invitation expires in 7 days. If you weren't expecting it, you can ignore this email.",
+		}))
 	// The admin who invites also gets the link, to share it directly (copy or QR code), for
 	// example when the email is slow or no email server is set up.
 	return s.mailed(res, link, gin.H{"invitation": inv, "url": link})

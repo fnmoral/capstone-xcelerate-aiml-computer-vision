@@ -48,6 +48,10 @@ func main() {
 
 		// Anything but "false" keeps verification on, so a typo never switches it off.
 		RequireEmailVerification: !strings.EqualFold(strings.TrimSpace(os.Getenv("REQUIRE_EMAIL_VERIFICATION")), "false"),
+
+		// Phone cameras: the relay's public RTMPS address ("" = off) and where the gateway reads it.
+		PhoneRelayURL: strings.TrimSpace(os.Getenv("PHONE_RELAY_URL")),
+		RelayRTSPURL:  env("RELAY_RTSP_URL", "rtsp://test-camera:8554"),
 	}
 	for _, o := range strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",") {
 		if o = strings.TrimSpace(o); o != "" {

@@ -474,6 +474,36 @@ CREATE TABLE shared_links (
 );
 CREATE INDEX idx_shared_links_incident ON shared_links (tenant_id, incident_id);
 
+-- Phone cameras that send their video to the camera relay (a phone streaming app). Only the
+-- password's hash is stored. No row-level security: the relay looks a path up before any
+-- tenant is known.
+CREATE TABLE phone_cameras (
+    camera_id       TEXT PRIMARY KEY,
+    tenant_id       UUID NOT NULL,
+    path            TEXT NOT NULL UNIQUE,
+    token_hash      TEXT NOT NULL,
+    created_by      UUID,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    rotated_at      TIMESTAMPTZ,
+    last_publish_at TIMESTAMPTZ
+);
+
+-- Account emails (invitations, verification, password resets) for Settings > Emails sent.
+-- tenant_id is NULL for a password reset (it belongs to the person). Kept 90 days.
+CREATE TABLE account_emails (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id  UUID,
+    kind       TEXT NOT NULL,
+    recipient  TEXT NOT NULL,
+    subject    TEXT NOT NULL,
+    from_email TEXT NOT NULL DEFAULT '',
+    via        TEXT NOT NULL,
+    status     TEXT NOT NULL,
+    error      TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_account_emails_tenant ON account_emails (tenant_id, created_at DESC);
+
 -- ---------- Monthly partitions ----------
 -- create_monthly_partitions(from_month, months) creates <table>_YYYY_MM for every partitioned
 -- table. ml-service calls it at startup for the current and next month; it can also run

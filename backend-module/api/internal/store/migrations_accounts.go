@@ -131,5 +131,34 @@ func init() {
 			last_viewed_at TIMESTAMPTZ
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_shared_links_incident ON shared_links (tenant_id, incident_id)`,
+
+		// Phone cameras that send their video to the camera relay (phone_cameras.go). No
+		// row-level security: the relay looks a path up before any tenant is known.
+		`CREATE TABLE IF NOT EXISTS phone_cameras (
+			camera_id       TEXT PRIMARY KEY,
+			tenant_id       UUID NOT NULL,
+			path            TEXT NOT NULL UNIQUE,
+			token_hash      TEXT NOT NULL,
+			created_by      UUID,
+			created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+			rotated_at      TIMESTAMPTZ,
+			last_publish_at TIMESTAMPTZ
+		)`,
+
+		// Account emails (invitations, verification, password resets) for Settings > Emails
+		// sent. tenant_id is NULL for a password reset (it belongs to the person).
+		`CREATE TABLE IF NOT EXISTS account_emails (
+			id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			tenant_id  UUID,
+			kind       TEXT NOT NULL,
+			recipient  TEXT NOT NULL,
+			subject    TEXT NOT NULL,
+			from_email TEXT NOT NULL DEFAULT '',
+			via        TEXT NOT NULL,
+			status     TEXT NOT NULL,
+			error      TEXT,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_account_emails_tenant ON account_emails (tenant_id, created_at DESC)`,
 	)
 }

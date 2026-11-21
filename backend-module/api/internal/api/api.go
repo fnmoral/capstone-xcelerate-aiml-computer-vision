@@ -34,6 +34,11 @@ type Config struct {
 	// RequireEmailVerification: sign-in needs a verified email (default). false = new
 	// accounts are signed in right away (demos); REQUIRE_EMAIL_VERIFICATION.
 	RequireEmailVerification bool
+
+	// Phone cameras (phone_cameras.go). PhoneRelayURL is the relay's public RTMPS address
+	// phones send to, e.g. rtmps://host:1936 ("" = phone cameras off); RelayRTSPURL is where
+	// the gateway reads them, e.g. rtsp://test-camera:8554.
+	PhoneRelayURL, RelayRTSPURL string
 }
 
 // Server holds the dependencies of the routes.
@@ -82,6 +87,9 @@ func (s *Server) Register(r *gin.Engine) {
 	a.GET("/health-cloud", s.HealthCheck)
 	a.POST("/gateway/add", s.gatewayAdd) // called by gateway-back at start-up (machine to machine)
 
+	// The camera relay checks phone cameras (not under /api, so nginx never forwards it).
+	r.POST("/internal/relay-auth", s.relayAuth)
+
 	// ---- accounts (public) ----
 	strict := newLimiter(10, 5*time.Minute).middleware // per IP and route
 	a.POST("/auth/signup", strict, s.signup)
@@ -123,6 +131,7 @@ func (s *Server) Register(r *gin.Engine) {
 	u.PATCH("/org/members/:id", s.can(auth.ManageMembers), s.setMemberRole)
 	u.DELETE("/org/members/:id", s.can(auth.ManageMembers), s.removeMember)
 	u.GET("/org/permissions", s.can(auth.ViewMembers), s.rolePermissions)
+	u.GET("/org/emails", s.can(auth.ViewEmails), s.accountEmails)
 	u.PUT("/org/permissions", s.can(auth.ManageRoles), s.saveRolePermissions)
 
 	// ---- cameras ----
@@ -130,6 +139,8 @@ func (s *Server) Register(r *gin.Engine) {
 	cams := s.can(auth.ManageCameras)
 	u.GET("/cameras", watch, s.listCameras)
 	u.POST("/cameras", cams, s.homeOrgOnly, s.addCamera)
+	u.POST("/cameras/phone", cams, s.homeOrgOnly, s.addPhoneCamera)
+	u.POST("/cameras/:id/phone-link", cams, s.homeOrgOnly, s.newPhoneLink)
 	u.PATCH("/cameras/:id", cams, s.updateCamera)
 	u.PUT("/cameras/order", cams, s.cameraOrder)
 	u.DELETE("/cameras/:id", cams, s.homeOrgOnly, s.deleteCamera)
@@ -304,6 +315,8 @@ type CameraView struct {
 	LastFrameAgeS   *float64         `json:"last_frame_age_s"`
 	ActiveIncidents int              `json:"active_incidents"`
 	TenantID        string           `json:"tenant_id"`
+
+	Phone bool `json:"phone"` // a phone streaming to the camera relay (new QR code possible)
 }
 
 // liveState is what ml-service is doing right now, from the database: when it last
@@ -400,8 +413,13 @@ func (s *Server) listCameras(c *gin.Context) {
 		v.setHealth(&d, true)
 		out = append(out, v)
 	}
+	if phones, err := s.db.PhoneCameraIDs(ctx); err == nil {
+		for i := range out {
+			out[i].Phone = phones[out[i].ID]
+		}
+	}
 	sortByOrder(out, dbCams)
-	resp := gin.H{"cameras": out, "limits": s.gateway.limits(ctx)}
+	resp := gin.H{"cameras": out, "limits": s.gateway.limits(ctx), "phone_cameras": s.cfg.PhoneRelayURL != ""}
 	if gwErr != nil {
 		resp["gateway_error"] = gwErr.Error()
 	}
@@ -548,6 +566,9 @@ func (s *Server) deleteCamera(c *gin.Context) {
 	if err != nil {
 		fail(c, err)
 		return
+	}
+	if err := s.db.DeletePhoneCamera(ctx, id); err != nil { // its password stops working
+		log.Printf("removing phone camera %s: %v", id, err)
 	}
 	s.auditCamera(c, "camera.removed", id, name, "Camera removed", nil)
 	c.JSON(http.StatusOK, gin.H{"ok": true})

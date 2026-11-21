@@ -78,6 +78,8 @@ services:
       EMAIL_LINKS_IN_RESPONSE: ${EMAIL_LINKS_IN_RESPONSE:-false}
       REQUIRE_EMAIL_VERIFICATION: ${REQUIRE_EMAIL_VERIFICATION:-true}  # false = sign in right after sign-up (demos)
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      # Phone cameras: the camera relay's public RTMPS address (empty = off; set by docker-compose.azure.yml).
+      PHONE_RELAY_URL: ${PHONE_RELAY_URL:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_SECURITY: ${SMTP_SECURITY:-starttls}

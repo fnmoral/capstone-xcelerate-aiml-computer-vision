@@ -18,8 +18,9 @@ func TestAdminCanDoEverything(t *testing.T) {
 func TestDefaultRoles(t *testing.T) {
 	def := DefaultGrants()
 	for _, p := range Catalog {
-		if got := Can(RoleMember, p.Key, def); got == p.AdminOnly {
-			t.Errorf("member %s = %v, want %v", p.Key, got, !p.AdminOnly)
+		want := !p.AdminOnly && !slices.Contains(NotByDefault, p.Key)
+		if got := Can(RoleMember, p.Key, def); got != want {
+			t.Errorf("member %s = %v, want %v", p.Key, got, want)
 		}
 	}
 	for _, write := range []string{ManageAlerts, ManageCameras, ManageDetection, ManageNotifications, ManageSettings, ManageMembers, ManageRoles, CreateReports} {

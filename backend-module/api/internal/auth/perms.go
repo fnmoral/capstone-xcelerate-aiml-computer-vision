@@ -55,6 +55,7 @@ const (
 	ManageDetection     = "detection.manage"
 	ManageNotifications = "notifications.manage"
 	ManageSettings      = "settings.manage"
+	ViewEmails          = "emails.view"
 	ViewMembers         = "members.view"
 	ManageMembers       = "members.manage"
 	ManageRoles         = "roles.manage"
@@ -73,6 +74,7 @@ var Catalog = []Permission{
 	{ManageDetection, "Configure", "Change detection settings", "Change the pose model, device and detection thresholds.", false},
 	{ManageNotifications, "Configure", "Manage notifications", "Change who is notified, how, templates and email / SMS providers.", false},
 	{ManageSettings, "Configure", "Manage organization settings", "Change the organization profile, time zone and gateway connection.", false},
+	{ViewEmails, "People", "View emails sent", "See the invitations, email checks and password resets sent, and whether they went out (Settings).", false},
 	{ViewMembers, "People", "View members", "See who is in the organization and their roles.", false},
 	{ManageMembers, "People", "Manage members", "Invite and remove members and change their roles.", true},
 	{ManageRoles, "People", "Manage role permissions", "Change what members and viewers are allowed to do.", true},
@@ -97,12 +99,16 @@ func adminOnly(key string) bool {
 	return false
 }
 
+// NotByDefault are permissions admins can grant, but members don't get unless an admin ticks
+// them (emails sent show people's addresses).
+var NotByDefault = []string{ViewEmails}
+
 // DefaultGrants is what members and viewers may do in a new organization.
 // Admins always have every permission.
 func DefaultGrants() map[string][]string {
 	member := []string{}
 	for _, p := range Catalog {
-		if !p.AdminOnly {
+		if !p.AdminOnly && !slices.Contains(NotByDefault, p.Key) {
 			member = append(member, p.Key)
 		}
 	}

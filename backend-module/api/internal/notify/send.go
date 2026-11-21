@@ -16,6 +16,7 @@ import (
 	"io"
 	"log"
 	"mime"
+	"mime/quotedprintable"
 	"net"
 	"net/http"
 	"net/mail"
@@ -116,6 +117,7 @@ func (p *SMSProvider) Unlock(b *Box) error {
 // Email is one message to one address.
 type Email struct {
 	To, Subject, Text string
+	HTML              string // optional: sent as an HTML alternative to Text
 }
 
 // Result says what happened to a message: "sent" or "logged" (no provider).
@@ -148,22 +150,51 @@ func SendEmail(ctx context.Context, p EmailProvider, m Email) (Result, error) {
 			port = 587
 		}
 	}
+	if err := smtpSend(ctx, p, port, m.To, buildMessage(p, m)); err != nil {
+		return "", err
+	}
+	return Sent, nil
+}
+
+// buildMessage makes the email: plain text, or plain text + HTML (multipart/alternative),
+// with the headers mail services expect from a real sender (Date, Message-ID).
+func buildMessage(p EmailProvider, m Email) []byte {
 	from := mail.Address{Name: p.FromName, Address: p.FromEmail}
-	msg := strings.Join([]string{
+	domain := "localhost"
+	if at := strings.LastIndex(p.FromEmail, "@"); at >= 0 {
+		domain = p.FromEmail[at+1:]
+	}
+	id := make([]byte, 12)
+	_, _ = rand.Read(id)
+	head := []string{
 		"From: " + from.String(),
 		"To: " + m.To,
 		"Subject: " + mime.QEncoding.Encode("utf-8", headerUnsafe.ReplaceAllString(m.Subject, " ")),
 		"Date: " + time.Now().Format(time.RFC1123Z),
+		fmt.Sprintf("Message-ID: <%x.%d@%s>", id, time.Now().UnixNano(), domain),
 		"MIME-Version: 1.0",
-		"Content-Type: text/plain; charset=utf-8",
-		"Content-Transfer-Encoding: 8bit",
-		"",
-		strings.ReplaceAll(m.Text, "\n", "\r\n"),
-	}, "\r\n")
-	if err := smtpSend(ctx, p, port, m.To, []byte(msg)); err != nil {
-		return "", err
 	}
-	return Sent, nil
+	if m.HTML == "" {
+		head = append(head, "Content-Type: text/plain; charset=utf-8", "Content-Transfer-Encoding: quoted-printable", "", qp(m.Text))
+		return []byte(strings.Join(head, "\r\n"))
+	}
+	boundary := fmt.Sprintf("fg-%x", id)
+	head = append(head, `Content-Type: multipart/alternative; boundary="`+boundary+`"`, "",
+		"--"+boundary,
+		"Content-Type: text/plain; charset=utf-8", "Content-Transfer-Encoding: quoted-printable", "", qp(m.Text),
+		"--"+boundary,
+		"Content-Type: text/html; charset=utf-8", "Content-Transfer-Encoding: quoted-printable", "", qp(m.HTML),
+		"--"+boundary+"--", "")
+	return []byte(strings.Join(head, "\r\n"))
+}
+
+// qp encodes a body as quoted-printable with CRLF line ends (safe for any SMTP server).
+func qp(s string) string {
+	var b strings.Builder
+	w := quotedprintable.NewWriter(&b)
+	_, _ = w.Write([]byte(strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\n", "\r\n")))
+	_ = w.Close()
+	return b.String()
 }
 
 func smtpSend(ctx context.Context, p EmailProvider, port int, to string, msg []byte) error {

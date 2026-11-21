@@ -12,7 +12,10 @@ from ml-service.
 | `POST /api/cameras` | `{name, rtsp_url, username?, password?, location?, zone?}` → added on the gateway, registered in the database with the same UUID. Credentials stay on the gateway only |
 | `PATCH /api/cameras/:id` | `{name?, location?, zone?, alert_offline?}` (database only; an empty zone clears it). `alert_offline`: notify when the camera stops working (default on) |
 | `PUT /api/cameras/order` | `{camera_ids: [...]}`: the order cameras are shown in (Live View, incident videos); stored as `cameras.metadata.sort_order`. `GET /api/cameras` and incident cameras come back in this order |
-| `DELETE /api/cameras/:id` | Removed from the gateway and the database (its incidents are kept) |
+| `DELETE /api/cameras/:id` | Removed from the gateway and the database (its incidents are kept); a phone camera's password stops working |
+| `POST /api/cameras/phone` | `{name, location?, zone?}` → a phone camera: added on the gateway as `rtsp://test-camera:8554/phone-<id>`, with a random password. Returns (once) `publish_url` (RTMPS), `server_url` + `stream_key`, and `setup_url` (a `larix://` link for the QR code). 409 `no_phone_relay` when `PHONE_RELAY_URL` is empty |
+| `POST /api/cameras/:id/phone-link` | New password and links for a phone camera (the old password stops working). 404 if not a phone camera |
+| `POST /internal/relay-auth` | Not under `/api`, never proxied, private callers only. The camera relay (MediaMTX `authMethod: http`) asks it for each connection: RTSP (VM-internal port) allowed; RTMPS only to publish, with the phone camera's current password for its own path; everything else refused |
 | `POST /api/cameras/:id/pause` · `/resume` | Stops / restarts the camera's stream on the gateway. The gateway streams at most 5 at once (resume: 409 at 5) and keeps up to 50; `GET /api/cameras` returns `limits`. A camera added while 5 stream is saved paused (`status: "paused"`) |
 | `POST /api/cameras/:id/switch` | `{replace_id}`: stream this paused camera instead of `replace_id` (pauses that one, resumes this one; if this one fails, `replace_id` is resumed again) |
 | `GET /api/cameras/:id/stream` · `/frame.jpg` | Annotated live video (MJPEG) / one frame, from ml-service |
@@ -65,6 +68,7 @@ may do (`tenants.role_permissions`); managing members and roles stays admin-only
 | `GET /api/org/members` · `PATCH` · `DELETE /api/org/members/:id` | Members; change role / remove (signs them out). The last admin can't be demoted or removed (409) |
 | `POST /api/org/invitations` · `…/:id/resend` · `DELETE …/:id` | Invite by email with a role (7 days); the answer also has the link (`url`) so the admin can share it directly (copy / QR code) |
 | `GET` · `PUT /api/org/permissions` | Permission catalog and what members / viewers may do |
+| `GET /api/org/emails` | `emails.view` (admins by default; grantable): account emails (invitation, verification, password reset) for the organization and its members, with status `sent` / `logged` / `failed` and the error. Kept 90 days (`account_emails`) |
 
 Organizations other than the home one have no gateway yet: adding, pausing or removing
 cameras answers 409 `no_gateway` (ml-service still serves the home tenant only).
@@ -84,6 +88,8 @@ follow-ups to the people who got the alert. Failed messages are retried 3 times
 (`notification_deliveries`). In-app: `GET /api/notifications` leaves out severities switched
 off for the app. Account emails (verification, reset, invitations) use `SMTP_*` from the
 environment, else the organization's (or home organization's) SMTP provider, else the log.
+They are sent as plain text + branded HTML (logo from `/brand/email-logo.png`), with a
+`Message-ID`, and recorded in `account_emails`.
 
 ## Incident reports
 

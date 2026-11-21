@@ -249,9 +249,12 @@ func (s *Server) startSession(c *gin.Context, userID, tenantID string) error {
 // server from the environment (SMTP_HOST, ...) if set, otherwise the email provider set up
 // on the Notifications page of the organization (or of the home organization), otherwise
 // it writes the message to the API log.
-func (s *Server) systemEmail(ctx context.Context, tenantID string, m notify.Email) (notify.Result, error) {
-	p := s.cfg.SMTP
+// kind (invitation | verification | password_reset) and the outcome are recorded for
+// Settings > Emails sent.
+func (s *Server) systemEmail(ctx context.Context, tenantID, kind string, m notify.Email) (notify.Result, error) {
+	p, via := s.cfg.SMTP, "server_smtp"
 	if p.Type != "smtp" {
+		via = "log"
 		p = notify.EmailProvider{Type: "log"}
 		for _, tid := range []string{tenantID, ""} {
 			if tid == "" {
@@ -262,16 +265,36 @@ func (s *Server) systemEmail(ctx context.Context, tenantID string, m notify.Emai
 			}
 			ns, err := s.db.NotificationsFor(ctx, tid)
 			if err == nil && ns.Email.Type == "smtp" && ns.Email.Unlock(s.box) == nil {
-				p = ns.Email
+				p, via = ns.Email, "org_smtp"
 				break
 			}
 		}
 	}
 	res, err := notify.SendEmail(ctx, p, m)
+	rec := store.AccountEmail{Kind: kind, Recipient: m.To, Subject: m.Subject, FromEmail: p.FromEmail, Via: via, Status: string(res)}
 	if err != nil {
 		log.Printf("account email to %s failed: %v", m.To, err)
+		msg := err.Error()
+		rec.Status, rec.Error = "failed", &msg
+	}
+	if lerr := s.db.LogAccountEmail(ctx, tenantID, rec); lerr != nil {
+		log.Printf("recording account email: %v", lerr)
 	}
 	return res, err
+}
+
+// accountEmails lists the organization's account emails: GET /api/org/emails.
+func (s *Server) accountEmails(c *gin.Context) {
+	list, err := s.db.AccountEmails(c.Request.Context(), 200)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	from := s.cfg.SMTP.FromEmail
+	if s.cfg.SMTP.Type != "smtp" {
+		from = ""
+	}
+	c.JSON(http.StatusOK, gin.H{"emails": list, "server_from": from, "kept_days": 90})
 }
 
 // mailed is the response after sending a link by email; with EMAIL_LINKS_IN_RESPONSE=true
@@ -296,11 +319,13 @@ func (s *Server) sendVerification(c *gin.Context, u store.User, tenantID string)
 		return "", "", err
 	}
 	link := s.appURL(c) + "/verify-email?token=" + url.QueryEscape(token)
-	res, err := s.systemEmail(c.Request.Context(), tenantID, notify.Email{
-		To: u.Email, Subject: "Verify your email for FallGuard",
-		Text: fmt.Sprintf("Hi %s,\n\nConfirm your email address to finish setting up your FallGuard account:\n\n%s\n\n"+
-			"The link expires in 48 hours. If you didn't sign up, ignore this email.\n\n— FallGuard", u.FirstName, link),
-	})
+	res, err := s.systemEmail(c.Request.Context(), tenantID, "verification", s.accountEmail(c, u.Email,
+		"Confirm your email for FallGuard Vision", accountMail{
+			Greeting: "Hi " + u.FirstName + ",",
+			Lines:    []string{"Confirm your email address to finish setting up your FallGuard Vision account."},
+			Button:   "Confirm my email", Link: link,
+			Note: "The link expires in 48 hours. If you didn't sign up, you can ignore this email.",
+		}))
 	return res, link, err
 }
 
@@ -496,11 +521,13 @@ func (s *Server) forgotPassword(c *gin.Context) {
 				return
 			}
 			link := s.appURL(c) + "/reset-password?token=" + url.QueryEscape(token)
-			res, _ := s.systemEmail(c.Request.Context(), "", notify.Email{
-				To: u.Email, Subject: "Reset your FallGuard password",
-				Text: fmt.Sprintf("Hi %s,\n\nSomeone asked to reset the password of your FallGuard account. To choose a new one, open:\n\n%s\n\n"+
-					"The link expires in 1 hour. If it wasn't you, ignore this email: your password stays the same.\n\n— FallGuard", u.FirstName, link),
-			})
+			res, _ := s.systemEmail(c.Request.Context(), "", "password_reset", s.accountEmail(c, u.Email,
+				"Reset your FallGuard Vision password", accountMail{
+					Greeting: "Hi " + u.FirstName + ",",
+					Lines:    []string{"Someone asked to reset the password of your FallGuard Vision account."},
+					Button:   "Choose a new password", Link: link,
+					Note: "The link expires in 1 hour. If it wasn't you, ignore this email: your password stays the same.",
+				}))
 			out = s.mailed(res, link, nil)
 		}
 	}
