@@ -188,6 +188,7 @@ func (s *Server) Register(r *gin.Engine) {
 	u.PUT("/detection", s.can(auth.ManageDetection), s.saveDetection)
 	u.GET("/settings", s.settings)
 	u.PUT("/settings", s.can(auth.ManageSettings), s.saveSettings)
+	u.PUT("/settings/theme", s.can(auth.ManageSettings), s.saveDefaultTheme)
 	u.GET("/gateway/config", s.can(auth.ManageSettings), s.homeOrgOnly, s.gatewayConfig)
 	u.PUT("/gateway/config", s.can(auth.ManageSettings), s.homeOrgOnly, s.gatewayConfig)
 }
