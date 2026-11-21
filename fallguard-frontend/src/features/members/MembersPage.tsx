@@ -6,6 +6,7 @@ import { accounts, type Invitation, type Mailed, type Member, type Role, type Ro
 import { usePolling } from '../../services/api/usePolling';
 import { formatTime } from '../../lib/format';
 import { PERM, useAuth } from '../auth/AuthContext';
+import { DemoLinks } from './DemoLinks';
 import './members.css';
 
 const ROLES: Role[] = ['admin', 'member', 'viewer'];
@@ -303,6 +304,8 @@ export default function MembersPage() {
             </table>
           </div>
         </section>
+
+        {manage && <DemoLinks />}
 
         {manage && (data?.invitations.length ?? 0) > 0 && (
           <section className="card members-section">

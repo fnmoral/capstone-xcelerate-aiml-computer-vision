@@ -18,6 +18,21 @@ export interface User {
   email_verified: boolean;
   last_login_at: string | null;
   created_at: string;
+  /** Demo visitor through a demo access link: view-only until access_until. */
+  is_guest?: boolean;
+  access_until?: string | null;
+}
+
+export interface GuestLink {
+  id: string;
+  label: string;
+  expires_at: string;
+  revoked_at: string | null;
+  visits: number;
+  last_visit_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  status: "active" | "expired" | "revoked";
 }
 
 export interface OrgRef {
@@ -220,8 +235,11 @@ export interface ReportFacts {
 
 export const accounts = {
   me: () => apiRequest<Me>("/auth/me"),
+  /** How accounts work on this server: is email verification required? (public) */
+  config: () => apiRequest<{ email_verification: boolean }>("/auth/config"),
+  /** signed_in: verification is off on this server, the new account is already signed in. */
   signup: (b: { org_name: string; first_name: string; last_name: string; email: string; password: string }) =>
-    apiRequest<Mailed & { email: string }>("/auth/signup", post(b)),
+    apiRequest<Mailed & { email: string; signed_in?: boolean }>("/auth/signup", post(b)),
   login: (email: string, password: string) => apiRequest<{ ok: boolean }>("/auth/login", post({ email, password })),
   logout: () => apiRequest("/auth/logout", post()),
   logoutAll: () => apiRequest("/auth/logout-all", post()),
@@ -238,6 +256,14 @@ export const accounts = {
     apiRequest("/auth/change-password", post({ current_password, new_password })),
   switchOrg: (org_id: string) => apiRequest("/auth/switch-org", post({ org_id })),
   leaveOrg: () => apiRequest("/org/leave", post()),
+  /** Demo access links (view-only, no account). The url (with its token) comes back only on create. */
+  guestLinks: () => apiRequest<{ links: GuestLink[] }>("/org/guest-links"),
+  createGuestLink: (label: string, hours: number) =>
+    apiRequest<{ link: GuestLink; url: string }>("/org/guest-links", post({ label, hours })),
+  revokeGuestLink: (id: string) => apiRequest("/org/guest-links/" + enc(id), { method: "DELETE" }),
+  demoInfo: (token: string) =>
+    apiRequest<{ org_name: string; label: string; expires_at: string }>("/auth/demo/" + enc(token)),
+  demoEnter: (token: string) => apiRequest<{ ok: boolean; expires_at: string }>("/auth/demo/" + enc(token), post()),
 
   org: () => apiRequest<OrgProfile>("/org"),
   saveOrg: (p: OrgProfile) => apiRequest<OrgProfile>("/org", { method: "PUT", ...json(p) }),

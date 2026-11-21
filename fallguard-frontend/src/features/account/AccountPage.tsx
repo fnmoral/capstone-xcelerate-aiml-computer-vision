@@ -92,6 +92,16 @@ export default function AccountPage() {
   const navigate = useNavigate();
   const [msg, setMsg] = useState<Msg>(null);
   if (!me) return null;
+  if (me.user.is_guest) {
+    return (
+      <>
+        <PageHeader title="Demo access" description={`View-only access to ${me.org.name}`} />
+        <p className="notice">You're looking around with a demo link, without an account. It works until{' '}
+          {me.user.access_until ? new Date(me.user.access_until).toLocaleString() : 'it is turned off'}.</p>
+        <button className="btn" onClick={async () => { await signOut(); navigate('/login', { replace: true }); }}>Leave the demo</button>
+      </>
+    );
+  }
 
   return (
     <>

@@ -4,7 +4,7 @@ import { homePath, NAV_ITEMS } from '../config/navigation';
 import { NotFoundPage } from '../features/not-found/NotFoundPage';
 import { RequireAuth, RequirePermission, useAuth } from '../features/auth/AuthContext';
 import {
-  ForgotPasswordPage, InvitePage, LoginPage, ResetPasswordPage, SignupPage, VerifyEmailPage,
+  DemoPage, ForgotPasswordPage, InvitePage, LoginPage, ResetPasswordPage, SignupPage, VerifyEmailPage,
 } from '../features/auth/AuthPages';
 
 /**
@@ -35,6 +35,8 @@ export const router = createRouter([
   { path: '/forgot-password', element: <ForgotPasswordPage /> },
   { path: '/reset-password', element: <ResetPasswordPage /> },
   { path: '/invite/:token', element: <InvitePage /> },
+  // Demo access link: view-only visitor, no account (Members & Roles → Demo access links).
+  { path: '/demo/:token', element: <DemoPage /> },
   // Public, view-only incident video from a share link (no account needed).
   { path: '/shared/:token', ...page(() => import('../features/shared/SharedIncidentPage')) },
   {

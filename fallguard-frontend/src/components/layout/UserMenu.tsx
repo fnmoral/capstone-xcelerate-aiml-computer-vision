@@ -57,8 +57,11 @@ export function UserMenu() {
         <div className="notif__panel card user-panel" id="user-panel" role="region" aria-label="Account">
           <div className="user-panel__who">
             <strong>{name}</strong>
-            <span className="muted">{me.user.email}</span>
-            <span className="muted">{me.org.name} · {ROLE_LABEL[me.role] ?? me.role}</span>
+            {!me.user.is_guest && <span className="muted">{me.user.email}</span>}
+            <span className="muted">{me.org.name} · {me.user.is_guest ? 'Demo access, view-only' : ROLE_LABEL[me.role] ?? me.role}</span>
+            {me.user.is_guest && me.user.access_until && (
+              <span className="muted">Until {new Date(me.user.access_until).toLocaleString()}</span>
+            )}
           </div>
           {error && <p className="notice notice--error">{error}</p>}
           {me.orgs.length > 1 && (
@@ -71,8 +74,8 @@ export function UserMenu() {
               ))}
             </div>
           )}
-          <Link to="/account" className="user-panel__item" onClick={() => setOpen(false)}><Icon name="user" size={16} /> My account</Link>
-          <Link to="/members" className="user-panel__item" onClick={() => setOpen(false)}><Icon name="users" size={16} /> Members &amp; roles</Link>
+          {!me.user.is_guest && <Link to="/account" className="user-panel__item" onClick={() => setOpen(false)}><Icon name="user" size={16} /> My account</Link>}
+          {me.permissions.includes('members.view') && <Link to="/members" className="user-panel__item" onClick={() => setOpen(false)}><Icon name="users" size={16} /> Members &amp; roles</Link>}
           <button className="user-panel__item" onClick={async () => { await signOut(); navigate('/login', { replace: true }); }}>
             <Icon name="logout" size={16} /> Sign out
           </button>

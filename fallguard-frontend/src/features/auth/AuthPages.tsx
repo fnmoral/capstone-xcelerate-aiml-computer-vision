@@ -129,7 +129,10 @@ export function LoginPage() {
 }
 
 export function SignupPage() {
-  const { me } = useAuth();
+  const { me, refresh } = useAuth();
+  const navigate = useNavigate();
+  const [verify, setVerify] = useState(true);
+  useEffect(() => { accounts.config().then((c) => setVerify(c.email_verification)).catch(() => undefined); }, []);
   const [form, setForm] = useState({ org_name: '', first_name: '', last_name: '', email: '', password: '' });
   const [confirm, setConfirm] = useState('');
   const [agree, setAgree] = useState(false);
@@ -149,7 +152,13 @@ export function SignupPage() {
     setBusy(true);
     setError(null);
     try {
-      setDone(await accounts.signup(form));
+      const r = await accounts.signup(form);
+      if (r.signed_in) { // email verification is off on this server: straight in
+        await refresh();
+        navigate('/', { replace: true });
+        return;
+      }
+      setDone(r);
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -187,7 +196,7 @@ export function SignupPage() {
         </div>
         <label className="field">Work email
           <input type="email" value={form.email} onChange={set('email')} required autoComplete="email" />
-          <small>One account per email. You'll need to verify it.</small>
+          <small>One account per email.{verify ? " You'll need to verify it." : ''}</small>
         </label>
         <PasswordField value={form.password} onChange={(v) => setForm({ ...form, password: v })} />
         <PasswordField value={confirm} onChange={setConfirm} label="Confirm password" hint={false} />
@@ -384,6 +393,59 @@ export function InvitePage() {
         )}
         <button className="btn btn--primary" disabled={busy}>{busy ? 'Joining…' : 'Accept invitation'}</button>
       </form>
+    </AuthCard>
+  );
+}
+
+/** Demo access link: signs this browser in as a view-only visitor, no account needed. */
+export function DemoPage() {
+  const { token = '' } = useParams();
+  const { me, refresh } = useAuth();
+  const navigate = useNavigate();
+  const [info, setInfo] = useState<{ org_name: string; label: string; expires_at: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const started = useRef(false);
+
+  const enter = async () => {
+    setBusy(true);
+    try {
+      await accounts.demoEnter(token);
+      await refresh();
+      navigate('/', { replace: true });
+    } catch (e) {
+      setError(errorText(e));
+      setBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    accounts.demoInfo(token).then((i) => {
+      setInfo(i);
+      // Not signed in: go straight in. Signed in with an account: ask first (it would sign them out).
+      if (!me) void enter();
+    }).catch((e) => setError(errorText(e)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
+  if (error) {
+    return <AuthCard title="Demo link not valid" footer={<Link to="/login">Go to sign in</Link>}>
+      <p className="notice notice--error">{error}</p></AuthCard>;
+  }
+  return (
+    <AuthCard title={info ? `Demo of ${info.org_name}` : 'Opening the demo…'}
+      subtitle={info ? <>View-only access until {new Date(info.expires_at).toLocaleString()}. No account needed.</> : undefined}>
+      {me && info && !busy ? (
+        <>
+          <p className="notice">You're signed in as {me.user.email}. Opening the demo signs you out of your account in this browser.</p>
+          <div className="row">
+            <button className="btn btn--primary" onClick={() => void enter()}>Open the demo</button>
+            <button className="btn" onClick={() => navigate('/', { replace: true })}>Stay signed in</button>
+          </div>
+        </>
+      ) : <p className="muted">One moment…</p>}
     </AuthCard>
   );
 }

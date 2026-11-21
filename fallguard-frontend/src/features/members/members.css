@@ -19,3 +19,6 @@
 .roles-table__cell input { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
 .roles-table__cell input:disabled { cursor: not-allowed; }
 .roles-table__lock { color: var(--text-muted); }
+
+.demo-created { margin: 12px 0 0; overflow-wrap: anywhere; }
+.demo-created__url { flex: 1; min-width: 0; font: inherit; font-family: var(--mono); font-size: 12px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }
