@@ -1,7 +1,7 @@
 # Azure VM deployment (deploy/azure/README.md). Use with the main file:
 #
 #   docker compose -f docker-compose.yml -f docker-compose.azure.yml up -d --build \
-#       db partitions api stream-hub gateway-back frontend caddy
+#       db partitions api stream-hub gateway-back frontend caddy test-camera
 #
 # - Only Caddy faces the internet (80/443, HTTPS with a free Let's Encrypt certificate).
 #   Every other service listens on the VM itself (127.0.0.1) or the Docker network only.
@@ -48,6 +48,14 @@ services:
   gateway-back:
     ports: !override
       - "127.0.0.1:${GATEWAY_PORT:-8080}:8080"   # gateway UI: open it through an SSH tunnel
+
+  # Camera relay: cameras on another network (a phone at home) can't be reached from the VM,
+  # so a machine next to them sends their video here through an SSH tunnel
+  # (deploy/azure/send-camera.sh). The gateway reads it as rtsp://test-camera:8554/<name>.
+  test-camera:
+    profiles: !reset []
+    ports: !override
+      - "127.0.0.1:8554:8554"                     # only through the SSH tunnel
 
 volumes:
   caddy-data:
