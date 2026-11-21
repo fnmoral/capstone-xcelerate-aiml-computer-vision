@@ -57,6 +57,9 @@ may do (`tenants.role_permissions`); managing members and roles stays admin-only
 | `GET` · `PATCH /api/auth/me` | User, organization, role, permissions, organizations; name and phone (E.164) |
 | `POST /api/auth/change-password` · `/switch-org` · `/api/org/leave` | Changing the password signs out the other sessions |
 | `GET /api/auth/check` | 204 / 401: nginx `auth_request` for `/stream-hub` (live video, clips, snapshots) |
+| `GET /api/auth/config` | `{email_verification}`: whether sign-in needs a verified email (`REQUIRE_EMAIL_VERIFICATION`; false = signed in right after sign-up) |
+| `GET` · `POST /api/auth/demo/:token` | Demo access link: info (organization, label, end time) / sign in as the link's view-only visitor until it ends. 404 once expired or ended |
+| `GET` · `POST /api/org/guest-links` · `DELETE …/:id` | Admins: list / create (`{label, hours}` 1–720; the URL with its token is returned only now) / end a demo link (its visitors are signed out) |
 | `GET` · `PUT /api/org` | Organization name and profile (address, WSIB firm number…; used by incident reports) |
 | `GET /api/org/members` · `PATCH` · `DELETE /api/org/members/:id` | Members; change role / remove (signs them out). The last admin can't be demoted or removed (409) |
 | `POST /api/org/invitations` · `…/:id/resend` · `DELETE …/:id` | Invite by email with a role (7 days) |
@@ -101,6 +104,7 @@ environment, else the organization's (or home organization's) SMTP provider, els
 | `APP_URL` | (request address) | Web app address for links in emails |
 | `APP_SECRET` | (key in the database) | Encrypts SMTP passwords / Twilio tokens saved in the app |
 | `COOKIE_SECURE` | `false` | Session cookie over HTTPS only |
+| `REQUIRE_EMAIL_VERIFICATION` | `true` | `false` = no verification email, new accounts are signed in at once (demos) |
 | `EMAIL_LINKS_IN_RESPONSE` | `false` | Without an email provider, return verification / reset / invitation links in API answers (demos only) |
 | `ALLOWED_ORIGINS` | | Other web origins allowed to send requests (same origin always is) |
 | `SMTP_HOST` `SMTP_PORT` `SMTP_SECURITY` `SMTP_USERNAME` `SMTP_PASSWORD` `SMTP_FROM` `SMTP_FROM_NAME` | | Mail server for account emails |

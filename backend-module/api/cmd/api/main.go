@@ -45,6 +45,9 @@ func main() {
 		CookieSecure:    strings.EqualFold(os.Getenv("COOKIE_SECURE"), "true"),
 		LinksInResponse: strings.EqualFold(os.Getenv("EMAIL_LINKS_IN_RESPONSE"), "true"),
 		SMTP:            notify.EmailProvider{Type: "log"},
+
+		// Anything but "false" keeps verification on, so a typo never switches it off.
+		RequireEmailVerification: !strings.EqualFold(strings.TrimSpace(os.Getenv("REQUIRE_EMAIL_VERIFICATION")), "false"),
 	}
 	for _, o := range strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",") {
 		if o = strings.TrimSpace(o); o != "" {

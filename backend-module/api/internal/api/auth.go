@@ -358,8 +358,23 @@ func (s *Server) signup(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// REQUIRE_EMAIL_VERIFICATION=false (demos): no email, signed in right away. The address
+	// stays unverified, so turning verification back on asks these users to verify then.
+	if !s.cfg.RequireEmailVerification {
+		if err := s.startSession(c, userID, tenantID); err != nil {
+			fail(c, err)
+			return
+		}
+		c.JSON(http.StatusCreated, gin.H{"ok": true, "email": email, "signed_in": true})
+		return
+	}
 	res, link, _ := s.sendVerification(c, store.User{ID: userID, Email: email, FirstName: first}, tenantID)
 	c.JSON(http.StatusCreated, s.mailed(res, link, gin.H{"email": email}))
+}
+
+// authConfig tells the sign-in pages how accounts work on this server (public).
+func (s *Server) authConfig(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"email_verification": s.cfg.RequireEmailVerification})
 }
 
 func (s *Server) login(c *gin.Context) {
@@ -397,7 +412,7 @@ func (s *Server) login(c *gin.Context) {
 		wrong()
 		return
 	}
-	if !u.EmailVerified {
+	if !u.EmailVerified && s.cfg.RequireEmailVerification {
 		c.JSON(http.StatusForbidden, gin.H{"error": "verify your email first: check your inbox for the link", "code": "email_not_verified"})
 		return
 	}

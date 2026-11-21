@@ -127,3 +127,20 @@ func TestCleanName(t *testing.T) {
 		t.Error("blank should be refused")
 	}
 }
+
+func TestGuestGrantsAreReadOnly(t *testing.T) {
+	// Even if an admin gave viewers write access, a demo visitor only gets to look.
+	grants := map[string][]string{RoleViewer: {ViewLive, ViewEvents, ViewMembers, ManageAlerts, ManageCameras}}
+	g := GuestGrants(grants)
+	for _, p := range []string{ManageAlerts, ManageCameras, ViewMembers, ManageMembers} {
+		if Can(RoleViewer, p, g) {
+			t.Errorf("demo visitor must not have %s", p)
+		}
+	}
+	if !Can(RoleViewer, ViewLive, g) || !Can(RoleViewer, ViewEvents, g) {
+		t.Error("demo visitor should keep the view permissions viewers have")
+	}
+	if !slices.Equal(Normalize(grants)[RoleViewer], []string{ViewLive, ViewEvents, ViewMembers, ManageAlerts, ManageCameras}) {
+		t.Error("GuestGrants must not change the organization's grants")
+	}
+}

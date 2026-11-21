@@ -50,6 +50,10 @@ type User struct {
 	EmailVerified bool       `json:"email_verified"`
 	LastLoginAt   *time.Time `json:"last_login_at"`
 	CreatedAt     time.Time  `json:"created_at"`
+
+	// Demo visitor (signed in through a demo access link): view-only until AccessUntil.
+	IsGuest     bool       `json:"is_guest,omitempty"`
+	AccessUntil *time.Time `json:"access_until,omitempty"`
 }
 
 // DisplayName is "First Last", or the email if the name is empty.
@@ -206,7 +210,8 @@ func (s *Store) claimHomeTenant(ctx context.Context, tx pgx.Tx, orgName string) 
 func (s *Store) UserByEmail(ctx context.Context, email string) (*LoginUser, error) {
 	var u LoginUser
 	err := s.pool.QueryRow(ctx, `SELECT `+userColumns+`, coalesce(u.password_hash, ''), u.failed_logins,
-		u.locked_until, u.last_tenant_id::text FROM users u WHERE u.email = $1::citext AND u.is_active`, email).
+		u.locked_until, u.last_tenant_id::text FROM users u WHERE u.email = $1::citext AND u.is_active
+		AND u.guest_link_id IS NULL`, email).
 		Scan(&u.ID, &u.Email, &u.FirstName, &u.LastName, &u.Phone, &u.EmailVerified, &u.LastLoginAt, &u.CreatedAt,
 			&u.PasswordHash, &u.FailedLogins, &u.LockedUntil, &u.LastTenantID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -296,15 +301,18 @@ func (s *Store) SessionByToken(ctx context.Context, tokenHash string, ttl time.D
 	var grants []byte
 	var lastSeen time.Time
 	err := s.pool.QueryRow(ctx, `
-		SELECT se.id::text, `+userColumns+`, se.tenant_id::text, t.name, m.role, t.role_permissions, se.expires_at, se.last_seen_at
+		SELECT se.id::text, `+userColumns+`, se.tenant_id::text, t.name, m.role, t.role_permissions, se.expires_at, se.last_seen_at,
+		       g.expires_at
 		FROM sessions se
 		JOIN users u ON u.id = se.user_id AND u.is_active
 		JOIN memberships m ON m.user_id = se.user_id AND m.tenant_id = se.tenant_id
 		JOIN tenants t ON t.id = se.tenant_id AND t.status = 'active'
-		WHERE se.token_hash = $1 AND se.expires_at > now()`, tokenHash).
+		LEFT JOIN guest_links g ON g.id = u.guest_link_id
+		WHERE se.token_hash = $1 AND se.expires_at > now()
+		  AND (u.guest_link_id IS NULL OR (g.revoked_at IS NULL AND g.expires_at > now()))`, tokenHash).
 		Scan(&se.ID, &se.User.ID, &se.User.Email, &se.User.FirstName, &se.User.LastName, &se.User.Phone,
 			&se.User.EmailVerified, &se.User.LastLoginAt, &se.User.CreatedAt, &se.TenantID, &se.OrgName, &se.Role,
-			&grants, &se.ExpiresAt, &lastSeen)
+			&grants, &se.ExpiresAt, &lastSeen, &se.User.AccessUntil)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -312,10 +320,17 @@ func (s *Store) SessionByToken(ctx context.Context, tokenHash string, ttl time.D
 		return nil, err
 	}
 	se.Grants = parseGrants(grants)
+	if se.User.AccessUntil != nil { // demo visitor: read-only, whatever viewers were granted
+		se.User.IsGuest = true
+		se.Grants = auth.GuestGrants(se.Grants)
+	}
 	if time.Until(se.ExpiresAt) < ttl/2 || time.Since(lastSeen) > time.Minute {
 		newExp := se.ExpiresAt
 		if time.Until(se.ExpiresAt) < ttl/2 {
 			newExp = time.Now().Add(ttl)
+		}
+		if se.User.AccessUntil != nil && newExp.After(*se.User.AccessUntil) {
+			newExp = *se.User.AccessUntil
 		}
 		if _, err := s.pool.Exec(ctx, `UPDATE sessions SET last_seen_at = now(), expires_at = $2 WHERE id = $1`,
 			se.ID, newExp); err == nil {
@@ -451,7 +466,7 @@ func (s *Store) Members(ctx context.Context) ([]Member, error) {
 	out := []Member{}
 	err := s.tx(ctx, func(tx pgx.Tx, tid string) error {
 		rows, err := tx.Query(ctx, `SELECT `+userColumns+`, m.role, m.created_at FROM memberships m
-			JOIN users u ON u.id = m.user_id WHERE m.tenant_id = $1
+			JOIN users u ON u.id = m.user_id WHERE m.tenant_id = $1 AND u.guest_link_id IS NULL
 			ORDER BY array_position(ARRAY['admin','member','viewer'], m.role), lower(coalesce(u.first_name, u.email::text))`, tid)
 		if err != nil {
 			return err

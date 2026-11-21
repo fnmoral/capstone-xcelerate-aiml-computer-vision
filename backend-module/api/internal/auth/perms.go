@@ -145,6 +145,26 @@ func Allowed(role string, grants map[string][]string) []string {
 	return Normalize(grants)[role]
 }
 
+// GuestPermissions are all a demo visitor may ever do: look, never change (and not see
+// the members list, which has people's emails).
+var GuestPermissions = []string{ViewLive, ViewEvents, ViewAnalytics, ViewReports, ViewLogs}
+
+// GuestGrants limits the viewer permissions to GuestPermissions, for demo visitors.
+func GuestGrants(grants map[string][]string) map[string][]string {
+	out := map[string][]string{}
+	for role, keys := range Normalize(grants) {
+		out[role] = keys
+	}
+	viewer := []string{}
+	for _, k := range out[RoleViewer] {
+		if slices.Contains(GuestPermissions, k) {
+			viewer = append(viewer, k)
+		}
+	}
+	out[RoleViewer] = viewer
+	return out
+}
+
 // Can reports whether role may do perm.
 func Can(role, perm string, grants map[string][]string) bool {
 	return slices.Contains(Allowed(role, grants), perm)

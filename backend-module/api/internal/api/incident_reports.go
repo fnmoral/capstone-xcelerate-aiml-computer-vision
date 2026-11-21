@@ -244,6 +244,12 @@ func (s *Server) PurgeDeletedReports(ctx context.Context) {
 		} else if n > 0 {
 			log.Printf("deleted reports: removed %d past their retention", n)
 		}
+		// Demo visitors of links that ended over 30 days ago (same hourly clean-up).
+		if n, err := s.db.PurgeGuests(ctx); err != nil {
+			log.Printf("demo visitors: %v", err)
+		} else if n > 0 {
+			log.Printf("demo visitors: removed %d from ended demo links", n)
+		}
 		select {
 		case <-ctx.Done():
 			return

@@ -76,6 +76,7 @@ services:
       APP_SECRET: ${APP_SECRET:-}              # encrypts SMTP / Twilio secrets saved in the app
       COOKIE_SECURE: ${COOKIE_SECURE:-false}   # true when the app is served over HTTPS
       EMAIL_LINKS_IN_RESPONSE: ${EMAIL_LINKS_IN_RESPONSE:-false}
+      REQUIRE_EMAIL_VERIFICATION: ${REQUIRE_EMAIL_VERIFICATION:-true}  # false = sign in right after sign-up (demos)
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}

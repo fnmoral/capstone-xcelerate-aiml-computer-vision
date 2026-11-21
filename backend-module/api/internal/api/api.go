@@ -30,6 +30,10 @@ type Config struct {
 	LinksInResponse bool                 // return email links in API answers when no email provider is set (demos)
 	AllowedOrigins  []string             // other web origins allowed to call the API
 	SMTP            notify.EmailProvider // server SMTP for account emails (Type "smtp" when SMTP_HOST is set)
+
+	// RequireEmailVerification: sign-in needs a verified email (default). false = new
+	// accounts are signed in right away (demos); REQUIRE_EMAIL_VERIFICATION.
+	RequireEmailVerification bool
 }
 
 // Server holds the dependencies of the routes.
@@ -90,6 +94,9 @@ func (s *Server) Register(r *gin.Engine) {
 	a.GET("/auth/invitations/:token", strict, s.invitationInfo)
 	a.POST("/auth/invitations/:token/accept", strict, s.acceptInvitation)
 	a.GET("/auth/check", s.authCheck) // nginx auth_request for stream-hub video
+	a.GET("/auth/config", s.authConfig)
+	a.GET("/auth/demo/:token", strict, s.guestInfo) // demo access links (view-only, no account)
+	a.POST("/auth/demo/:token", strict, s.guestEnter)
 
 	// ---- shared incident video (public, view-only; the token is the permission) ----
 	a.GET("/shared/:token", newLimiter(60, 5*time.Minute).middleware, s.sharedView)
@@ -97,11 +104,11 @@ func (s *Server) Register(r *gin.Engine) {
 
 	u := a.Group("", s.requireAuth)
 	u.GET("/auth/me", s.me)
-	u.PATCH("/auth/me", s.updateMe)
-	u.POST("/auth/change-password", strict, s.changePassword)
+	u.PATCH("/auth/me", s.notGuest, s.updateMe)
+	u.POST("/auth/change-password", s.notGuest, strict, s.changePassword)
 	u.POST("/auth/logout-all", s.logoutAll)
-	u.POST("/auth/switch-org", s.switchOrg)
-	u.POST("/org/leave", s.leaveOrg)
+	u.POST("/auth/switch-org", s.notGuest, s.switchOrg)
+	u.POST("/org/leave", s.notGuest, s.leaveOrg)
 
 	// ---- organization and members ----
 	u.GET("/org", s.getOrg)
@@ -110,6 +117,9 @@ func (s *Server) Register(r *gin.Engine) {
 	u.POST("/org/invitations", s.can(auth.ManageMembers), s.invite)
 	u.POST("/org/invitations/:id/resend", s.can(auth.ManageMembers), s.resendInvitation)
 	u.DELETE("/org/invitations/:id", s.can(auth.ManageMembers), s.revokeInvitation)
+	u.GET("/org/guest-links", s.can(auth.ManageMembers), s.listGuestLinks)
+	u.POST("/org/guest-links", s.can(auth.ManageMembers), s.createGuestLink)
+	u.DELETE("/org/guest-links/:id", s.can(auth.ManageMembers), s.revokeGuestLink)
 	u.PATCH("/org/members/:id", s.can(auth.ManageMembers), s.setMemberRole)
 	u.DELETE("/org/members/:id", s.can(auth.ManageMembers), s.removeMember)
 	u.GET("/org/permissions", s.can(auth.ViewMembers), s.rolePermissions)
