@@ -9,8 +9,8 @@ One Azure VM runs the web app, API, database, video relay and camera gateway. Th
 |---|---|
 | VM | `fallguard-vm` in `fallguard-rg` (Canada Central): B2ps_v2, 2 vCPU ARM64, 8 GB, Ubuntu 24.04 |
 | Data | 32 GB data disk at `/data`: database, video, certificates, code and `.env`. Kept even if the VM is deleted |
-| Firewall | 80/443 open; SSH (22) only from the admin's IP |
-| Auto-shutdown | daily at 11 PM Toronto (Eastern time, follows daylight saving) |
+| Firewall | 80/443 and 1936 (phone cameras, RTMPS) open; SSH (22) only from the admin's IP |
+| Auto-shutdown | daily at 2 AM Toronto (Eastern time, follows daylight saving; was 11 PM until 2026-11-21) |
 | Branch | `US_ml_module` while testing; `main` later |
 | Credit | Azure for Students, $100, until Nov 2027 |
 
@@ -73,20 +73,25 @@ ml-service then writes to `postgresql://ml_service:<password>@127.0.0.1:15432/fa
 
 To do: create the `tunnel` user (port forwarding only) and check outbound SSH from the Fanshawe server.
 
-## Cameras on another network
+## Phone cameras
 
-The VM can't reach home or campus addresses (e.g. a phone camera at `10.0.0.200`). A relay on the
-VM takes the video instead:
+In the app: **Cameras → Add phone camera** → scan the QR code with Larix Broadcaster → start
+streaming. Works from any network; no laptop. How it works: the phone sends RTMPS to the relay
+on port 1936 (Let's Encrypt certificate from Caddy); the relay asks the API for each
+connection; the gateway reads the phone from the relay inside the VM.
 
-1. On a computer on the camera's network (WSL), leave this running:
-   `bash deploy/azure/send-camera.sh rtsp://10.0.0.200:8554/ phone1`
-2. In the app, add the camera as `rtsp://test-camera:8554/phone1` (same username and password).
+## Cameras on another network (laptop forwarding)
 
-Video flows only while that computer is on and the script runs.
+For a camera that can't send by itself (an IP camera, or a phone RTSP server app at home):
+
+1. On a computer on the camera's network (WSL), leave this running (login in the address if
+   the camera needs one): `bash deploy/azure/send-camera.sh 'rtsp://user:pass@10.0.0.200:8554/' phone1`
+2. In the app, add the camera as `rtsp://test-camera:8554/phone1`, with no username or password.
+
+Video flows only while that computer is on and the script runs. It needs the VM SSH key.
 
 ## To do
 
-- **Cameras without a laptop:** phones that send straight to the relay (e.g. Larix Broadcaster).
 - **Schedule:** start/stop windows with Azure Automation (e.g. weekdays 8 AM–8 PM ≈ $28/month).
 - **Auto-deploy from GitHub:** rebuild on every push to `main` on GitHub, from anyone's machine (GitHub Actions).
 

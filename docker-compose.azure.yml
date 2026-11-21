@@ -49,13 +49,35 @@ services:
     ports: !override
       - "127.0.0.1:${GATEWAY_PORT:-8080}:8080"   # gateway UI: open it through an SSH tunnel
 
-  # Camera relay: cameras on another network (a phone at home) can't be reached from the VM,
-  # so a machine next to them sends their video here through an SSH tunnel
-  # (deploy/azure/send-camera.sh). The gateway reads it as rtsp://test-camera:8554/<name>.
+  # Phone cameras ("Add phone camera" in the app): the API gives each phone an RTMPS address
+  # with its own password (shown once as a QR code) on the relay's public port 1936.
+  api:
+    environment:
+      PHONE_RELAY_URL: rtmps://${SITE_ADDRESS}:1936
+
+  # Camera relay. Two ways in:
+  # - Phone cameras send RTMPS (encrypted) to port 1936, open to the internet. The relay asks the
+  #   API for every connection (/internal/relay-auth): only a phone camera's current password
+  #   for its own path may publish there; nobody can watch from outside.
+  # - Cameras on another network that can't send by themselves (a phone RTSP server app at
+  #   home): a machine next to them sends the video through an SSH tunnel to the RTSP port,
+  #   which is reachable only on the VM (deploy/azure/send-camera.sh).
+  # The gateway reads every camera as rtsp://test-camera:8554/<name>.
   test-camera:
     profiles: !reset []
+    depends_on: [api, caddy]
+    environment:
+      MTX_AUTHMETHOD: http
+      MTX_AUTHHTTPADDRESS: http://api:8000/internal/relay-auth
+      MTX_RTMPENCRYPTION: strict                  # RTMPS only (no plain RTMP)
+      # Caddy's Let's Encrypt certificate for the site, so phones trust the connection.
+      MTX_RTMPSERVERCERT: /caddy/caddy/certificates/acme-v02.api.letsencrypt.org-directory/${SITE_ADDRESS}/${SITE_ADDRESS}.crt
+      MTX_RTMPSERVERKEY: /caddy/caddy/certificates/acme-v02.api.letsencrypt.org-directory/${SITE_ADDRESS}/${SITE_ADDRESS}.key
+    volumes:
+      - caddy-data:/caddy:ro
     ports: !override
-      - "127.0.0.1:8554:8554"                     # only through the SSH tunnel
+      - "127.0.0.1:8554:8554"                     # RTSP: only through the SSH tunnel
+      - "1936:1936"                               # RTMPS: phone cameras (password per phone)
 
 volumes:
   caddy-data:

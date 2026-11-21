@@ -69,7 +69,7 @@ Sources: [Occupiers' Liability Act](https://www.ontario.ca/laws/statute/90o02) �
 | **Incident reports** | Fill in a WSIB Form 7, an Ontario Ministry of Labour notice, an OSHA 301 or an internal report. FallGuard fills in everything it already knows. |
 | **Notifications** | Choose who gets told about falls, by app, email or text message, depending on how serious the fall is. |
 | **Members & Roles** | Invite your team and decide what each person is allowed to do. |
-| **Cameras** | Add, rename, pause or remove cameras and choose the order they appear in. |
+| **Cameras** | Add, rename, pause or remove cameras and choose the order they appear in. Phones can be cameras too, from any network. |
 | **Detection Settings** | Fine-tune how the fall detector works (most people never need to change these). |
 
 ## Getting started
@@ -159,6 +159,7 @@ The full list, as shown on the **Members & Roles** page:
 | Change detection settings | ✓ | ✓ | |
 | Manage notifications | ✓ | ✓ | |
 | Manage organization settings | ✓ | ✓ | |
+| View emails sent (Settings) | ✓ | | |
 | Invite and remove members, change roles | ✓ | never | never |
 | Change what members and viewers may do | ✓ | never | never |
 
@@ -202,6 +203,25 @@ For a demo you can let people in **without an account**:
    how many times each link was opened.
 
 Only admins can create temporary access links.
+
+## Phone cameras
+
+A phone can be a camera, on any Wi-Fi or mobile data. No laptop needed.
+
+1. **Cameras → Add phone camera**: give it a name (e.g. "Lobby phone"). A QR code appears.
+2. On the phone, install **Larix Broadcaster** (free, Android and iPhone).
+3. Scan the QR code with the phone's camera and open it in Larix: the connection is filled in.
+4. In Larix, tap the red button. The camera turns **online** in FallGuard within seconds.
+
+Tips: keep the phone plugged in, screen on, in landscape. The QR code is shown once; lost it?
+Use **New QR code** on the camera (the old one stops working). Removing the camera also cuts
+the phone off. The video is encrypted and each phone has its own password.
+
+## Emails sent
+
+**Settings → Emails sent** lists the invitations, email checks and password resets FallGuard
+sent, and whether the email server accepted them. If someone didn't get an email, check their
+spam folder. Admins see it; they can let members or viewers see it on **Members & Roles**.
 
 ## Notifications
 
