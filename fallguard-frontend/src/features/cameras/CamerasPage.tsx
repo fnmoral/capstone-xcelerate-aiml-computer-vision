@@ -43,7 +43,7 @@ function AddCameraForm({ onDone, standby }: { onDone: (status?: string) => void;
         <label className="field">Name<input required value={form.name} onChange={set('name')} placeholder="Hallway camera" /></label>
         <label className="field">RTSP URL<input required value={form.rtsp_url} onChange={set('rtsp_url')}
           placeholder="rtsp://192.168.1.50:554/stream1" pattern="rtsps?://.+" />
-          <small>H.264 stream. For the test camera: rtsp://test-camera:8554/webcam</small></label>
+          <small>The camera's stream address (H.264)</small></label>
         <label className="field">Username<input value={form.username} onChange={set('username')} autoComplete="off" /></label>
         <label className="field">Password<input type="password" value={form.password} onChange={set('password')} autoComplete="new-password" />
           <small>Stored only on the gateway</small></label>

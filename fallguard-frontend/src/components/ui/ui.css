@@ -41,7 +41,7 @@
 
 /* Forms */
 .form-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
-.field { display: grid; gap: 4px; font-size: 13px; font-weight: 500; }
+.field { display: grid; gap: 4px; font-size: 13px; font-weight: 500; align-content: start; } /* boxes line up across a row; captions hang below */
 .field input, .field textarea, .field select { font: inherit; font-weight: 400; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; min-width: 0; }
 .field textarea { min-height: 80px; resize: vertical; }
 .field small { color: var(--text-muted); font-weight: 400; }
