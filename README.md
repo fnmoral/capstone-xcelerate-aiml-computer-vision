@@ -72,6 +72,9 @@ Do these once, in this order. Each one takes a few minutes.
 1. **Settings → Organization**: your address, phone number and, if you are in Ontario, your
    WSIB firm number. These appear on incident reports.
 2. **Settings → Time zone**: so every time in the app matches your clock.
+   **Settings → Appearance** also sets the organization's default look (light, dark, or the
+   same as each device). Everyone sees it until they pick their own; the sign-in page has a
+   light / dark button in the top right corner too.
 3. **Cameras → Add camera**: the camera's address (it starts with `rtsp://`), plus its
    username and password if it has one. Give each camera a location ("2nd floor hallway")
    and a zone (cameras that look at the same area).
@@ -150,11 +153,11 @@ A few rules always apply:
 4. Pending invitations appear on the same page: **Resend** sends a new link (the old one stops
    working), **Cancel** withdraws the invitation.
 
-### Letting visitors look around (demo links)
+### Letting visitors look around (temporary access links)
 
 For a demo you can let people in **without an account**:
 
-1. **Members & Roles → Demo access links**: give the link a name (for example "Demo day") and choose
+1. **Members & Roles → Temporary access links**: give the link a name (for example "Demo day") and choose
    how long it works: 12 hours, 1, 3, 7, 14 or 30 days.
 2. Copy the link, or let people **scan the QR code** with their phone camera (Download QR saves it
    for a slide or a printout). For safety it is shown only once; if you lose it, make a new one.
@@ -164,7 +167,7 @@ For a demo you can let people in **without an account**:
 4. When the time is up, everyone using the link is out. **End now** stops it early. The list shows
    how many times each link was opened.
 
-Only admins can create demo links.
+Only admins can create temporary access links.
 
 ## Notifications
 
@@ -273,7 +276,7 @@ Then:
 | Question | Answer |
 |---|---|
 | I signed up but didn't get the email | Check spam, or click "send it again" on the sign-in page. If no email server is connected yet, ask your administrator: the link is in the server log (`docker compose logs api \| grep -A3 "email:log"`). |
-| A demo link says it expired | Its time ran out or an admin ended it. Ask for a new link. |
+| A temporary access link says it expired | Its time ran out or an admin ended it. Ask for a new link. |
 | I signed up and my organization is empty | Someone else signed up first and took over this installation's cameras. Ask them to invite you instead. |
 | "Your role doesn't allow this" | Your role doesn't include that action. Ask an admin. |
 | Another organization can't add cameras | For now, only the organization that signed up first is connected to the camera gateway. |
@@ -360,7 +363,7 @@ flowchart TD
 - **Email verification switch**: `REQUIRE_EMAIL_VERIFICATION=false` skips the verification email
   and signs new accounts in at once (demos); only the exact value `false` turns it off. The
   sign-up page reads `GET /api/auth/config`.
-- **Demo access links** (`guest_links`): an admin picks a label and 1–720 hours; the link's token
+- **Temporary access links** (`guest_links`, called demo links in the code): an admin picks a label and 1–720 hours; the link's token
   is shown once (hash stored). Each link has a hidden visitor user (`users.guest_link_id`, viewer
   member, `.invalid` email, no password, excluded from members, sign-in and resets). Opening
   `/demo/<token>` creates a session capped at the link's end; `SessionByToken` re-checks the link
@@ -461,6 +464,11 @@ uses them through `components/ui/Brand.tsx`: `BrandLogo` (horizontal in the head
 pages, stacked on the loading screen), `BrandMark` (the C4 icon on narrow screens and as the
 favicon) and `PoweredBy` (Xcelerate Industries, the company behind FallGuard, in the footer and
 under the sign-in card). Printed reports always use the light logo.
+
+Theme: each browser's own choice wins; otherwise the organization's default
+(`tenants.default_theme`, `PUT /api/settings/theme`, remembered in the browser so the sign-in
+page matches); otherwise light. `effectiveTheme` in `store/uiStore.ts`, applied in `App.tsx` and
+before the first paint in `index.html`.
 
 ## More documentation
 
