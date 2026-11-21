@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-r
 import { accounts, type InvitationInfo, type Mailed } from '../../services/api/accounts';
 import { ApiError } from '../../services/api/client';
 import { useAuth } from './AuthContext';
+import { BrandLogo, PoweredBy } from '../../components/ui/Brand';
 import './auth.css';
 
 const MIN_PASSWORD = 10;
@@ -17,15 +18,13 @@ function AuthCard({ title, subtitle, children, footer }: { title: string; subtit
   return (
     <main className="auth-page">
       <div className="auth-card card">
-        <div className="auth-brand">
-          <img src="/logo.jpeg" alt="" className="auth-logo" />
-          <span>FallGuard <strong>Vision</strong></span>
-        </div>
+        <div className="auth-brand"><BrandLogo height={44} /></div>
         <h1 className="auth-title">{title}</h1>
         {subtitle && <p className="auth-subtitle">{subtitle}</p>}
         {children}
       </div>
       {footer && <p className="auth-footer">{footer}</p>}
+      <PoweredBy className="auth-powered" />
     </main>
   );
 }

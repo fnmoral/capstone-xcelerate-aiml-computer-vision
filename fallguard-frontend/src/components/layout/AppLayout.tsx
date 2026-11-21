@@ -11,18 +11,13 @@ import './AppLayout.css';
 
 /** App shell: Header + Navigation + MainContainer(page, Footer). */
 export function AppLayout() {
-  const { navCollapsed, navPinned, theme, closeNav, setTimeZone } = useUiStore();
+  const { navCollapsed, navPinned, closeNav, setTimeZone } = useUiStore();
   // Facility settings (time zone): picked up by every page, re-checked every minute.
   const { data: settings } = usePolling(() => api.settings(), 60000);
   useEffect(() => { if (settings) setTimeZone(settings.timezone); }, [settings, setTimeZone]);
   const { pathname } = useLocation();
 
   useEffect(() => closeNav(), [pathname, closeNav]);
-  useEffect(() => {
-    const root = document.documentElement;
-    if (theme === 'system') root.removeAttribute('data-theme');
-    else root.setAttribute('data-theme', theme);
-  }, [theme]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && closeNav();
     window.addEventListener('keydown', onKey);

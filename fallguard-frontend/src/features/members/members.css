@@ -22,3 +22,4 @@
 
 .demo-created { margin: 12px 0 0; overflow-wrap: anywhere; }
 .demo-created__url { flex: 1; min-width: 0; font: inherit; font-family: var(--mono); font-size: 12px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }
+.invite-share-row td { background: var(--surface-2); }

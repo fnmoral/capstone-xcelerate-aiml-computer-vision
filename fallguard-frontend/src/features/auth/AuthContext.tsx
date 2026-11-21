@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { Navigate, useLocation } from 'react-router-dom';
 import { accounts, type Me } from '../../services/api/accounts';
 import { UNAUTHORIZED_EVENT } from '../../services/api/client';
+import { BrandLoader } from '../../components/ui/Brand';
 
 interface AuthState {
   me: Me | null;
@@ -91,7 +92,7 @@ export const PERM = {
 export function RequireAuth({ children }: { children: ReactNode }) {
   const { me, loading, error, refresh } = useAuth();
   const location = useLocation();
-  if (loading) return <p className="layout__loading" style={{ padding: 24 }}>Loading…</p>;
+  if (loading) return <BrandLoader />;
   if (error && !me) {
     return (
       <div className="auth-page"><div className="auth-card card">

@@ -269,8 +269,9 @@ export const accounts = {
   saveOrg: (p: OrgProfile) => apiRequest<OrgProfile>("/org", { method: "PUT", ...json(p) }),
   members: () => apiRequest<{ members: Member[]; invitations: Invitation[] }>("/org/members"),
   invite: (email: string, role: Role) =>
-    apiRequest<Mailed & { invitation: Invitation }>("/org/invitations", post({ email, role })),
-  resendInvite: (id: string) => apiRequest<Mailed>("/org/invitations/" + enc(id) + "/resend", post()),
+    apiRequest<Mailed & { invitation: Invitation; url: string }>("/org/invitations", post({ email, role })),
+  /** url: the invitation link, to share directly (copy / QR code) as well as by email. */
+  resendInvite: (id: string) => apiRequest<Mailed & { url: string }>("/org/invitations/" + enc(id) + "/resend", post()),
   revokeInvite: (id: string) => apiRequest("/org/invitations/" + enc(id), { method: "DELETE" }),
   setRole: (userId: string, role: Role) => apiRequest("/org/members/" + enc(userId), { method: "PATCH", ...json({ role }) }),
   removeMember: (userId: string) => apiRequest("/org/members/" + enc(userId), { method: "DELETE" }),

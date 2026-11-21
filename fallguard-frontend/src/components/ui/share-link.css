@@ -1,0 +1,6 @@
+.share-link { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-top: 10px; }
+.share-link__qr { margin: 0; display: grid; justify-items: center; gap: 4px; padding: 8px; background: #fff; border: 1px solid var(--border); border-radius: 10px; }
+.share-link__qr img { display: block; width: 168px; height: 168px; image-rendering: pixelated; }
+.share-link__qr figcaption { font-size: 11px; color: #5b6470; }
+.share-link__body { flex: 1; min-width: min(100%, 240px); display: grid; gap: 8px; }
+.share-link__url { width: 100%; min-width: 0; font-family: var(--mono); font-size: 12px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { shareLinks, type SharedView } from '../../services/api/accounts';
 import { apiUrl } from '../../services/api/client';
+import { BrandLogo, PoweredBy } from '../../components/ui/Brand';
 import '../auth/auth.css';
 import './shared.css';
 
@@ -44,10 +45,7 @@ export default function SharedIncidentPage() {
   return (
     <main className="auth-page shared-page">
       <div className="card shared-card">
-        <div className="auth-brand">
-          <img src="/logo.jpeg" alt="" className="auth-logo" />
-          <span>FallGuard <strong>Vision</strong></span>
-        </div>
+        <div className="auth-brand"><BrandLogo height={40} /></div>
         {error && (
           <>
             <h1 className="auth-title">Link not available</h1>
@@ -81,6 +79,7 @@ export default function SharedIncidentPage() {
           </>
         )}
       </div>
+      <PoweredBy className="auth-powered" />
     </main>
   );
 }

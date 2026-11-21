@@ -4,6 +4,7 @@ import { Icon } from '../../components/ui/Icon';
 import { accounts, type GuestLink } from '../../services/api/accounts';
 import { usePolling } from '../../services/api/usePolling';
 import { formatTime } from '../../lib/format';
+import { ShareLink } from '../../components/ui/ShareLink';
 
 const DURATIONS: [number, string][] = [
   [12, '12 hours'], [24, '1 day'], [72, '3 days'], [168, '7 days'], [336, '14 days'], [720, '30 days'],
@@ -18,14 +19,12 @@ export function DemoLinks() {
   const [hours, setHours] = useState(24);
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<{ url: string; link: GuestLink } | null>(null);
-  const [copied, setCopied] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
   const create = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setMsg(null);
-    setCopied(false);
     try {
       setCreated(await accounts.createGuestLink(label, hours));
       setLabel('');
@@ -34,15 +33,6 @@ export function DemoLinks() {
       setMsg(errorText(err));
     } finally {
       setBusy(false);
-    }
-  };
-
-  const copy = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-    } catch {
-      setCopied(false);
     }
   };
 
@@ -79,11 +69,8 @@ export function DemoLinks() {
       {created && (
         <div className="notice demo-created" role="status">
           <p style={{ margin: '0 0 6px' }}><strong>{created.link.label}</strong> works until {formatTime(created.link.expires_at)}.
-            Copy it now: for safety it isn't shown again (create a new one if you lose it).</p>
-          <div className="row">
-            <input readOnly value={created.url} className="mono demo-created__url" onFocus={(e) => e.target.select()} aria-label="Demo link" />
-            <button className="btn btn--sm" onClick={() => void copy(created.url)}>{copied ? 'Copied' : 'Copy link'}</button>
-          </div>
+            Copy it or save the QR code now: for safety it isn't shown again (create a new one if you lose it).</p>
+          <ShareLink url={created.url} label="Demo link" fileName="fallguard-demo" />
         </div>
       )}
       {links.length > 0 && (

@@ -7,6 +7,7 @@ import { usePolling } from '../../services/api/usePolling';
 import { formatTime } from '../../lib/format';
 import { PERM, useAuth } from '../auth/AuthContext';
 import { DemoLinks } from './DemoLinks';
+import { ShareLink } from '../../components/ui/ShareLink';
 import './members.css';
 
 const ROLES: Role[] = ['admin', 'member', 'viewer'];
@@ -133,7 +134,7 @@ function InviteForm({ onSent }: { onSent: () => void }) {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<Role>('member');
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ ok: boolean; text: string; mailed?: Mailed } | null>(null);
+  const [result, setResult] = useState<{ ok: boolean; text: string; mailed?: Mailed; url?: string } | null>(null);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -141,7 +142,7 @@ function InviteForm({ onSent }: { onSent: () => void }) {
     setResult(null);
     try {
       const r = await accounts.invite(email, role);
-      setResult({ ok: true, text: `Invitation sent to ${r.invitation.email}. The link is valid for 7 days.`, mailed: r });
+      setResult({ ok: true, text: `Invitation sent to ${r.invitation.email}. The link is valid for 7 days; you can also share it directly:`, mailed: r, url: r.url });
       setEmail('');
       onSent();
     } catch (err) {
@@ -165,9 +166,9 @@ function InviteForm({ onSent }: { onSent: () => void }) {
       {result && (
         <p className={`notice${result.ok ? '' : ' notice--error'} invite-form__result`}>
           {result.text}
-          {result.mailed?.email_delivery === 'logged' && (result.mailed.dev_link
-            ? <> No email server is set up: <a href={result.mailed.dev_link}>invitation link</a> (copy it to them).</>
-            : ' No email server is set up yet, so the email was written to the server log. Set one up on the Notifications page.')}
+          {result.mailed?.email_delivery === 'logged' &&
+            ' (No email server is set up yet, so the email went to the server log: share the link below, or set one up on the Notifications page.)'}
+          {result.url && <ShareLink url={result.url} label="Invitation link" fileName="fallguard-invitation" />}
         </p>
       )}
     </form>
@@ -227,11 +228,13 @@ function MemberRow({ m, self, manage, onChanged }: { m: Member; self: boolean; m
 function InvitationRow({ inv, onChanged }: { inv: Invitation; onChanged: () => void }) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [link, setLink] = useState<string | null>(null);
   const run = async (fn: () => Promise<unknown>, done?: string) => {
     setBusy(true);
     try {
-      const r = await fn() as Mailed | undefined;
-      setNote(r?.dev_link ? `Sent. Link: ${r.dev_link}` : done ?? null);
+      const r = await fn() as (Mailed & { url?: string }) | undefined;
+      setNote(done ?? null);
+      setLink(r?.url ?? null);
       onChanged();
     } catch (e) {
       setNote(errorText(e));
@@ -240,6 +243,7 @@ function InvitationRow({ inv, onChanged }: { inv: Invitation; onChanged: () => v
     }
   };
   return (
+    <>
     <tr>
       <td>{inv.email}{note && <div className="muted members-sub" style={{ overflowWrap: 'anywhere' }}>{note}</div>}</td>
       <td>{ROLE_INFO[inv.role].label}</td>
@@ -247,12 +251,18 @@ function InvitationRow({ inv, onChanged }: { inv: Invitation; onChanged: () => v
       <td><StatusBadge value={inv.status === 'pending' ? 'acknowledged' : 'paused'} label={inv.status === 'pending' ? `Expires ${formatTime(inv.expires_at)}` : 'Expired'} /></td>
       <td className="num">
         <div className="row" style={{ justifyContent: 'flex-end' }}>
-          <button className="btn btn--sm" disabled={busy} onClick={() => void run(() => accounts.resendInvite(inv.id), 'Sent again.')}>Resend</button>
+          <button className="btn btn--sm" disabled={busy} onClick={() => void run(() => accounts.resendInvite(inv.id), 'Sent again with a new link (the old one no longer works).')}>Resend</button>
           <button className="btn btn--sm btn--danger" disabled={busy}
             onClick={() => confirm(`Cancel the invitation to ${inv.email}?`) && void run(() => accounts.revokeInvite(inv.id))}>Cancel</button>
         </div>
       </td>
     </tr>
+    {link && (
+      <tr className="invite-share-row"><td colSpan={5}>
+        <ShareLink url={link} label={`Invitation link for ${inv.email}`} fileName="fallguard-invitation" />
+      </td></tr>
+    )}
+    </>
   );
 }
 

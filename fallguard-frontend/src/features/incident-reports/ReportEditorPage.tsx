@@ -60,6 +60,7 @@ function PrintView({ report, fields, facts }: { report: IncidentReport; fields: 
     <article className="rep-print" aria-hidden="true">
       <header className="rep-print__head">
         <div>
+          <img src="/brand/logo-horizontal-vision-light.svg" alt="FallGuard Vision" className="rep-print__logo" />
           <h1>{form.name}</h1>
           <p>{facts?.org.legal_name || facts?.org.name} · {form.authority}</p>
         </div>

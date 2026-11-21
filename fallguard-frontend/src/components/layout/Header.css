@@ -28,13 +28,16 @@
   font-size: 16px;
   letter-spacing: -0.01em;
 }
-/* .header__logo { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--accent); color: #fff; } */
+/* FallGuard Vision logo; just the mark on narrow phones */
 .header__logo {
-  width: 200px;
-  height: 32px;
-  border-radius: 8px;
-  object-fit: cover;
-  border: 1px solid var(--border);
+  height: 38px;
+}
+.header__mark {
+  display: none;
+}
+@media (max-width: 480px) {
+  .header__logo { display: none; }
+  .header__mark { display: block; }
 }
 .header__name strong {
   color: var(--accent);
