@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="fallguard-frontend/public/brand/logo-horizontal-vision-light.svg" alt="FallGuard Vision" height="72">
+</p>
+
 # FallGuard Vision
 
 FallGuard watches your security cameras and tells your team **when someone falls and stays
@@ -138,7 +142,8 @@ A few rules always apply:
 ### Inviting your team
 
 1. **Members & Roles → Invite someone**: type their email and pick a role.
-2. They get an email with a link (valid for 7 days). They choose a password and they're in.
+2. They get an email with a link (valid for 7 days). The page also shows you the link and a **QR
+   code**, so you can share it directly or let them scan it with a phone. They choose a password and they're in.
    Opening the link also confirms their email, so they don't need a second verification email.
 3. If they already have a FallGuard account (for another organization), they just enter their
    password to join yours.
@@ -151,8 +156,8 @@ For a demo you can let people in **without an account**:
 
 1. **Members & Roles → Demo access links**: give the link a name (for example "Demo day") and choose
    how long it works: 12 hours, 1, 3, 7, 14 or 30 days.
-2. Copy the link and share it (chat, QR code, slide). For safety it is shown only once; if you
-   lose it, make a new one.
+2. Copy the link, or let people **scan the QR code** with their phone camera (Download QR saves it
+   for a slide or a printout). For safety it is shown only once; if you lose it, make a new one.
 3. Anyone who opens it goes straight in, **view-only**: they can watch the cameras and look at fall
    events, analytics, reports and logs. They can't change anything, can't respond to alerts and
    can't see the members list.
@@ -448,6 +453,14 @@ Every route, its permission and its payload: [backend-module/api/README.md](back
   session check; bind it to `127.0.0.1` in production.
 - The API connects to PostgreSQL as the table owner (row-level security is not forced); a
   restricted role is a later step.
+
+## Branding
+
+Logo files live in `fallguard-frontend/public/brand/` (light and dark versions of each). The app
+uses them through `components/ui/Brand.tsx`: `BrandLogo` (horizontal in the header and on sign-in
+pages, stacked on the loading screen), `BrandMark` (the C4 icon on narrow screens and as the
+favicon) and `PoweredBy` (Xcelerate Industries, the company behind FallGuard, in the footer and
+under the sign-in card). Printed reports always use the light logo.
 
 ## More documentation
 

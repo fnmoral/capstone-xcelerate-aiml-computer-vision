@@ -1,0 +1,58 @@
+# Azure VM deployment (deploy/azure/README.md). Use with the main file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.azure.yml up -d --build \
+#       db partitions api stream-hub gateway-back frontend caddy
+#
+# - Only Caddy faces the internet (80/443, HTTPS with a free Let's Encrypt certificate).
+#   Every other service listens on the VM itself (127.0.0.1) or the Docker network only.
+# - ml-service does NOT run here: it runs on a laptop GPU or the Fanshawe server and reaches
+#   the VM through an SSH tunnel (deploy/azure/README.md, "Connect the fall detector"):
+#   stream-hub dials it on the VM's port 9999, it writes to the database on 127.0.0.1:5433.
+# - The VM is ARM64 (Azure B2ps_v2): every image here builds or ships for ARM.
+
+services:
+  caddy:
+    image: caddy:2.8.4-alpine
+    restart: unless-stopped
+    depends_on: [frontend]
+    environment:
+      # The web address, e.g. fallguard-vision.canadacentral.cloudapp.azure.com
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in .env (the VM's DNS name)}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/azure/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data          # certificates (kept across restarts: no re-issuing)
+      - caddy-config:/config
+    networks: [fallguard]
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+  frontend:
+    ports: !override
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:80"   # reached through Caddy
+
+  stream-hub:
+    environment:
+      # ml-service comes in through the SSH tunnel, listening on the VM (see the runbook).
+      STREAM_HUB_AI_SERVER_ADDR: ${STREAM_HUB_AI_SERVER_ADDR:-host.docker.internal:9999}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports: !override
+      - "127.0.0.1:${STREAM_HUB_HTTP_PORT:-9000}:9000"   # through nginx (session checked)
+      - "127.0.0.1:${STREAM_HUB_TCP_PORT:-8090}:8090"    # gateways outside the VM: through the SSH tunnel
+
+  gateway-back:
+    ports: !override
+      - "127.0.0.1:${GATEWAY_PORT:-8080}:8080"   # gateway UI: open it through an SSH tunnel
+
+volumes:
+  caddy-data:
+  caddy-config:
+
+networks:
+  fallguard:
+    name: fallguard

@@ -1,0 +1,17 @@
+# HTTPS in front of the FallGuard web app (docker-compose.azure.yml).
+# Caddy gets and renews a free Let's Encrypt certificate for SITE_ADDRESS by itself
+# (ports 80 and 443 must be open to the internet), and redirects http to https.
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	# The frontend's nginx serves the app and forwards /api and /stream-hub (live video
+	# WebSocket, clips) to the backend services; Caddy passes WebSockets through as they are.
+	reverse_proxy frontend:80
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+}
