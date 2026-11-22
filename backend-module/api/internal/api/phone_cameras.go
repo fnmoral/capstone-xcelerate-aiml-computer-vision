@@ -40,13 +40,20 @@ type phoneLinks struct {
 
 func (s *Server) phoneLinks(id, name, path, token string) phoneLinks {
 	base := strings.TrimRight(s.cfg.PhoneRelayURL, "/")
-	key := path + "?user=" + phoneUser + "&pass=" + token
-	publish := base + "/" + key
+	// RTMP apps (Larix, OBS) want rtmp(s)://host:port/<app>/<stream>: the app is "phone" and
+	// the stream key is the id plus the credentials. The relay joins them back into the path
+	// "phone/<id>". (Phone cameras added before this had the one-part path "phone-<id>".)
+	server, stream := base, path
+	if app, id, ok := strings.Cut(path, "/"); ok {
+		server, stream = base+"/"+app, id
+	}
+	key := stream + "?user=" + phoneUser + "&pass=" + token
+	publish := server + "/" + key
 	// Larix "Grove" setup link, keys in Larix's documented order (url first).
 	setup := "larix://set/v1?" + url.QueryEscape("conn[][url]") + "=" + url.QueryEscape(publish) +
 		"&" + url.QueryEscape("conn[][name]") + "=" + url.QueryEscape("FallGuard: "+name) +
 		"&" + url.QueryEscape("conn[][overwrite]") + "=on"
-	return phoneLinks{ID: id, Name: name, PublishURL: publish, ServerURL: base, StreamKey: key,
+	return phoneLinks{ID: id, Name: name, PublishURL: publish, ServerURL: server, StreamKey: key,
 		SetupURL: setup, Path: path, RelayRTSP: s.relayRTSP(path),
 		Description: "Shown once. Scan the QR code with the phone, or copy the address into a streaming app."}
 }
@@ -80,7 +87,7 @@ func (s *Server) addPhoneCamera(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	path := "phone-" + hex.EncodeToString(b)
+	path := "phone/" + hex.EncodeToString(b)
 	token, hash, err := auth.NewToken()
 	if err != nil {
 		fail(c, err)
@@ -173,7 +180,7 @@ func (s *Server) relayAuth(c *gin.Context) {
 		c.Status(http.StatusOK)
 		return
 	case in.Protocol == "rtmp" && in.Action == "publish" && in.User == phoneUser && in.Password != "" &&
-		strings.HasPrefix(in.Path, "phone-"):
+		(strings.HasPrefix(in.Path, "phone/") || strings.HasPrefix(in.Path, "phone-")):
 		ok, err := s.db.RelayPublishAllowed(c.Request.Context(), in.Path, auth.HashToken(in.Password))
 		if err != nil {
 			log.Printf("relay auth: %v", err)
