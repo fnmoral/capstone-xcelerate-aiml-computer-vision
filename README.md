@@ -175,7 +175,8 @@ A few rules always apply:
 - **An organization always keeps at least one admin.** The last admin can't remove themselves
   or change their own role.
 - When an admin removes someone or changes their role, it takes effect straight away. A removed
-  person is signed out at once.
+  person is signed out at once. If they aren't in another organization, their account is
+  deleted: to come back they need a new invitation and sign up again.
 
 ### Inviting your team
 
@@ -185,8 +186,8 @@ A few rules always apply:
    Opening the link also confirms their email, so they don't need a second verification email.
 3. If they already have a FallGuard account (for another organization), they just enter their
    password to join yours.
-4. Pending invitations appear on the same page: **Resend** sends a new link (the old one stops
-   working), **Cancel** withdraws the invitation.
+4. Invited people appear in the **Members** list as **Invited** until they accept: **Resend**
+   sends a new link (the old one stops working), **Cancel** withdraws the invitation.
 
 ### Letting visitors look around (temporary access links)
 
@@ -265,14 +266,14 @@ On the **Notifications** page:
 
 ### Connecting email and text messages
 
-FallGuard needs an email service and a text-message service to send messages. Until they are
-connected, messages are not sent but written to the server log (useful for testing).
+Each card shows whether it is **Sending** or **Off**. While off, alerts are not sent (only noted
+in the server log, for testing).
 
-- **Email provider**: choose **SMTP server** and fill in the details from your email provider or
-  IT team (for example Microsoft 365: `smtp.office365.com`, port 587, STARTTLS). Click
-  **Send test email** to check it works before relying on it.
-- **SMS provider**: choose **Twilio** and paste your Twilio account SID, auth token and phone
-  number. Click **Send test SMS**.
+- **Email**: pick **FallGuard's email** (nothing to set up), or **Your own email server** with the
+  details from your IT team (for example Microsoft 365: `smtp.office365.com`, port 587,
+  STARTTLS). Click **Send test email** to check it works.
+- **Text messages (SMS)**: pick **Twilio account** and paste your Twilio account SID, auth token
+  and phone number. Click **Send test SMS**.
 - Passwords and tokens are stored encrypted and are never shown again.
 - **Recent messages** at the bottom shows every email and text sent, and whether it worked.
 
