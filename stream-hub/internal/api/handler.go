@@ -23,6 +23,8 @@ func NewHandler(broker *hub.StreamBroker, tenantID string) *Handler {
 // RegisterRoutes registers all HTTP and WebSocket routes to the Gin engine.
 func (h *Handler) RegisterRoutes(router *gin.Engine) {
 	router.GET("/health", h.HealthCheck)
+	// Seconds since each camera's last frame (for the API's camera health; not proxied by nginx).
+	router.GET("/video-status", func(c *gin.Context) { c.JSON(200, gin.H{"cameras": h.broker.VideoAges()}) })
 	// router.GET("/ws/:tenant_id/:camera_id", h.StreamWebSocket)
 
 	// Live video for browsers (same public paths the frontend already used)
