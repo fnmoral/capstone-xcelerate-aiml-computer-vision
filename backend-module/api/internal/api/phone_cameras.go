@@ -26,16 +26,20 @@ const phoneUser = "phone"
 
 // phoneLinks is what the app shows once, when a phone camera is added or gets a new password.
 type phoneLinks struct {
-	ID          string `json:"id"`
-	Status      string `json:"status,omitempty"`
-	Name        string `json:"name"`
-	PublishURL  string `json:"publish_url"` // full address for the streaming app
-	ServerURL   string `json:"server_url"`  // for apps that ask for a server and a stream key
-	StreamKey   string `json:"stream_key"`
-	SetupURL    string `json:"setup_url"` // larix:// link: scanned as a QR code, it fills Larix in
-	Path        string `json:"path"`
-	RelayRTSP   string `json:"relay_rtsp"` // where the gateway reads it
-	Description string `json:"description"`
+	ID         string `json:"id"`
+	Status     string `json:"status,omitempty"`
+	Name       string `json:"name"`
+	PublishURL string `json:"publish_url"` // full address for the streaming app
+	ServerURL  string `json:"server_url"`  // for apps that ask for a server and a stream key
+	StreamKey  string `json:"stream_key"`
+	SetupURL   string `json:"setup_url"` // larix:// link: scanned as a QR code, it fills Larix in
+
+	// Plain RTMP (no encryption) for apps that can't do RTMPS, e.g. Streamza ("" = not offered).
+	RTMPServerURL  string `json:"rtmp_server_url"`
+	RTMPPublishURL string `json:"rtmp_publish_url"`
+	Path           string `json:"path"`
+	RelayRTSP      string `json:"relay_rtsp"` // where the gateway reads it
+	Description    string `json:"description"`
 }
 
 func (s *Server) phoneLinks(id, name, path, token string) phoneLinks {
@@ -53,9 +57,14 @@ func (s *Server) phoneLinks(id, name, path, token string) phoneLinks {
 	setup := "larix://set/v1?" + url.QueryEscape("conn[][url]") + "=" + url.QueryEscape(publish) +
 		"&" + url.QueryEscape("conn[][name]") + "=" + url.QueryEscape("FallGuard: "+name) +
 		"&" + url.QueryEscape("conn[][overwrite]") + "=on"
-	return phoneLinks{ID: id, Name: name, PublishURL: publish, ServerURL: server, StreamKey: key,
+	out := phoneLinks{ID: id, Name: name, PublishURL: publish, ServerURL: server, StreamKey: key,
 		SetupURL: setup, Path: path, RelayRTSP: s.relayRTSP(path),
-		Description: "Shown once. Scan the QR code with the phone, or copy the address into a streaming app."}
+		Description: "Shown once. Scan the QR codes with the phone, or copy them into a streaming app."}
+	if plain := strings.TrimRight(s.cfg.PhoneRTMPURL, "/"); plain != "" {
+		out.RTMPServerURL = plain + strings.TrimPrefix(server, base)
+		out.RTMPPublishURL = out.RTMPServerURL + "/" + key
+	}
+	return out
 }
 
 func (s *Server) relayRTSP(path string) string {

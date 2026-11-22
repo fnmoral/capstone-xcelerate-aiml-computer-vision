@@ -39,6 +39,10 @@ type Config struct {
 	// phones send to, e.g. rtmps://host:1936 ("" = phone cameras off); RelayRTSPURL is where
 	// the gateway reads them, e.g. rtsp://test-camera:8554.
 	PhoneRelayURL, RelayRTSPURL string
+
+	// PhoneRTMPURL is the relay's plain RTMP address (e.g. rtmp://host:1935) for phone apps
+	// without RTMPS, such as Streamza ("" = not offered).
+	PhoneRTMPURL string
 }
 
 // Server holds the dependencies of the routes.

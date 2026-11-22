@@ -52,6 +52,7 @@ func main() {
 		// Phone cameras: the relay's public RTMPS address ("" = off) and where the gateway reads it.
 		PhoneRelayURL: strings.TrimSpace(os.Getenv("PHONE_RELAY_URL")),
 		RelayRTSPURL:  env("RELAY_RTSP_URL", "rtsp://test-camera:8554"),
+		PhoneRTMPURL:  strings.TrimSpace(os.Getenv("PHONE_RTMP_URL")),
 	}
 	for _, o := range strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",") {
 		if o = strings.TrimSpace(o); o != "" {
