@@ -85,7 +85,7 @@ export function AddPhoneCameraForm({ onDone }: { onDone: (links?: PhoneLinks) =>
       <p className="muted">A phone with a streaming app sends its video to FallGuard from any Wi-Fi or mobile data. No laptop or camera address needed.</p>
       {error && <p className="notice notice--error">{error}</p>}
       <div className="form-grid">
-        <label className="field">Name<input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Berkin's phone" /></label>
+        <label className="field">Name<input required value={name} onChange={(e) => setName(e.target.value)} placeholder="iPhone" /></label>
         <label className="field">Location<input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Lobby" />
           <small>Shown on alerts</small></label>
         <label className="field">Zone<input value={zone} onChange={(e) => setZone(e.target.value)} list="zone-options" placeholder="Optional" />
