@@ -29,14 +29,20 @@
 .cams-switch select { font: inherit; height: 30px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); padding: 0 6px; max-width: 180px; }
 .cams-form__standby { margin: 14px 0 0; }
 
-/* Phone cameras: badge, and the one-time setup panel with the QR code */
+/* Phone cameras: badge, and the one-time setup panel (a QR code per value to paste into the app) */
 .cams-row__phone::before { display: none; }
-.phone-setup { display: grid; gap: 14px; margin-bottom: 16px; }
+.phone-setup { display: grid; gap: 16px; margin-bottom: 16px; min-width: 0; padding: 20px; }
 .phone-setup .section-title, .phone-setup .notice { margin: 0; }
+.phone-setup__block { display: grid; gap: 12px; min-width: 0; }
+.phone-setup__h { margin: 0; font-size: 15px; }
 .phone-setup__steps { margin: 0; padding-left: 20px; display: grid; gap: 6px; line-height: 1.5; }
+.phone-setup__codes { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
 .phone-setup__tips { margin: 0; font-size: 13px; }
-.phone-setup__manual { display: grid; gap: 10px; }
-.phone-setup__manual .muted { margin: 0; font-size: 13px; }
-.phone-setup__field .row { flex-wrap: nowrap; }
-.phone-setup__field input { flex: 1; min-width: 0; font-size: 12px; }
-.phone-setup > .btn { justify-self: start; }
+.phone-setup__toggle { justify-self: start; }
+.qr-field { display: grid; gap: 8px; align-content: start; justify-items: start; min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.qr-field__label { margin: 0; font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+.qr-field__step { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px; }
+.qr-field__img { display: block; width: 150px; height: 150px; image-rendering: pixelated; background: #fff; border-radius: 6px; padding: 4px; border: 1px solid var(--border); }
+.qr-field__value { display: block; width: 100%; box-sizing: border-box; font-family: var(--mono); font-size: 12px; line-height: 1.4; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); overflow-wrap: anywhere; word-break: break-all; }
+.qr-field__hint { margin: 0; font-size: 12px; }
+.phone-setup > .row .btn--primary { min-width: 96px; }

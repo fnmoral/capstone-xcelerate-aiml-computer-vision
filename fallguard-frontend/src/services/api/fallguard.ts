@@ -86,6 +86,8 @@ export interface PhoneLinks {
   stream_key: string;
   setup_url: string;
   path: string;
+  rtmp_server_url: string; // plain RTMP, for apps without RTMPS such as Streamza ("" = none)
+  rtmp_publish_url: string;
 }
 
 /** Every call the frontend makes to the core backend (backend-module/api). */

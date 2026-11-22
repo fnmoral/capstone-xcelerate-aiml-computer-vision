@@ -1,11 +1,24 @@
-import { useState, type FormEvent } from 'react';
-import { ShareLink } from '../../components/ui/ShareLink';
+import { useEffect, useState, type FormEvent } from 'react';
+import QRCode from 'qrcode';
 import { api, type PhoneLinks } from '../../services/api/fallguard';
 
+const STREAMZA_ANDROID = 'https://play.google.com/store/apps/details?id=com.streamza.app';
 const LARIX_ANDROID = 'https://play.google.com/store/apps/details?id=com.wmspanel.larix_broadcaster';
 const LARIX_IOS = 'https://apps.apple.com/app/larix-broadcaster/id1042474385';
 
-function CopyField({ label, value }: { label: string; value: string }) {
+function useQr(text: string) {
+  const [qr, setQr] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    QRCode.toDataURL(text, { errorCorrectionLevel: 'M', margin: 2, width: 400, color: { dark: '#16191d', light: '#ffffff' } })
+      .then((d) => alive && setQr(d))
+      .catch(() => alive && setQr(null));
+    return () => { alive = false; };
+  }, [text]);
+  return qr;
+}
+
+function useCopy(value: string) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
@@ -16,41 +29,73 @@ function CopyField({ label, value }: { label: string; value: string }) {
       setCopied(false);
     }
   };
+  return { copied, copy };
+}
+
+/** One value to put into the phone: a QR code to scan (then "Copy" on the phone) and the text with Copy. */
+function QrField({ step, label, value, hint }: { step?: number; label: string; value: string; hint?: string }) {
+  const qr = useQr(value);
+  const { copied, copy } = useCopy(value);
   return (
-    <label className="field phone-setup__field">{label}
-      <span className="row">
-        <input readOnly value={value} className="mono" onFocus={(e) => e.target.select()} />
+    <div className="qr-field">
+      <p className="qr-field__label">{step && <span className="qr-field__step">{step}</span>}{label}</p>
+      {qr && <img className="qr-field__img" src={qr} alt={`QR code: ${label}`} width={150} height={150} />}
+      <code className="qr-field__value">{value}</code>
+      <div className="row qr-field__actions">
         <button type="button" className="btn btn--sm" onClick={() => void copy()}>{copied ? 'Copied' : 'Copy'}</button>
-      </span>
-    </label>
+      </div>
+      {hint && <p className="muted qr-field__hint">{hint}</p>}
+    </div>
   );
 }
 
 /** How to connect a phone: shown once, right after a phone camera is added or gets a new QR code. */
 export function PhoneSetup({ links, onClose }: { links: PhoneLinks; onClose: () => void }) {
-  const [manual, setManual] = useState(false);
+  const plain = links.rtmp_server_url !== '';
+  const [more, setMore] = useState(!plain);
   return (
     <section className="card phone-setup" aria-label={`Connect ${links.name}`}>
       <h2 className="section-title">Connect “{links.name}”</h2>
-      <p className="notice">This QR code and password are shown only once. Lost it? Use <b>New QR code</b> on the camera.</p>
-      <ol className="phone-setup__steps">
-        <li>On the phone, install <b>Larix Broadcaster</b> (free): <a href={LARIX_ANDROID} target="_blank" rel="noreferrer">Android</a> · <a href={LARIX_IOS} target="_blank" rel="noreferrer">iPhone</a>.</li>
-        <li>Scan this QR code with the phone's camera and open it in Larix. The FallGuard connection is added for you.</li>
-        <li>In Larix, tap the red button to start streaming. Any Wi-Fi or mobile data works. The camera turns <b>online</b> here within a few seconds.</li>
-      </ol>
-      <ShareLink url={links.setup_url} label={`Larix setup link for ${links.name}`} fileName={`fallguard-${links.path}`} />
-      <p className="muted phone-setup__tips">Tips: keep the phone plugged in and the screen on; landscape, 720p or 1080p, H.264 (Larix's default).</p>
-      <button type="button" className="btn btn--sm" onClick={() => setManual(!manual)} aria-expanded={manual}>
-        {manual ? 'Hide' : 'Show'} the address for another streaming app
-      </button>
-      {manual && (
-        <div className="phone-setup__manual">
-          <CopyField label="Full address (RTMPS)" value={links.publish_url} />
-          <p className="muted">Apps that ask for a server and a stream key:</p>
-          <CopyField label="Server" value={links.server_url} />
-          <CopyField label="Stream key" value={links.stream_key} />
+      <p className="notice">Shown only once. Lost it? Use <b>New QR code</b> on the camera (the old one stops working).</p>
+
+      {plain && (
+        <div className="phone-setup__block">
+          <h3 className="phone-setup__h">With Streamza (Android, free)</h3>
+          <ol className="phone-setup__steps">
+            <li>Install <a href={STREAMZA_ANDROID} target="_blank" rel="noreferrer"><b>Streamza</b></a> and open it.</li>
+            <li>Choose <b>Custom RTMP</b>.</li>
+            <li>Scan code <b>1</b> with the phone's camera, tap <b>Copy</b>, and paste it into <b>Server URL</b>. Do the same with code <b>2</b> for <b>Stream key</b>.</li>
+            <li>Tap <b>Go Live</b>. The camera turns online here within a few seconds.</li>
+          </ol>
+          <div className="phone-setup__codes">
+            <QrField step={1} label="Server URL" value={links.rtmp_server_url} />
+            <QrField step={2} label="Stream key" value={links.stream_key} />
+          </div>
+          <p className="muted phone-setup__tips">
+            Tips: landscape, 720p, phone plugged in and screen on. Streamza sends without encryption, which is fine for
+            demos; if the key leaks, make a new QR code.
+          </p>
         </div>
       )}
+
+      <button type="button" className="btn btn--sm phone-setup__toggle" onClick={() => setMore(!more)} aria-expanded={more}>
+        {more ? 'Hide' : 'Show'} other apps (Larix, OBS: encrypted)
+      </button>
+      {more && (
+        <div className="phone-setup__block">
+          <p className="muted" style={{ margin: 0 }}>
+            <b>Larix Broadcaster</b> (<a href={LARIX_ANDROID} target="_blank" rel="noreferrer">Android</a> ·{' '}
+            <a href={LARIX_IOS} target="_blank" rel="noreferrer">iPhone</a>): scan the Larix code and choose Import. Larix's
+            free version adds a watermark. Other apps: use the encrypted server and the same stream key.
+          </p>
+          <div className="phone-setup__codes">
+            <QrField label="Larix: scan to import" value={links.setup_url} />
+            <QrField label="Server (encrypted, RTMPS)" value={links.server_url} />
+            <QrField label="Stream key" value={links.stream_key} />
+          </div>
+        </div>
+      )}
+
       <div className="row">
         <button type="button" className="btn btn--primary" onClick={onClose}>Done</button>
       </div>
