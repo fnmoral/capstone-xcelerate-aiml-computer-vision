@@ -106,6 +106,7 @@ export default function LiveViewPage() {
   const broken = cameras.filter(
     (c) => c.health === "not_working" && c.alert_offline,
   );
+  const videoOnly = cameras.filter((c) => c.health === "video_only");
   const focusCam = cameras.find((c) => c.id === focused);
 
   const perPage =
@@ -162,6 +163,13 @@ export default function LiveViewPage() {
           </strong>{" "}
           (no video, so falls there can't be detected).{" "}
           <Link to="/camera-logs">Camera logs →</Link>
+        </p>
+      )}
+      {videoOnly.length > 0 && (
+        <p className="notice" role="status">
+          <strong>Fall detection is off</strong>{" "}
+          {videoOnly.length === 1 ? `for ${videoOnly[0].name}` : `for ${videoOnly.length} cameras`}: the video is live,
+          but the fall detector isn't running, so falls aren't detected or alerted.
         </p>
       )}
       {loading && !data ? (

@@ -11,6 +11,7 @@ export type CameraStatus =
 /** What a camera is doing right now (kept by the backend's camera monitor). */
 export type CameraHealth =
   | "online"
+  | "video_only" // video arrives, but the fall detector isn't analysing it
   | "paused"
   | "not_working"
   | "connecting"

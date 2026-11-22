@@ -80,6 +80,7 @@ export const STATUS_TEXT: Record<string, string> = {
   paused: 'Paused',
   not_on_gateway: 'Not on gateway',
   not_working: 'Not working',
+  video_only: 'Video only (no detection)',
   connecting: 'Waiting for video',
   not_connected: 'Not connected',
 };
