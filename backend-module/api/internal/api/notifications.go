@@ -272,11 +272,19 @@ func (s *Server) testEmail(c *gin.Context) {
 	if to == "" {
 		to = session(c).User.Email
 	}
-	subject := "FallGuard test email"
-	body := fmt.Sprintf("This is a test email from FallGuard for %s, sent by %s.\n\nIf you can read this, email notifications work.",
-		session(c).OrgName, actor(c))
-	res, sendErr := notify.SendEmail(ctx, p, notify.Email{To: to, Subject: subject, Text: body})
-	s.logTest(c, "email", to, subject, body, res, sendErr)
+	// The test shows what a real fall alert looks like: the organization's own alert
+	// template filled with sample values, under a banner saying it's only a test.
+	values := s.sampleValues(c)
+	values["link"] = s.appURL(c) + "/events"
+	sampleSubject, sampleBody, _ := ns.Config.Message("alert", values)
+	subject := "[TEST] " + sampleSubject
+	banner := []string{
+		fmt.Sprintf("This is a test email from FallGuard Vision for %s, sent by %s.", session(c).OrgName, actor(c)),
+		"No action needed: nobody fell. Below is what a fall alert looks like, with a sample camera, location and time.",
+	}
+	m := alertEmail(s.appURL(c), to, subject, sampleBody, banner, true)
+	res, sendErr := notify.SendEmail(ctx, p, m)
+	s.logTest(c, "email", to, subject, m.Text, res, sendErr)
 }
 
 func (s *Server) testSMS(c *gin.Context) {
@@ -547,7 +555,11 @@ func (s *Server) sendPending(ctx context.Context) error {
 		case "email":
 			var p notify.EmailProvider
 			if p, sendErr = s.sendingEmail(ns.Email); sendErr == nil {
-				res, sendErr = notify.SendEmail(ctx, p, notify.Email{To: d.Recipient, Subject: orDefault(d.Subject, "FallGuard"), Text: d.Body})
+				app := strings.TrimRight(ns.Config.AppURL, "/")
+				if app == "" {
+					app = s.appURL(nil)
+				}
+				res, sendErr = notify.SendEmail(ctx, p, alertEmail(app, d.Recipient, orDefault(d.Subject, "FallGuard"), d.Body, nil, true))
 			}
 		case "sms":
 			p := ns.SMS
