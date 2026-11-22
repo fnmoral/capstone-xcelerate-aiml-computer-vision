@@ -9,7 +9,7 @@ One Azure VM runs the web app, API, database, video relay and camera gateway. Th
 |---|---|
 | VM | `fallguard-vm` in `fallguard-rg` (Canada Central): B2ps_v2, 2 vCPU ARM64, 8 GB, Ubuntu 24.04 |
 | Data | 32 GB data disk at `/data`: database, video, certificates, code and `.env`. Kept even if the VM is deleted |
-| Firewall | 80/443 and 1936 (phone cameras, RTMPS) open; SSH (22) only from the admin's IP |
+| Firewall | 80/443, 1936 (phone cameras, RTMPS) and 1935 (phone cameras, plain RTMP for Streamza; rule `allow-rtmp-phones-temp`) open; SSH (22) only from the admin's IP |
 | Auto-shutdown | daily at 2 AM Toronto (Eastern time, follows daylight saving; was 11 PM until 2026-11-21) |
 | Branch | `US_ml_module` while testing; `main` later |
 | Credit | Azure for Students, $100, until Nov 2027 |
@@ -75,10 +75,11 @@ To do: create the `tunnel` user (port forwarding only) and check outbound SSH fr
 
 ## Phone cameras
 
-In the app: **Cameras → Add phone camera** → scan the QR code with Larix Broadcaster → start
-streaming. Works from any network; no laptop. How it works: the phone sends RTMPS to the relay
-on port 1936 (Let's Encrypt certificate from Caddy); the relay asks the API for each
-connection; the gateway reads the phone from the relay inside the VM.
+In the app: **Cameras → Add phone camera** → in **Streamza** (Custom RTMP) paste the server and
+stream key (a QR code each) → Go Live. Works from any network; no laptop. How it works: the
+phone sends RTMP to the relay on port 1935 (Streamza can't do RTMPS) or RTMPS on 1936 (Larix,
+OBS; Let's Encrypt certificate from Caddy); the relay asks the API for each connection (same
+per-phone password on both); the gateway reads the phone from the relay inside the VM.
 
 ## Cameras on another network (laptop forwarding)
 

@@ -209,10 +209,15 @@ Only admins can create temporary access links.
 
 A phone can be a camera, on any Wi-Fi or mobile data. No laptop needed.
 
-1. **Cameras → Add phone camera**: give it a name (e.g. "Lobby phone"). A QR code appears.
-2. On the phone, install **Larix Broadcaster** (free, Android and iPhone).
-3. Scan the QR code with the phone's camera and open it in Larix: the connection is filled in.
-4. In Larix, tap the red button. The camera turns **online** in FallGuard within seconds.
+1. **Cameras → Add phone camera**: give it a name (e.g. "Lobby phone"). Two QR codes appear.
+2. On the phone, install **Streamza** (free, Android) and choose **Custom RTMP**.
+3. Scan code 1 with the phone's camera, tap Copy, paste it into **Server URL**. Code 2 goes into
+   **Stream key**.
+4. Tap **Go Live**. The camera turns **online** in FallGuard within seconds.
+
+Other apps work too ("Show other apps"): Larix Broadcaster imports its QR code, but its free
+version adds a watermark. Streamza sends without encryption (fine for demos); Larix and OBS
+can use the encrypted address.
 
 Tips: keep the phone plugged in, screen on, in landscape. The QR code is shown once; lost it?
 Use **New QR code** on the camera (the old one stops working). Removing the camera also cuts

@@ -54,6 +54,7 @@ services:
   api:
     environment:
       PHONE_RELAY_URL: rtmps://${SITE_ADDRESS}:1936
+      PHONE_RTMP_URL: rtmp://${SITE_ADDRESS}:1935   # apps without RTMPS (Streamza)
 
   # Camera relay. Two ways in:
   # - Phone cameras send RTMPS (encrypted) to port 1936, open to the internet. The relay asks the
@@ -69,7 +70,7 @@ services:
     environment:
       MTX_AUTHMETHOD: http
       MTX_AUTHHTTPADDRESS: http://api:8000/internal/relay-auth
-      MTX_RTMPENCRYPTION: strict                  # RTMPS only (no plain RTMP)
+      MTX_RTMPENCRYPTION: optional                # RTMPS on 1936 + plain RTMP on 1935 (Streamza can't do RTMPS)
       # Caddy's Let's Encrypt certificate for the site, so phones trust the connection.
       MTX_RTMPSERVERCERT: /caddy/caddy/certificates/acme-v02.api.letsencrypt.org-directory/${SITE_ADDRESS}/${SITE_ADDRESS}.crt
       MTX_RTMPSERVERKEY: /caddy/caddy/certificates/acme-v02.api.letsencrypt.org-directory/${SITE_ADDRESS}/${SITE_ADDRESS}.key
@@ -78,6 +79,7 @@ services:
     ports: !override
       - "127.0.0.1:8554:8554"                     # RTSP: only through the SSH tunnel
       - "1936:1936"                               # RTMPS: phone cameras (password per phone)
+      - "1935:1935"                               # RTMP, unencrypted: phone apps without RTMPS (same password check)
 
 volumes:
   caddy-data:
