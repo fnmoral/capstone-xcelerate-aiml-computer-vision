@@ -210,13 +210,13 @@ function MemberRow({ m, self, manage, onChanged }: { m: Member; self: boolean; m
           </select>
         ) : <StatusBadge value={m.role === 'admin' ? 'online' : 'paused'} label={ROLE_INFO[m.role].label} />}
       </td>
-      <td className="muted">{m.email_verified ? 'Verified' : 'Not verified'}</td>
+      <td><StatusBadge value="online" label="Active" />{!m.email_verified && <div className="muted members-sub">Email not verified</div>}</td>
       <td className="muted">{m.last_login_at ? formatDate(m.last_login_at) : 'Never'}</td>
       <td className="muted">{formatDate(m.joined_at)}</td>
       <td className="num">
         {manage && !self && (
           <button className="btn btn--sm btn--danger" disabled={busy}
-            onClick={() => confirm(`Remove ${name} from the organization? They are signed out right away.`) && void run(() => accounts.removeMember(m.id))}>
+            onClick={() => confirm(`Remove ${name} from the organization? They are signed out right away. If they aren't in another organization, their account is deleted: to come back they need a new invitation and sign up again.`) && void run(() => accounts.removeMember(m.id))}>
             Remove
           </button>
         )}
@@ -245,10 +245,18 @@ function InvitationRow({ inv, onChanged }: { inv: Invitation; onChanged: () => v
   return (
     <>
     <tr>
-      <td>{inv.email}{note && <div className="muted members-sub" style={{ overflowWrap: 'anywhere' }}>{note}</div>}</td>
+      <td>
+        <strong>{inv.email}</strong>
+        <div className="muted members-sub">Invited{inv.invited_by ? ` by ${inv.invited_by}` : ''}</div>
+        {note && <div className="muted members-sub" style={{ overflowWrap: 'anywhere' }}>{note}</div>}
+      </td>
       <td>{ROLE_INFO[inv.role].label}</td>
-      <td className="muted">{inv.invited_by ?? '—'}</td>
-      <td><StatusBadge value={inv.status === 'pending' ? 'acknowledged' : 'paused'} label={inv.status === 'pending' ? `Expires ${formatTime(inv.expires_at)}` : 'Expired'} /></td>
+      <td>
+        <StatusBadge value={inv.status === 'pending' ? 'acknowledged' : 'paused'} label={inv.status === 'pending' ? 'Invited' : 'Invitation expired'} />
+        {inv.status === 'pending' && <div className="muted members-sub">Until {formatTime(inv.expires_at)}</div>}
+      </td>
+      <td className="muted">—</td>
+      <td className="muted">—</td>
       <td className="num">
         <div className="row" style={{ justifyContent: 'flex-end' }}>
           <button className="btn btn--sm" disabled={busy} onClick={() => void run(() => accounts.resendInvite(inv.id), 'Sent again with a new link (the old one no longer works).')}>Resend</button>
@@ -258,7 +266,7 @@ function InvitationRow({ inv, onChanged }: { inv: Invitation; onChanged: () => v
       </td>
     </tr>
     {link && (
-      <tr className="invite-share-row"><td colSpan={5}>
+      <tr className="invite-share-row"><td colSpan={6}>
         <ShareLink url={link} label={`Invitation link for ${inv.email}`} fileName="fallguard-invitation" />
       </td></tr>
     )}
@@ -294,14 +302,17 @@ export default function MembersPage() {
 
       <div className="stack">
         <section className="card members-section">
-          <h2 className="section-title">Members ({data?.members.length ?? 0})</h2>
+          <h2 className="section-title">
+            Members ({data?.members.length ?? 0}){manage && (data?.invitations.length ?? 0) > 0 && <span className="muted"> · {data!.invitations.length} invited</span>}
+          </h2>
           <div className="table-wrap">
             <table className="table">
-              <thead><tr><th>Name</th><th>Role</th><th>Email status</th><th>Last sign-in</th><th>Joined</th><th /></tr></thead>
+              <thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Last sign-in</th><th>Joined</th><th /></tr></thead>
               <tbody>
                 {(data?.members ?? []).map((m) => (
                   <MemberRow key={m.id} m={m} self={m.id === me?.user.id} manage={manage} onChanged={changed} />
                 ))}
+                {manage && (data?.invitations ?? []).map((inv) => <InvitationRow key={inv.id} inv={inv} onChanged={changed} />)}
               </tbody>
             </table>
           </div>
@@ -317,18 +328,6 @@ export default function MembersPage() {
             </section>
             <DemoLinks />
           </div>
-        )}
-
-        {manage && (data?.invitations.length ?? 0) > 0 && (
-          <section className="card members-section">
-            <h2 className="section-title">Pending invitations</h2>
-            <div className="table-wrap">
-              <table className="table">
-                <thead><tr><th>Email</th><th>Role</th><th>Invited by</th><th>Status</th><th /></tr></thead>
-                <tbody>{data!.invitations.map((inv) => <InvitationRow key={inv.id} inv={inv} onChanged={changed} />)}</tbody>
-              </table>
-            </div>
-          </section>
         )}
 
         <section className="card members-section">

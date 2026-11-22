@@ -26,6 +26,13 @@
 .notif-savebar { position: sticky; bottom: 12px; z-index: 5; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 4px 16px rgb(0 0 0 / .08); }
 .notif-savebar .notice { margin: 0; flex-basis: 100%; }
 .notif-radio { font-size: 14px; gap: 6px; cursor: pointer; }
+.notif-status { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: -4px 0 14px; font-size: 14px; }
+.notif-status .badge::before { display: none; }
+.notif-choices { display: grid; gap: 8px; }
+.notif-choice { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; font-size: 14px; }
+.notif-choice input { margin-top: 3px; }
+.notif-choice small { display: block; color: var(--text-muted); font-size: 13px; margin-top: 2px; }
+.notif-choice:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--surface)); }
 .notif-test { align-items: center; }
 .notif-test__sep { flex: 1; }
 .notif-test input { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; min-width: 0; width: 220px; max-width: 100%; }

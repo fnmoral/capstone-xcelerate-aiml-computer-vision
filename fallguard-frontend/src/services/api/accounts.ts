@@ -142,7 +142,7 @@ export interface NotifyConfig {
 }
 
 export interface EmailProvider {
-  type: "log" | "smtp";
+  type: "log" | "server" | "smtp"; // off | FallGuard's own email | the organization's server
   host: string;
   port: number;
   security: "starttls" | "tls" | "none" | "";
@@ -169,6 +169,7 @@ export interface NotificationSettings {
   placeholders: Record<string, string>;
   members: { user_id: string; name: string; email: string; phone: string | null; role: Role }[];
   system_smtp: boolean;
+  server_from: string; // FallGuard's own sender ("" = none on this server)
 }
 
 export interface Delivery {

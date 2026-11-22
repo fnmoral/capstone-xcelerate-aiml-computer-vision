@@ -218,8 +218,27 @@ function Templates({ cfg, set, defaults, placeholders }: {
   );
 }
 
-function EmailProviderCard({ initial, defaultTo, systemSmtp }: { initial: EmailProvider; defaultTo: string; systemSmtp: boolean }) {
+/** On / off line at the top of a provider card, for what is saved (not the unsaved choice). */
+function ProviderStatus({ on, text }: { on: boolean; text: string }) {
+  return (
+    <p className="notif-status" role="status">
+      <span className={`badge badge--${on ? 'good' : 'warning'}`}>{on ? 'Sending' : 'Off'}</span>
+      <span className="muted">{text}</span>
+    </p>
+  );
+}
+
+function emailStatus(p: EmailProvider, serverFrom: string): { on: boolean; text: string } {
+  if (p.type === 'server') return { on: true, text: `Emails are sent from ${serverFrom || "FallGuard's address"}.` };
+  if (p.type === 'smtp') return { on: true, text: `Emails are sent from ${p.from_email} through ${p.host}.` };
+  return { on: false, text: "Fall alerts aren't emailed. Choose how to send them below." };
+}
+
+function EmailProviderCard({ initial, defaultTo, systemSmtp, serverFrom }: {
+  initial: EmailProvider; defaultTo: string; systemSmtp: boolean; serverFrom: string;
+}) {
   const [p, setP] = useState<EmailProvider>({ ...initial, port: initial.port || 587, security: initial.security || 'starttls', password: '' });
+  const [saved, setSaved] = useState<EmailProvider>(initial);
   const [to, setTo] = useState(defaultTo);
   const [msg, setMsg] = useState<Msg>(null);
   const [busy, setBusy] = useState(false);
@@ -233,17 +252,34 @@ function EmailProviderCard({ initial, defaultTo, systemSmtp }: { initial: EmailP
     void run(async () => {
       const r = await notifications.saveEmail(p);
       setP({ ...p, ...r.email_provider, password: '' });
-      return 'Email provider saved.';
+      setSaved(r.email_provider);
+      return 'Saved.';
     });
   };
 
   return (
     <section className="card notif-section">
-      <h2 className="section-title">Email provider</h2>
+      <h2 className="section-title">Email</h2>
+      <ProviderStatus {...emailStatus(saved, serverFrom)} />
       <form onSubmit={save} className="stack" style={{ gap: 12 }}>
-        <div role="radiogroup" aria-label="Email provider" className="row">
-          <label className="row notif-radio"><input type="radio" checked={p.type === 'log'} onChange={() => set({ type: 'log' })} /> Not set up (write to the server log)</label>
-          <label className="row notif-radio"><input type="radio" checked={p.type === 'smtp'} onChange={() => set({ type: 'smtp' })} /> SMTP server</label>
+        <div role="radiogroup" aria-label="How to send emails" className="notif-choices">
+          {systemSmtp && (
+            <label className="notif-choice">
+              <input type="radio" checked={p.type === 'server'} onChange={() => set({ type: 'server' })} />
+              <span><b>FallGuard's email</b> <span className="muted">(recommended)</span>
+                <small>Sent from {serverFrom || "FallGuard's address"}. Nothing to set up.</small></span>
+            </label>
+          )}
+          <label className="notif-choice">
+            <input type="radio" checked={p.type === 'smtp'} onChange={() => set({ type: 'smtp' })} />
+            <span><b>Your own email server</b>
+              <small>Send from your organization's address (e.g. Microsoft 365 or Gmail, SMTP).</small></span>
+          </label>
+          <label className="notif-choice">
+            <input type="radio" checked={p.type === 'log'} onChange={() => set({ type: 'log' })} />
+            <span><b>Off</b>
+              <small>No alert emails. They're only noted in the server's log (for testing).</small></span>
+          </label>
         </div>
         {p.type === 'smtp' && (
           <div className="form-grid">
@@ -267,8 +303,8 @@ function EmailProviderCard({ initial, defaultTo, systemSmtp }: { initial: EmailP
           </div>
         )}
         <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-          {systemSmtp ? 'Account emails (verification, invitations, password resets) use the server\'s own mail settings.'
-            : 'Account emails (verification, invitations, password resets) also use this provider.'}
+          {systemSmtp ? `This is for fall alerts. Invitations and password resets always come from ${serverFrom || "FallGuard's address"}.`
+            : 'This is for fall alerts. Invitations and password resets use it too.'}
         </p>
         <Notice m={msg} />
         <div className="row notif-test">
@@ -286,6 +322,7 @@ function EmailProviderCard({ initial, defaultTo, systemSmtp }: { initial: EmailP
 
 function SMSProviderCard({ initial, defaultTo }: { initial: SMSProvider; defaultTo: string }) {
   const [p, setP] = useState<SMSProvider>({ ...initial, auth_token: '' });
+  const [saved, setSaved] = useState<SMSProvider>(initial);
   const [to, setTo] = useState(defaultTo);
   const [msg, setMsg] = useState<Msg>(null);
   const [busy, setBusy] = useState(false);
@@ -299,17 +336,28 @@ function SMSProviderCard({ initial, defaultTo }: { initial: SMSProvider; default
     void run(async () => {
       const r = await notifications.saveSMS(p);
       setP({ ...p, ...r.sms_provider, auth_token: '' });
-      return 'SMS provider saved.';
+      setSaved(r.sms_provider);
+      return 'Saved.';
     });
   };
 
   return (
     <section className="card notif-section">
-      <h2 className="section-title">SMS provider</h2>
+      <h2 className="section-title">Text messages (SMS)</h2>
+      <ProviderStatus on={saved.type === 'twilio'}
+        text={saved.type === 'twilio' ? `Texts are sent from ${saved.from_number} with Twilio.` : "Fall alerts aren't texted. Connect a Twilio account below."} />
       <form onSubmit={save} className="stack" style={{ gap: 12 }}>
-        <div role="radiogroup" aria-label="SMS provider" className="row">
-          <label className="row notif-radio"><input type="radio" checked={p.type === 'log'} onChange={() => set({ type: 'log' })} /> Not set up (write to the server log)</label>
-          <label className="row notif-radio"><input type="radio" checked={p.type === 'twilio'} onChange={() => set({ type: 'twilio' })} /> Twilio</label>
+        <div role="radiogroup" aria-label="How to send text messages" className="notif-choices">
+          <label className="notif-choice">
+            <input type="radio" checked={p.type === 'twilio'} onChange={() => set({ type: 'twilio' })} />
+            <span><b>Twilio account</b>
+              <small>Paste your Twilio details. Texts cost a few cents each, billed by Twilio.</small></span>
+          </label>
+          <label className="notif-choice">
+            <input type="radio" checked={p.type === 'log'} onChange={() => set({ type: 'log' })} />
+            <span><b>Off</b>
+              <small>No alert texts. They're only noted in the server's log (for testing).</small></span>
+          </label>
         </div>
         {p.type === 'twilio' && (
           <div className="form-grid">
@@ -357,7 +405,7 @@ function DeliveryHistory() {
                     {d.subject && <div className="muted" style={{ fontSize: 12 }}>{d.subject}</div>}</td>
                   <td>{d.channel === 'email' ? 'Email' : 'SMS'}</td>
                   <td className="mono">{d.recipient}</td>
-                  <td><StatusBadge value={DELIVERY_TONE[d.status]} label={d.status === 'logged' ? 'Logged (no provider)' : d.status[0].toUpperCase() + d.status.slice(1)} />
+                  <td><StatusBadge value={DELIVERY_TONE[d.status]} label={d.status === 'logged' ? 'Not sent (off)' : d.status[0].toUpperCase() + d.status.slice(1)} />
                     {d.error && <div className="muted" style={{ fontSize: 12, maxWidth: 280 }} title={d.error}>{d.error.slice(0, 120)}</div>}</td>
                 </tr>
               ))}
@@ -464,7 +512,7 @@ export default function NotificationsPage() {
         {saveBar}
 
         <div className="notif-two">
-          <EmailProviderCard initial={data.email_provider} defaultTo={me?.user.email ?? ''} systemSmtp={data.system_smtp} />
+          <EmailProviderCard initial={data.email_provider} defaultTo={me?.user.email ?? ''} systemSmtp={data.system_smtp} serverFrom={data.server_from ?? ''} />
           <SMSProviderCard initial={data.sms_provider} defaultTo={me?.user.phone ?? ''} />
         </div>
 
