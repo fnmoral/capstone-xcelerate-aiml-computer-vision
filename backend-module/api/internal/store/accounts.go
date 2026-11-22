@@ -727,8 +727,20 @@ func (s *Store) RemoveMember(ctx context.Context, userID, actor string) error {
 		if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE tenant_id = $1 AND user_id::text = $2`, tid, userID); err != nil {
 			return err
 		}
+		// Someone in no other organization has no use for the account: it is deleted, so an
+		// invitation later means signing up again (new password). Their past actions keep
+		// their name in the activity log.
+		msg := email + " removed from the organization"
+		tag, err := tx.Exec(ctx, `DELETE FROM users WHERE id::text = $1 AND guest_link_id IS NULL
+			AND NOT EXISTS (SELECT 1 FROM memberships WHERE user_id::text = $1)`, userID)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 1 {
+			msg += " (account deleted: not in another organization)"
+		}
 		return audit(ctx, tx, tid, actor, "member.removed", "user", userID,
-			map[string]any{"message": email + " removed from the organization", "email": email, "role": role})
+			map[string]any{"message": msg, "email": email, "role": role})
 	})
 }
 

@@ -52,7 +52,28 @@ func (s *Server) notificationSettings(c *gin.Context) {
 		"placeholders":      notify.Placeholders,
 		"members":           people,
 		"system_smtp":       s.cfg.SMTP.Type == "smtp", // account emails use the server's SMTP settings
+		"server_from":       s.serverFrom(),            // FallGuard's own sender ("" = none)
 	})
+}
+
+// serverFrom is the sender of FallGuard's own email (SMTP_* in the environment), or "".
+func (s *Server) serverFrom() string {
+	if s.cfg.SMTP.Type != "smtp" {
+		return ""
+	}
+	return s.cfg.SMTP.FromEmail
+}
+
+// sendingEmail turns an organization's saved email provider into the one to send with:
+// "server" = FallGuard's own email server (SMTP_*), "smtp" = theirs (password decrypted).
+func (s *Server) sendingEmail(p notify.EmailProvider) (notify.EmailProvider, error) {
+	if p.Type == "server" {
+		if s.cfg.SMTP.Type != "smtp" {
+			return p, fmt.Errorf("FallGuard's email isn't set up on this server; choose your own email server")
+		}
+		return s.cfg.SMTP, nil
+	}
+	return p, p.Unlock(s.box)
 }
 
 func (s *Server) saveNotificationSettings(c *gin.Context) {
@@ -90,9 +111,14 @@ func (s *Server) emailProvider(in emailProviderInput, saved notify.EmailProvider
 	switch p.Type {
 	case "log":
 		return notify.EmailProvider{Type: "log"}, nil
+	case "server":
+		if s.cfg.SMTP.Type != "smtp" {
+			return p, fmt.Errorf("FallGuard's email isn't set up on this server; choose your own email server")
+		}
+		return notify.EmailProvider{Type: "server"}, nil
 	case "smtp":
 	default:
-		return p, fmt.Errorf("type must be log or smtp")
+		return p, fmt.Errorf("type must be log, server or smtp")
 	}
 	if p.Host == "" || strings.ContainsAny(p.Host, " /\\") {
 		return p, fmt.Errorf("enter the SMTP server host, e.g. smtp.office365.com")
@@ -238,7 +264,7 @@ func (s *Server) testEmail(c *gin.Context) {
 			return
 		}
 	}
-	if err := p.Unlock(s.box); err != nil {
+	if p, err = s.sendingEmail(p); err != nil {
 		badRequest(c, err.Error())
 		return
 	}
@@ -519,8 +545,8 @@ func (s *Server) sendPending(ctx context.Context) error {
 		var sendErr error
 		switch d.Channel {
 		case "email":
-			p := ns.Email
-			if sendErr = p.Unlock(s.box); sendErr == nil {
+			var p notify.EmailProvider
+			if p, sendErr = s.sendingEmail(ns.Email); sendErr == nil {
 				res, sendErr = notify.SendEmail(ctx, p, notify.Email{To: d.Recipient, Subject: orDefault(d.Subject, "FallGuard"), Text: d.Body})
 			}
 		case "sms":
