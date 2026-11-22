@@ -317,6 +317,8 @@ type CameraView struct {
 	TenantID        string           `json:"tenant_id"`
 
 	Phone bool `json:"phone"` // a phone streaming to the camera relay (new QR code possible)
+
+	Video bool `json:"video"` // its video reaches stream-hub (Live View works, even without ml-service)
 }
 
 // liveState is what ml-service is doing right now, from the database: when it last
@@ -324,6 +326,7 @@ type CameraView struct {
 type liveState struct {
 	frameAge map[string]float64
 	people   map[string][]map[string]any
+	videoAge map[string]float64 // stream-hub: seconds since each camera's last frame
 }
 
 func (s *Server) liveState(ctx context.Context) liveState {
@@ -332,7 +335,7 @@ func (s *Server) liveState(ctx context.Context) liveState {
 	if err != nil {
 		log.Printf("recent people: %v", err)
 	}
-	return liveState{frameAge: frameAge, people: people}
+	return liveState{frameAge: frameAge, people: people, videoAge: s.videoAges(ctx)}
 }
 
 func (s *Server) listCameras(c *gin.Context) {
@@ -443,6 +446,9 @@ func sortByOrder(out []CameraView, dbCams []store.Camera) {
 }
 
 func (v *CameraView) addLive(live liveState, active map[string]int) {
+	if age, ok := live.videoAge[v.ID]; ok && age < notWorkingAfter.Seconds() {
+		v.Video = true
+	}
 	if age, ok := live.frameAge[v.ID]; ok {
 		v.Live = age < 10
 		v.LastFrameAgeS = &age

@@ -61,6 +61,7 @@ func (s *Server) checkCameras(ctx context.Context, noVideoSince map[string]time.
 	// ml-service down (stopped reporting its status): nothing is being analysed, so its
 	// cameras count as not working once the grace period has passed.
 	frameAge, mlErr := s.mlFrameAges(ctx)
+	videoAge := s.videoAges(ctx) // video reaching stream-hub: the camera itself works
 
 	now := time.Now()
 	onGateway := map[string]bool{}
@@ -73,6 +74,9 @@ func (s *Server) checkCameras(ctx context.Context, noVideoSince map[string]time.
 			delete(noVideoSince, g.ID)
 		case mlErr == nil && ok && age < notWorkingAfter.Seconds():
 			want = "online"
+			delete(noVideoSince, g.ID)
+		case videoAge[g.ID] > 0 && videoAge[g.ID] < notWorkingAfter.Seconds():
+			want = "online" // video arrives; only the detector isn't analysing it (health "video_only")
 			delete(noVideoSince, g.ID)
 		default:
 			first, seen := noVideoSince[g.ID]
@@ -139,6 +143,8 @@ func cameraHealth(v CameraView, d *store.Camera) string {
 		return "paused"
 	case v.Live:
 		return "online"
+	case v.Video:
+		return "video_only" // video arrives, but the detector isn't analysing it
 	case d != nil && d.Status == "error":
 		return "not_working"
 	default:
