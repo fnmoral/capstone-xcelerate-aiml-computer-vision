@@ -27,6 +27,8 @@ az vm start      -g fallguard-rg -n fallguard-vm   # app is up in 1-2 min
 az vm deallocate -g fallguard-rg -n fallguard-vm   # end of session
 ```
 
+- **Auto-shutdown** (portal: fallguard-vm → Auto-shutdown): daily 10 PM Toronto time, **turned off
+  for now** (VM kept running). Turn it back on, or stop the VM, when the testing week is over.
 - **Stop, don't delete.** Stopped = no compute cost, everything kept. Deleting saves nothing more.
 - Use the portal's **Stop** or `az vm deallocate`. Shutting down inside Linux keeps billing.
 - `az group delete -n fallguard-rg` only when the project is over: it deletes the data too.
@@ -91,6 +93,42 @@ The product design: the gateway runs next to the cameras and only the video goes
   key allowed for that port on the VM.
 - Campus addresses change: if the tunnel times out, the laptop's public IP is no longer in the
   firewall rule `ssh-from-fanshawe`. Dead tunnels free their port on the VM within ~90 s.
+
+## Connect a teammate's gateway
+
+Each teammate can run a gateway next to their own cameras. The app uses one gateway at a time
+(Settings → Gateways).
+
+**Teammate**
+
+1. Install Docker Desktop and clone the repo (branch `US_ml_module`).
+2. Run `bash deploy/onsite-gateway/gateway-key.sh` (Git Bash, WSL or macOS) and send the output
+   (name, public IP, key) to the admin. The key is public; the private key stays on your computer.
+3. When the admin replies with your port, create `deploy/onsite-gateway/.env`:
+   ```
+   GATEWAY_TUNNEL_PORT=18081
+   GATEWAY_NAME_ID=yourname_gateway
+   GATEWAY_ID=yourname_id
+   ```
+4. Start it: `docker compose -f deploy/onsite-gateway/docker-compose.yml up -d --build`.
+   Check: `docker compose -f deploy/onsite-gateway/docker-compose.yml logs tunnel gateway` shows
+   "registered as ...". Stop: `... down`.
+5. Cameras: an IP camera by its own address; a webcam with
+   `publish_webcam.py --url rtsp://127.0.0.1:8554/webcam`, added as `rtsp://test-camera:8554/webcam`.
+
+**Admin (all in the Azure portal)**
+
+1. **Allow their IP:** fallguard-nsg → Inbound security rules → `ssh-from-fanshawe` → add the IP
+   to *Source IP addresses* → Save. (Home IPs can change: update it if their tunnel times out.)
+2. **Allow their key:** fallguard-vm → Run command → RunShellScript, with the next free port:
+   ```
+   bash /data/capstone/deploy/azure/allow-gateway.sh 18081 'ssh-ed25519 AAAA... their key'
+   ```
+3. Reply with the port. When their gateway starts it appears in **Settings → Gateways** as
+   "On-site gateway": rename it (e.g. "Yonathan – home") and choose it, or leave Automatic.
+
+Ports in use: 18080 (Neil's laptop). Remove a gateway: Settings → Gateways → Remove, and delete
+its line from `/home/tunnel/.ssh/authorized_keys` on the VM.
 
 ## Phone cameras (temporary, for demos)
 
