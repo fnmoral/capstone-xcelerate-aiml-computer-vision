@@ -71,6 +71,23 @@ services:
       # stream-hub's HTTP address (its config.json http_addr): health check, and the
       # frontend's video/clips/snapshots go straight to stream-hub, not through this API.
       STREAM_HUB_URL: ${STREAM_HUB_URL:-http://stream-hub:9000}
+      # Accounts and notifications (see the root .env.example). Empty = defaults.
+      APP_URL: ${APP_URL:-}                    # web app address used in email links
+      APP_SECRET: ${APP_SECRET:-}              # encrypts SMTP / Twilio secrets saved in the app
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}   # true when the app is served over HTTPS
+      EMAIL_LINKS_IN_RESPONSE: ${EMAIL_LINKS_IN_RESPONSE:-false}
+      REQUIRE_EMAIL_VERIFICATION: ${REQUIRE_EMAIL_VERIFICATION:-true}  # false = sign in right after sign-up (demos)
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      # Phone cameras: the camera relay's public RTMPS address (empty = off; set by docker-compose.azure.yml).
+      PHONE_RELAY_URL: ${PHONE_RELAY_URL:-}
+      PHONE_RTMP_URL: ${PHONE_RTMP_URL:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURITY: ${SMTP_SECURITY:-starttls}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-FallGuard}
     ports:
       - "127.0.0.1:${API_PORT:-8100}:8000"   # for debugging; the frontend reaches it as api:8000
     networks: [fallguard]

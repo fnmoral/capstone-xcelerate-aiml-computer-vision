@@ -4,11 +4,13 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Icon } from '../../components/ui/Icon';
-import { api, type CameraInput } from '../../services/api/fallguard';
+import { api, type CameraInput, type PhoneLinks } from '../../services/api/fallguard';
 import { usePolling } from '../../services/api/usePolling';
 import type { Camera } from '../../types/domain';
 import { formatTime } from '../../lib/format';
 import { CameraOrder } from './CameraOrder';
+import { AddPhoneCameraForm, PhoneSetup } from './PhoneCamera';
+import { PERM, useAuth } from '../auth/AuthContext';
 import './cameras.css';
 
 const EMPTY: CameraInput = { name: '', rtsp_url: '', username: '', password: '', location: '', zone: '', alert_offline: true };
@@ -42,7 +44,7 @@ function AddCameraForm({ onDone, standby }: { onDone: (status?: string) => void;
         <label className="field">Name<input required value={form.name} onChange={set('name')} placeholder="Hallway camera" /></label>
         <label className="field">RTSP URL<input required value={form.rtsp_url} onChange={set('rtsp_url')}
           placeholder="rtsp://192.168.1.50:554/stream1" pattern="rtsps?://.+" />
-          <small>H.264 stream. For the test camera: rtsp://test-camera:8554/webcam</small></label>
+          <small>The camera's stream address (H.264)</small></label>
         <label className="field">Username<input value={form.username} onChange={set('username')} autoComplete="off" /></label>
         <label className="field">Password<input type="password" value={form.password} onChange={set('password')} autoComplete="new-password" />
           <small>Stored only on the gateway</small></label>
@@ -82,7 +84,7 @@ function SwitchTo({ cam, streaming, busy, run }: {
   return (
     <span className="cams-switch">
       <label>Stop
-        <select value={replace} onChange={(e) => setReplace(e.target.value)} aria-label="Camera to stop streaming">
+        <select className="select select--sm" value={replace} onChange={(e) => setReplace(e.target.value)} aria-label="Camera to stop streaming">
           {streaming.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
       </label>
@@ -93,14 +95,15 @@ function SwitchTo({ cam, streaming, busy, run }: {
   );
 }
 
-function CameraRow({ cam, onChange, full, streaming }: {
-  cam: Camera; onChange: () => void; full: boolean; streaming: Camera[];
+function CameraRow({ cam, onChange, full, streaming, manage }: {
+  cam: Camera; onChange: () => void; full: boolean; streaming: Camera[]; manage: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [location, setLocation] = useState(cam.location ?? '');
   const [zone, setZone] = useState(cam.zone ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [links, setLinks] = useState<PhoneLinks | null>(null);
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -121,7 +124,8 @@ function CameraRow({ cam, onChange, full, streaming }: {
       <div className="cams-row__main">
         <div className="cams-row__title">
           <strong>{cam.name}</strong>
-          <StatusBadge value={cam.health} />
+          {cam.phone && <span className="badge cams-row__phone">Phone</span>}
+          <StatusBadge value={cam.status === 'other_gateway' ? 'other_gateway' : cam.health} />
           <span className="muted cams-row__since">since {formatTime(cam.health_since)}</span>
           {cam.active_incidents > 0 && <StatusBadge value="active" label={`${cam.active_incidents} active incident(s)`} />}
         </div>
@@ -133,10 +137,12 @@ function CameraRow({ cam, onChange, full, streaming }: {
         ) : (
           <p className="muted cams-row__info">
             {cam.location || 'No location'} · {cam.zone ? `Zone: ${cam.zone}` : 'No zone'}
-            <br /><span className="mono">{cam.rtsp_url || 'Registered in the database only'}</span>
+            <br />{cam.status === 'other_gateway'
+              ? <span>Assigned to the <strong>{cam.gateway_name}</strong> gateway, which is not in use. It reconnects automatically when that gateway is selected.</span>
+              : <span className="mono">{cam.rtsp_url || 'Registered in the database only'}</span>}
           </p>
         )}
-        {cam.on_gateway && (
+        {cam.on_gateway && manage && (
           <label className="switch">
             <input type="checkbox" checked={cam.alert_offline} disabled={busy}
               onChange={(e) => run(() => api.updateCamera(cam.id, { alert_offline: e.target.checked }))} />
@@ -144,12 +150,13 @@ function CameraRow({ cam, onChange, full, streaming }: {
           </label>
         )}
         {error && <p className="notice notice--error">{error}</p>}
+        {links && <PhoneSetup links={links} onClose={() => setLinks(null)} />}
       </div>
       <div className="row cams-row__actions">
         <Link className="btn btn--sm" to={`/camera-logs?camera=${encodeURIComponent(cam.id)}`}>
           <Icon name="log" size={14} /> Log
         </Link>
-        {editing ? (
+        {manage && (editing ? (
           <>
             <button className="btn btn--primary btn--sm" disabled={busy}
               onClick={() => run(async () => { await api.updateCamera(cam.id, { location, zone }); setEditing(false); })}>Save</button>
@@ -157,8 +164,8 @@ function CameraRow({ cam, onChange, full, streaming }: {
           </>
         ) : (
           <button className="btn btn--sm" onClick={() => setEditing(true)}>Edit</button>
-        )}
-        {cam.on_gateway && (paused && full ? (
+        ))}
+        {manage && cam.on_gateway && (paused && full ? (
           <SwitchTo cam={cam} streaming={streaming} busy={busy} run={run} />
         ) : (
           <button className="btn btn--sm" disabled={busy}
@@ -167,10 +174,17 @@ function CameraRow({ cam, onChange, full, streaming }: {
             <Icon name={paused ? 'play' : 'pause'} size={14} /> {paused ? 'Resume' : 'Pause'}
           </button>
         ))}
-        <button className="btn btn--sm btn--danger" disabled={busy}
+        {manage && cam.phone && (
+          <button className="btn btn--sm" disabled={busy} title="Show a new QR code for this phone; the old one stops working"
+            onClick={() => confirm(`Make a new QR code for "${cam.name}"? The phone has to scan it again; the old one stops working.`)
+              && run(async () => setLinks(await api.newPhoneLink(cam.id)))}>
+            New QR code
+          </button>
+        )}
+        {manage && <button className="btn btn--sm btn--danger" disabled={busy}
           onClick={() => confirm(`Remove "${cam.name}"? Its past incidents are kept.`) && run(() => api.deleteCamera(cam.id))}>
           <Icon name="trash" size={14} /> Remove
-        </button>
+        </button>}
       </div>
     </li>
   );
@@ -178,7 +192,11 @@ function CameraRow({ cam, onChange, full, streaming }: {
 
 export default function CamerasPage() {
   const { data, error, loading, reload } = usePolling(() => api.cameras(), 5000);
-  const [adding, setAdding] = useState(false);
+  const { me, can } = useAuth();
+  const manage = can(PERM.manageCameras);
+  const canAdd = manage && !!me?.org.has_gateway;
+  const [adding, setAdding] = useState<'ip' | 'phone' | null>(null);
+  const [phoneLinks, setPhoneLinks] = useState<PhoneLinks | null>(null);
   const cameras = data?.cameras ?? [];
   const zones = [...new Set(cameras.map((c) => c.zone).filter((z): z is string => Boolean(z)))].sort();
   const [notice, setNotice] = useState<string | null>(null);
@@ -187,6 +205,9 @@ export default function CamerasPage() {
   const maxStreaming = data?.limits?.max_streaming ?? 5;
   const maxSaved = data?.limits?.max_saved ?? 50;
   const full = streaming.length >= maxStreaming;
+  // The cloud gateway (on the server) only reads phones; an on-site one reads IP cameras.
+  const gateway = data?.gateway ?? null;
+  const ipCameras = !gateway || gateway.kind !== 'cloud';
 
   return (
     <>
@@ -194,30 +215,57 @@ export default function CamerasPage() {
         description={`Streaming ${streaming.length} of ${maxStreaming} at a time · ${onGateway.length - streaming.length} paused (standby) · `
           + `${onGateway.length} of ${maxSaved} saved. A paused camera keeps its address and login, so you can switch `
           + 'which cameras stream without removing and adding them again.'}
-        actions={!adding && (
-          <button className="btn btn--primary" disabled={onGateway.length >= maxSaved} onClick={() => setAdding(true)}>
-            <Icon name="plus" size={16} /> {onGateway.length >= maxSaved ? `Gateway full (${maxSaved})` : 'Add camera'}
-          </button>
+        actions={canAdd && !adding && !phoneLinks && (
+          <div className="row">
+            {data?.phone_cameras && (
+              <button className="btn" disabled={onGateway.length >= maxSaved} onClick={() => setAdding('phone')}>
+                <Icon name="plus" size={16} /> Add phone camera
+              </button>
+            )}
+            {ipCameras && (
+              <button className="btn btn--primary" disabled={onGateway.length >= maxSaved} onClick={() => setAdding('ip')}>
+                <Icon name="plus" size={16} /> {onGateway.length >= maxSaved ? `Gateway full (${maxSaved})` : 'Add camera'}
+              </button>
+            )}
+          </div>
         )} />
+      {gateway && (
+        <p className="muted cams-gateway">
+          Gateway in use: <strong>{gateway.name}</strong>{gateway.location ? ` · ${gateway.location}` : ''}
+          {' · '}{gateway.kind === 'cloud' ? 'Cloud gateway (phone cameras only)' : 'On-site gateway'}{gateway.online ? '' : ' · Offline'}
+          {manage && <> · <Link to="/settings">Manage in Settings</Link></>}
+        </p>
+      )}
       {error && <p className="notice notice--error">{error}</p>}
+      {!manage && <p className="notice">View only: your role can't change cameras.</p>}
+      {manage && me && !me.org.has_gateway && <p className="notice">No gateway is connected to this organization yet, so cameras can't be added here.</p>}
       {data?.gateway_error && <p className="notice notice--error">Gateway unavailable: {data.gateway_error}</p>}
       {notice && <p className="notice" role="status">{notice}</p>}
-      {adding && (
+      {adding === 'phone' && (
+        <AddPhoneCameraForm onDone={(links) => {
+          setAdding(null);
+          setPhoneLinks(links ?? null);
+          setNotice(links?.status === 'paused' ? 'Phone camera saved on standby (paused): every streaming slot is in use. Use "Switch to this" on it to stream it.' : null);
+          void reload();
+        }} />
+      )}
+      {phoneLinks && <PhoneSetup links={phoneLinks} onClose={() => setPhoneLinks(null)} />}
+      {adding === 'ip' && (
         <AddCameraForm
           standby={full ? `${streaming.length} cameras are already streaming, the most at once: this one will be saved paused (standby). Use "Switch to this" to stream it instead of another.` : null}
           onDone={(status) => {
-            setAdding(false);
+            setAdding(null);
             setNotice(status === 'paused' ? 'Camera saved on standby (paused). Use "Switch to this" on it to stream it instead of another camera.' : null);
             void reload();
           }} />
       )}
-      {cameras.length > 1 && <CameraOrder cameras={cameras} onSaved={reload} />}
+      {manage && cameras.length > 1 && <CameraOrder cameras={cameras} onSaved={reload} />}
       {loading && !data ? <p className="muted">Loading…</p> : cameras.length === 0 ? (
         <EmptyState icon="camera" title="No cameras yet" body="Add an IP camera's RTSP address to start monitoring." />
       ) : (
         <ul className="cams-list">
           {cameras.map((c) => (
-            <CameraRow key={c.id} cam={c} onChange={() => void reload()} full={full} streaming={streaming} />
+            <CameraRow key={c.id} cam={c} onChange={() => void reload()} full={full} streaming={streaming} manage={manage} />
           ))}
         </ul>
       )}

@@ -18,10 +18,6 @@ import (
 // served on the same origin as the app under /stream-hub).
 const clipLinkPrefix = "/stream-hub/recordings/clips/"
 
-// actor is who is making the request. There are no user accounts yet, so every action is
-// recorded as "Current user"; once sign-in exists, return the signed-in user here.
-func actor(*gin.Context) string { return "Current user" }
-
 // timeWindow reads ?from= and ?to= (RFC 3339; ?since= is the older name for from).
 func timeWindow(c *gin.Context) (from, to *time.Time, ok bool) {
 	parse := func(keys ...string) (*time.Time, bool) {
@@ -101,6 +97,7 @@ func (s *Server) notifications(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	alerts = s.appAlertsFilter(ctx, alerts) // severities switched off for in-app notifications
 	cams, err := s.db.Cameras(ctx)
 	if err != nil {
 		fail(c, err)

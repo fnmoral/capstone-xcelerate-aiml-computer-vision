@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 	_ "time/tzdata" // CSV exports convert times to the browser's zone; Alpine has no zoneinfo
@@ -18,6 +19,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"backend-api/internal/api"
+	"backend-api/internal/notify"
 	"backend-api/internal/store"
 )
 
@@ -36,6 +38,32 @@ func main() {
 		GatewayURL:  env("GATEWAY_URL", "http://localhost:8080"),
 		// stream-hub's HTTP address (its config.json http_addr), not its TCP ingest port.
 		StreamHubURL: env("STREAM_HUB_URL", "http://localhost:9000"),
+
+		// Accounts and notifications (see the root .env.example).
+		AppURL:          os.Getenv("APP_URL"),
+		AppSecret:       os.Getenv("APP_SECRET"),
+		CookieSecure:    strings.EqualFold(os.Getenv("COOKIE_SECURE"), "true"),
+		LinksInResponse: strings.EqualFold(os.Getenv("EMAIL_LINKS_IN_RESPONSE"), "true"),
+		SMTP:            notify.EmailProvider{Type: "log"},
+
+		// Anything but "false" keeps verification on, so a typo never switches it off.
+		RequireEmailVerification: !strings.EqualFold(strings.TrimSpace(os.Getenv("REQUIRE_EMAIL_VERIFICATION")), "false"),
+
+		// Phone cameras: the relay's public RTMPS address ("" = off) and where the gateway reads it.
+		PhoneRelayURL: strings.TrimSpace(os.Getenv("PHONE_RELAY_URL")),
+		RelayRTSPURL:  env("RELAY_RTSP_URL", "rtsp://test-camera:8554"),
+		PhoneRTMPURL:  strings.TrimSpace(os.Getenv("PHONE_RTMP_URL")),
+	}
+	for _, o := range strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			cfg.AllowedOrigins = append(cfg.AllowedOrigins, o)
+		}
+	}
+	if host := os.Getenv("SMTP_HOST"); host != "" {
+		port, _ := strconv.Atoi(os.Getenv("SMTP_PORT"))
+		cfg.SMTP = notify.EmailProvider{Type: "smtp", Host: host, Port: port, Security: env("SMTP_SECURITY", "starttls"),
+			Username: os.Getenv("SMTP_USERNAME"), FromEmail: os.Getenv("SMTP_FROM"), FromName: env("SMTP_FROM_NAME", "FallGuard")}
+		cfg.SMTP.SetPassword(os.Getenv("SMTP_PASSWORD"))
 	}
 
 	db, err := store.Open(cfg.DatabaseURL, cfg.Tenant)
@@ -52,7 +80,9 @@ func main() {
 	}
 	server := api.New(cfg, db)
 	server.Register(r)
-	go server.WatchCameras(context.Background()) // camera status + "not working" log
+	go server.WatchCameras(context.Background())        // camera status + "not working" log
+	go server.RunNotifier(context.Background())         // email / SMS for alerts (Notifications page)
+	go server.PurgeDeletedReports(context.Background()) // deleted reports past their retention
 	devMode := strings.ToLower(env("PROD_MODE", "true")) == "false"
 	if devMode {
 		go server.DevWebcam(context.Background())

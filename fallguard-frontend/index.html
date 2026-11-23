@@ -4,10 +4,36 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#1971c2" />
+    <meta name="description" content="FallGuard Vision: real-time fall detection for your cameras. Powered by Xcelerate Industries." />
     <title>FallGuard Vision</title>
+    <script>
+      // Apply the saved theme before the first paint (no light flash in dark mode).
+      try {
+        var s = JSON.parse(localStorage.getItem('fallguard-ui') || '{}').state || {};
+        var t = (s.theme && s.theme !== 'system' ? s.theme : null) || s.orgTheme || 'light';
+        if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    </script>
+    <style>
+      /* Shown until the app starts (React replaces #root's content). */
+      .boot { min-height: 100vh; display: grid; place-content: center; justify-items: center; gap: 22px; background: #f6f7f9; }
+      .boot img { width: 149px; height: 120px; animation: boot 2.4s ease-in-out infinite; }
+      .boot .d { display: none; }
+      @keyframes boot { 0%, 100% { opacity: .85; transform: scale(1); } 50% { opacity: 1; transform: scale(1.03); } }
+      :root[data-theme="dark"] .boot { background: #0f1114; }
+      :root[data-theme="dark"] .boot .l { display: none; }
+      :root[data-theme="dark"] .boot .d { display: block; }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) .boot { background: #0f1114; }
+        :root:not([data-theme="light"]) .boot .l { display: none; }
+        :root:not([data-theme="light"]) .boot .d { display: block; }
+      }
+      @media (prefers-reduced-motion: reduce) { .boot img { animation: none; } }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div class="boot" role="status" aria-label="Loading FallGuard Vision"><img class="l" src="/brand/logo-stacked-light.svg" alt="" /><img class="d" src="/brand/logo-stacked-dark.svg" alt="" /></div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

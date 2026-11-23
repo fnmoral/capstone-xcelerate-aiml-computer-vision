@@ -10,6 +10,7 @@ import { useUiStore, type LiveLayout } from "../../store/uiStore";
 import type { Camera } from "../../types/domain";
 import { CameraGrid, CameraTile, useFitHeight } from "./CameraGrid";
 import { OverlayMenu } from "./OverlayMenu";
+import { PERM, useAuth } from "../auth/AuthContext";
 
 const LAYOUTS: { value: LiveLayout; label: string; title: string }[] = [
   { value: "auto", label: "Auto", title: "Every camera; scroll for more" },
@@ -96,6 +97,7 @@ function FocusView({
 export default function LiveViewPage() {
   const { data, error, loading } = usePolling(() => api.cameras(), 2000);
   const { liveLayout, setLiveLayout } = useUiStore();
+  const canManage = useAuth().can(PERM.manageCameras);
   const [layout, setLayout] = useState<LiveLayout>(liveLayout);
   const [page, setPage] = useState(0);
   const [focused, setFocused] = useState<string | null>(null);
@@ -104,6 +106,7 @@ export default function LiveViewPage() {
   const broken = cameras.filter(
     (c) => c.health === "not_working" && c.alert_offline,
   );
+  const videoOnly = cameras.filter((c) => c.health === "video_only");
   const focusCam = cameras.find((c) => c.id === focused);
 
   const perPage =
@@ -131,11 +134,11 @@ export default function LiveViewPage() {
       <PageHeader
         title="Live View"
         description="Live video from every camera, with each person's position as the detector sees it. Click a camera to enlarge it."
-        actions={
+        actions={canManage && (
           <Link to="/cameras" className="btn btn--primary">
             Manage cameras
           </Link>
-        }
+        )}
       />
       {error && <p className="notice notice--error">{error}</p>}
       {data?.gateway_error && (
@@ -160,6 +163,13 @@ export default function LiveViewPage() {
           </strong>{" "}
           (no video, so falls there can't be detected).{" "}
           <Link to="/camera-logs">Camera logs →</Link>
+        </p>
+      )}
+      {videoOnly.length > 0 && (
+        <p className="notice" role="status">
+          <strong>Fall detection is off</strong>{" "}
+          {videoOnly.length === 1 ? `for ${videoOnly[0].name}` : `for ${videoOnly.length} cameras`}: the video is live,
+          but the fall detector isn't running, so falls aren't detected or alerted.
         </p>
       )}
       {loading && !data ? (

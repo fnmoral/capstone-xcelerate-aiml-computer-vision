@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 )
 
@@ -25,6 +26,18 @@ type mlStatusCamera struct {
 
 // mlFrameAges returns, per camera ml-service is analysing, how many seconds ago it
 // analysed its last frame. Errors when ml-service has stopped reporting.
+// videoAges asks stream-hub how many seconds ago each camera's last frame arrived (empty if
+// stream-hub doesn't answer).
+func (s *Server) videoAges(ctx context.Context) map[string]float64 {
+	var out struct {
+		Cameras map[string]float64 `json:"cameras"`
+	}
+	if err := s.hub.do(ctx, http.MethodGet, "/video-status", nil, &out); err != nil || out.Cameras == nil {
+		return map[string]float64{}
+	}
+	return out.Cameras
+}
+
 func (s *Server) mlFrameAges(ctx context.Context) (map[string]float64, error) {
 	st, err := s.db.MLStatus(ctx)
 	if err != nil {

@@ -43,6 +43,8 @@ CREATE TABLE tenants (
     max_cameras   INT  NOT NULL DEFAULT 5,
     status        TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','suspended','deleted')),
     timezone      TEXT,                        -- IANA zone for the app (Settings); NULL = each browser's own
+    profile       JSONB NOT NULL DEFAULT '{}', -- address, phone, WSIB firm number... (incident report headers)
+    role_permissions JSONB,                    -- what members / viewers may do; NULL = defaults (backend auth package)
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -51,7 +53,15 @@ CREATE TABLE users (
     email          CITEXT NOT NULL UNIQUE,
     password_hash  TEXT,                       -- null if SSO only
     full_name      TEXT,
+    first_name     TEXT,
+    last_name      TEXT,
+    phone          TEXT,                       -- E.164, for SMS notifications
     is_active      BOOLEAN NOT NULL DEFAULT true,
+    email_verified_at TIMESTAMPTZ,             -- sign-in needs a verified email
+    failed_logins  INT NOT NULL DEFAULT 0,     -- wrong passwords in a row (lockout)
+    locked_until   TIMESTAMPTZ,
+    password_changed_at TIMESTAMPTZ,
+    last_tenant_id UUID,                       -- organization opened at the last sign-in
     last_login_at  TIMESTAMPTZ,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -60,7 +70,8 @@ CREATE TABLE users (
 CREATE TABLE memberships (
     tenant_id  UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     user_id    UUID NOT NULL REFERENCES users(id)   ON DELETE CASCADE,
-    role       TEXT NOT NULL CHECK (role IN ('owner','admin','operator','viewer')),
+    role       TEXT NOT NULL CONSTRAINT memberships_role_check CHECK (role IN ('admin','member','viewer')),
+    invited_by UUID,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (tenant_id, user_id)
 );
@@ -76,13 +87,47 @@ CREATE TABLE api_keys (
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE sessions (                        -- optional; can live in Redis only
+CREATE TABLE sessions (                        -- signed-in browsers (the cookie holds the token, only its hash is here)
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    expires_at  TIMESTAMPTZ NOT NULL,
+    token_hash  TEXT,
+    expires_at  TIMESTAMPTZ NOT NULL,           -- sliding, extended while used
+    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ip          TEXT,
+    user_agent  TEXT,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE UNIQUE INDEX idx_sessions_token ON sessions (token_hash);
+CREATE INDEX idx_sessions_user ON sessions (user_id);
+CREATE INDEX idx_memberships_user ON memberships (user_id);
+
+-- One-time links sent by email: verify the address, reset the password (hash only).
+CREATE TABLE user_tokens (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    purpose     TEXT NOT NULL CHECK (purpose IN ('verify_email','reset_password')),
+    token_hash  TEXT NOT NULL UNIQUE,
+    expires_at  TIMESTAMPTZ NOT NULL,
+    used_at     TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_user_tokens_user ON user_tokens (user_id, purpose);
+
+-- Invitations to join an organization with a role (link valid 7 days).
+CREATE TABLE invitations (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    email       CITEXT NOT NULL,
+    role        TEXT NOT NULL CHECK (role IN ('admin','member','viewer')),
+    token_hash  TEXT NOT NULL UNIQUE,
+    invited_by  UUID REFERENCES users(id) ON DELETE SET NULL,
+    expires_at  TIMESTAMPTZ NOT NULL,
+    accepted_at TIMESTAMPTZ,
+    revoked_at  TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_invitations_tenant ON invitations (tenant_id, created_at DESC);
 
 -- ---------- Cameras and gateways ----------
 
@@ -98,11 +143,18 @@ CREATE TABLE gateways (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id     UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     site_id       UUID REFERENCES sites(id) ON DELETE SET NULL,
-    name          TEXT NOT NULL,
+    name          TEXT NOT NULL,               -- the gateway's own ID (GATEWAY_NAME_ID)
     auth_token_hash TEXT NOT NULL,
     last_seen_at  TIMESTAMPTZ,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    display_name  TEXT,                        -- the place, shown in the app: 'Cloud', 'Office server'
+    location      TEXT,                        -- optional detail: '2nd floor'
+    url           TEXT,                        -- how the API reaches it (sent at sign-up)
+    kind          TEXT NOT NULL DEFAULT 'onsite' -- cloud (on the server, phone cameras) | onsite (next to the cameras)
 );
+CREATE UNIQUE INDEX gateways_tenant_name ON gateways (tenant_id, name);
+-- The gateway in use, chosen by an admin; NULL = automatic (on-site if one is online, else cloud).
+ALTER TABLE tenants ADD COLUMN active_gateway_id UUID REFERENCES gateways(id) ON DELETE SET NULL;
 
 -- Cameras that see the same area. A fall seen by several cameras of one zone is recorded
 -- as one incident (ml-service merges them). A camera belongs to at most one zone.
@@ -164,6 +216,51 @@ CREATE TABLE notification_channels (
     type        TEXT NOT NULL CHECK (type IN ('email','sms','webhook','slack')),
     target_enc  BYTEA NOT NULL,
     is_enabled  BOOLEAN NOT NULL DEFAULT true
+);
+
+-- Notifications page: severity x channel matrix, recipients, follow-ups, templates, and the
+-- email (SMTP) / SMS (Twilio) providers. Provider secrets are encrypted by the backend.
+CREATE TABLE notification_settings (
+    tenant_id      UUID PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+    config         JSONB NOT NULL DEFAULT '{}',
+    email_provider JSONB NOT NULL DEFAULT '{}',
+    sms_provider   JSONB NOT NULL DEFAULT '{}',
+    enabled_at     TIMESTAMPTZ NOT NULL DEFAULT now(),   -- alerts before this aren't sent
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Every email / SMS sent for an alert (or a test), with retries.
+CREATE TABLE notification_deliveries (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    alert_id    UUID,
+    event       TEXT NOT NULL,                  -- alert:<severity> | recovered | false_alarm | resolved | test
+    channel     TEXT NOT NULL CHECK (channel IN ('email','sms')),
+    recipient   TEXT NOT NULL,
+    subject     TEXT,
+    body        TEXT NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','sent','logged','failed')),
+    attempts    INT NOT NULL DEFAULT 0,
+    error       TEXT,
+    next_try_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    sent_at     TIMESTAMPTZ
+);
+CREATE INDEX idx_notif_deliveries_tenant ON notification_deliveries (tenant_id, created_at DESC);
+CREATE INDEX idx_notif_deliveries_pending ON notification_deliveries (next_try_at) WHERE status = 'pending';
+
+-- Alert events already turned into messages, so each goes out once.
+CREATE TABLE notification_events (
+    tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    alert_id    UUID NOT NULL,
+    event       TEXT NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (alert_id, event)
+);
+
+CREATE TABLE platform_secrets (                 -- backend key for provider secrets when APP_SECRET is unset
+    name   TEXT PRIMARY KEY,
+    value  TEXT NOT NULL
 );
 
 CREATE TABLE rule_channels (
@@ -343,21 +440,76 @@ CREATE TABLE model_predictions (
 CREATE INDEX idx_pred_incident ON model_predictions (incident_id, predicted_at);
 CREATE INDEX idx_pred_cam_time ON model_predictions (tenant_id, camera_id, predicted_at DESC);
 
--- Incident reports (generated summary, optional PDF in object storage)
+-- Incident reports: WSIB Form 7, OHSA s.51/52 notice, OSHA 301 or internal, filled in from
+-- the incident (content = the form's field values). reviewed_* = who finalized it.
 CREATE TABLE reports (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id     UUID NOT NULL,
     incident_id   UUID NOT NULL,
-    status        TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','generated','reviewed')),
+    form          TEXT NOT NULL DEFAULT 'internal', -- wsib_form7 | ohsa_notice | osha_301 | internal
+    status        TEXT NOT NULL DEFAULT 'draft' CONSTRAINT reports_status_check CHECK (status IN ('draft','generated','reviewed','final')),
+    created_by    UUID,
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     title         TEXT NOT NULL,
     summary       TEXT,
     content       JSONB NOT NULL DEFAULT '{}',  -- structured data used to build the report
     file_key      TEXT,                         -- PDF in object storage
     generated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     reviewed_by   UUID,
-    reviewed_at   TIMESTAMPTZ
+    reviewed_at   TIMESTAMPTZ,
+    deleted_at    TIMESTAMPTZ,                  -- restorable until the org's report_retention_days pass
+    deleted_by    UUID
 );
 CREATE INDEX idx_reports_incident ON reports (tenant_id, incident_id);
+
+-- View-only links to an incident's video, for people without an account (regulators).
+-- Only the token's hash is kept. No row-level security: the public page looks a token up
+-- before any tenant is known (like invitations); every other query filters on tenant_id.
+CREATE TABLE shared_links (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id      UUID NOT NULL,
+    incident_id    UUID NOT NULL,
+    recipient      TEXT NOT NULL,
+    token_hash     TEXT NOT NULL UNIQUE,
+    created_by     UUID,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at     TIMESTAMPTZ NOT NULL,
+    revoked_at     TIMESTAMPTZ,
+    revoked_by     UUID,
+    views          INT NOT NULL DEFAULT 0,
+    last_viewed_at TIMESTAMPTZ
+);
+CREATE INDEX idx_shared_links_incident ON shared_links (tenant_id, incident_id);
+
+-- Phone cameras that send their video to the camera relay (a phone streaming app). Only the
+-- password's hash is stored. No row-level security: the relay looks a path up before any
+-- tenant is known.
+CREATE TABLE phone_cameras (
+    camera_id       TEXT PRIMARY KEY,
+    tenant_id       UUID NOT NULL,
+    path            TEXT NOT NULL UNIQUE,
+    token_hash      TEXT NOT NULL,
+    created_by      UUID,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    rotated_at      TIMESTAMPTZ,
+    last_publish_at TIMESTAMPTZ
+);
+
+-- Account emails (invitations, verification, password resets) for Settings > Emails sent.
+-- tenant_id is NULL for a password reset (it belongs to the person). Kept 90 days.
+CREATE TABLE account_emails (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id  UUID,
+    kind       TEXT NOT NULL,
+    recipient  TEXT NOT NULL,
+    subject    TEXT NOT NULL,
+    from_email TEXT NOT NULL DEFAULT '',
+    via        TEXT NOT NULL,
+    status     TEXT NOT NULL,
+    error      TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_account_emails_tenant ON account_emails (tenant_id, created_at DESC);
 
 -- ---------- Monthly partitions ----------
 -- create_monthly_partitions(from_month, months) creates <table>_YYYY_MM for every partitioned

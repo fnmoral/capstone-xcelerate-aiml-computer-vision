@@ -1,0 +1,100 @@
+# Azure VM deployment (deploy/azure/README.md). Use with the main file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.azure.yml up -d --build \
+#       db partitions api stream-hub gateway-back frontend caddy test-camera
+#
+# - Only Caddy faces the internet (80/443, HTTPS with a free Let's Encrypt certificate).
+#   Every other service listens on the VM itself (127.0.0.1) or the Docker network only.
+# - ml-service does NOT run here: it runs on a laptop GPU or the Fanshawe server and reaches
+#   the VM through an SSH tunnel (deploy/azure/README.md, "Connect the fall detector"):
+#   stream-hub dials it on the VM's port 9999, it writes to the database on 127.0.0.1:5433.
+# - The VM is ARM64 (Azure B2ps_v2): every image here builds or ships for ARM.
+
+services:
+  caddy:
+    image: caddy:2.8.4-alpine
+    restart: unless-stopped
+    depends_on: [frontend]
+    environment:
+      # The web address, e.g. fallguard-vision.canadacentral.cloudapp.azure.com
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in .env (the VM's DNS name)}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/azure/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data          # certificates (kept across restarts: no re-issuing)
+      - caddy-config:/config
+    networks: [fallguard]
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+  frontend:
+    ports: !override
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:80"   # reached through Caddy
+
+  stream-hub:
+    environment:
+      # ml-service comes in through the SSH tunnel, listening on the VM (see the runbook).
+      STREAM_HUB_AI_SERVER_ADDR: ${STREAM_HUB_AI_SERVER_ADDR:-host.docker.internal:9999}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports: !override
+      - "127.0.0.1:${STREAM_HUB_HTTP_PORT:-9000}:9000"   # through nginx (session checked)
+      - "127.0.0.1:${STREAM_HUB_TCP_PORT:-8090}:8090"    # gateways outside the VM: through the SSH tunnel
+
+  gateway-back:
+    ports: !override
+      - "127.0.0.1:${GATEWAY_PORT:-8080}:8080"   # gateway UI: open it through an SSH tunnel
+    environment:
+      # The cloud gateway: reads phone cameras from the relay. On-site gateways (next to the
+      # cameras) sign up as well; the app uses one at a time (Settings → Gateways).
+      GATEWAY_API_URL: http://gateway-back:8080
+      GATEWAY_KIND: cloud
+
+  # Phone cameras ("Add phone camera" in the app): the API gives each phone an RTMPS address
+  # with its own password (shown once as a QR code) on the relay's public port 1936.
+  api:
+    environment:
+      # Phone cameras show only while the cloud gateway is in use (Settings → Gateways).
+      PHONE_RELAY_URL: rtmps://${SITE_ADDRESS}:1936
+      PHONE_RTMP_URL: rtmp://${SITE_ADDRESS}:1935   # apps without RTMPS (Streamza)
+    # An on-site gateway (deploy/onsite-gateway) is reached through its SSH tunnel on the VM's
+    # port 18080 (it signs up with GATEWAY_API_URL=http://host.docker.internal:18080).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Camera relay. Two ways in:
+  # - Phone cameras send RTMPS (encrypted) to port 1936, open to the internet. The relay asks the
+  #   API for every connection (/internal/relay-auth): only a phone camera's current password
+  #   for its own path may publish there; nobody can watch from outside.
+  # - Cameras on another network that can't send by themselves (a phone RTSP server app at
+  #   home): a machine next to them sends the video through an SSH tunnel to the RTSP port,
+  #   which is reachable only on the VM (deploy/azure/send-camera.sh).
+  # The gateway reads every camera as rtsp://test-camera:8554/<name>.
+  test-camera:
+    profiles: !reset []
+    depends_on: [api, caddy]
+    environment:
+      MTX_AUTHMETHOD: http
+      MTX_AUTHHTTPADDRESS: http://api:8000/internal/relay-auth
+      MTX_RTMPENCRYPTION: optional                # RTMPS on 1936 + plain RTMP on 1935 (Streamza can't do RTMPS)
+      # Caddy's Let's Encrypt certificate for the site, so phones trust the connection.
+      MTX_RTMPSERVERCERT: /caddy/caddy/certificates/acme-v02.api.letsencrypt.org-directory/${SITE_ADDRESS}/${SITE_ADDRESS}.crt
+      MTX_RTMPSERVERKEY: /caddy/caddy/certificates/acme-v02.api.letsencrypt.org-directory/${SITE_ADDRESS}/${SITE_ADDRESS}.key
+    volumes:
+      - caddy-data:/caddy:ro
+    ports: !override
+      - "127.0.0.1:8554:8554"                     # RTSP: only through the SSH tunnel
+      - "1936:1936"                               # RTMPS: phone cameras (password per phone)
+      - "1935:1935"                               # RTMP, unencrypted: phone apps without RTMPS (same password check)
+
+volumes:
+  caddy-data:
+  caddy-config:
+
+networks:
+  fallguard:
+    name: fallguard

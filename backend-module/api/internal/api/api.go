@@ -15,76 +15,212 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"backend-api/internal/auth"
+	"backend-api/internal/notify"
 	"backend-api/internal/store"
 )
 
 // Config is the backend's runtime configuration (environment variables, see main.go).
 type Config struct {
 	Addr, DatabaseURL, Tenant, GatewayURL, StreamHubURL string
+
+	AppURL          string               // web app address for links in emails ("" = from the request)
+	AppSecret       string               // encrypts provider passwords ("" = a key kept in the database)
+	CookieSecure    bool                 // session cookie only over HTTPS
+	LinksInResponse bool                 // return email links in API answers when no email provider is set (demos)
+	AllowedOrigins  []string             // other web origins allowed to call the API
+	SMTP            notify.EmailProvider // server SMTP for account emails (Type "smtp" when SMTP_HOST is set)
+
+	// RequireEmailVerification: sign-in needs a verified email (default). false = new
+	// accounts are signed in right away (demos); REQUIRE_EMAIL_VERIFICATION.
+	RequireEmailVerification bool
+
+	// Phone cameras (phone_cameras.go). PhoneRelayURL is the relay's public RTMPS address
+	// phones send to, e.g. rtmps://host:1936 ("" = phone cameras off); RelayRTSPURL is where
+	// the gateway reads them, e.g. rtsp://test-camera:8554.
+	PhoneRelayURL, RelayRTSPURL string
+
+	// PhoneRTMPURL is the relay's plain RTMP address (e.g. rtmp://host:1935) for phone apps
+	// without RTMPS, such as Streamza ("" = not offered).
+	PhoneRTMPURL string
 }
 
 // Server holds the dependencies of the routes.
 type Server struct {
 	cfg     Config
 	db      *store.Store
-	gateway gateway
+	gateway gateway // GATEWAY_URL: gateways that signed up without an address (gateways.go)
 	hub     *httpClient
+	box     *notify.Box // encrypts email / SMS provider secrets
+
+	gws *gatewayPool // clients of the registered gateways and whether they answer
 }
 
 type GatewayRegisterRequest struct {
 	TenantName    string `json:"tenant_name"`
 	GatewayNameID string `json:"gateway_name_id"`
 	AuthToken     string `json:"auth_token"` // Optional or default hash
+	URL           string `json:"url"`        // how the API reaches the gateway ("" = GATEWAY_URL)
+	Kind          string `json:"kind"`       // cloud | onsite (default)
 }
 
 // New creates the server.
 func New(cfg Config, db *store.Store) *Server {
+	secret := cfg.AppSecret
+	if secret == "" {
+		var err error
+		if secret, err = db.PlatformSecret(context.Background(), "provider_key"); err != nil {
+			log.Fatalf("encryption key: %v", err)
+		}
+		log.Printf("APP_SECRET not set: provider passwords are encrypted with a key kept in the database")
+	}
+	box, err := notify.NewBox(secret)
+	if err != nil {
+		log.Fatalf("encryption key: %v", err)
+	}
 	return &Server{
 		cfg:     cfg,
 		db:      db,
 		gateway: gateway{newClient("gateway-back", cfg.GatewayURL, 8*time.Second)},
 		hub:     newClient("stream-hub", cfg.StreamHubURL, 3*time.Second),
+		box:     box,
+		gws:     newGatewayPool(),
 	}
 }
 
-// Register adds all routes.
+// Register adds all routes. Everything except health, sign-in / sign-up and the gateway's
+// own registration needs a signed-in session; each route also checks the role's permission.
 func (s *Server) Register(r *gin.Engine) {
-	a := r.Group("/api")
+	a := r.Group("/api", sameOrigin(s.cfg.AllowedOrigins))
 	a.GET("/health", s.health)
 	a.GET("/health-cloud", s.HealthCheck)
+	a.POST("/gateway/add", s.gatewayAdd) // called by gateway-back at start-up (machine to machine)
 
-	a.GET("/cameras", s.listCameras)
-	a.POST("/cameras", s.addCamera)
-	a.PATCH("/cameras/:id", s.updateCamera)
-	a.PUT("/cameras/order", s.cameraOrder)
-	a.DELETE("/cameras/:id", s.deleteCamera)
-	a.POST("/cameras/:id/pause", s.pauseResume("pause", "disabled"))
-	a.POST("/cameras/:id/resume", s.pauseResume("resume", "online"))
-	a.POST("/cameras/:id/switch", s.switchCamera)
-	a.GET("/zones", s.listZones)
-	a.GET("/notifications", s.notifications)
-	a.GET("/logs", s.listLogs)
-	a.GET("/export/incidents.csv", s.exportIncidents)
-	a.GET("/export/logs.csv", s.exportLogs)
+	// The camera relay checks phone cameras (not under /api, so nginx never forwards it).
+	r.POST("/internal/relay-auth", s.relayAuth)
 
-	a.GET("/incidents", s.listIncidents)
-	a.GET("/incidents/:id", s.getIncident)
-	a.PATCH("/incidents/:id", s.updateIncident)
-	a.POST("/incidents/:id/notes", s.addNote)
-	a.GET("/alerts", s.listAlerts)
-	a.POST("/alerts/:id/acknowledge", s.alertStatus("acknowledged"))
-	a.POST("/alerts/:id/resolve", s.alertStatus("resolved"))
-	a.POST("/alerts/:id/false-positive", s.alertStatus("false_positive"))
-	a.POST("/alerts/:id/reopen", s.reopenAlert)
+	// ---- accounts (public) ----
+	strict := newLimiter(10, 5*time.Minute).middleware // per IP and route
+	a.POST("/auth/signup", strict, s.signup)
+	a.POST("/auth/login", newLimiter(20, 5*time.Minute).middleware, s.login)
+	a.POST("/auth/logout", s.logout)
+	a.POST("/auth/verify-email", strict, s.verifyEmail)
+	a.POST("/auth/resend-verification", strict, s.resendVerification)
+	a.POST("/auth/forgot-password", strict, s.forgotPassword)
+	a.POST("/auth/reset-password", strict, s.resetPassword)
+	a.GET("/auth/invitations/:token", strict, s.invitationInfo)
+	a.POST("/auth/invitations/:token/accept", strict, s.acceptInvitation)
+	a.GET("/auth/check", s.authCheck) // nginx auth_request for stream-hub video
+	a.GET("/auth/config", s.authConfig)
+	a.GET("/auth/demo/:token", strict, s.guestInfo) // demo access links (view-only, no account)
+	a.POST("/auth/demo/:token", strict, s.guestEnter)
 
-	a.GET("/stats", s.stats)
-	a.GET("/detection", s.detection)
-	a.PUT("/detection", s.saveDetection)
-	a.GET("/settings", s.settings)
-	a.PUT("/settings", s.saveSettings)
-	a.GET("/gateway/config", s.gatewayConfig)
-	a.PUT("/gateway/config", s.gatewayConfig)
-	a.POST("/gateway/add", s.gatewayAdd)
+	// ---- shared incident video (public, view-only; the token is the permission) ----
+	a.GET("/shared/:token", newLimiter(60, 5*time.Minute).middleware, s.sharedView)
+	a.GET("/shared/:token/media/:kind/:name", s.sharedFile)
+
+	u := a.Group("", s.requireAuth)
+	u.GET("/auth/me", s.me)
+	u.PATCH("/auth/me", s.notGuest, s.updateMe)
+	u.POST("/auth/change-password", s.notGuest, strict, s.changePassword)
+	u.POST("/auth/logout-all", s.logoutAll)
+	u.POST("/auth/switch-org", s.notGuest, s.switchOrg)
+	u.POST("/org/leave", s.notGuest, s.leaveOrg)
+
+	// ---- organization and members ----
+	u.GET("/org", s.getOrg)
+	u.PUT("/org", s.can(auth.ManageSettings), s.saveOrg)
+	u.GET("/org/members", s.can(auth.ViewMembers), s.listMembers)
+	u.POST("/org/invitations", s.can(auth.ManageMembers), s.invite)
+	u.POST("/org/invitations/:id/resend", s.can(auth.ManageMembers), s.resendInvitation)
+	u.DELETE("/org/invitations/:id", s.can(auth.ManageMembers), s.revokeInvitation)
+	u.GET("/org/guest-links", s.can(auth.ManageMembers), s.listGuestLinks)
+	u.POST("/org/guest-links", s.can(auth.ManageMembers), s.createGuestLink)
+	u.DELETE("/org/guest-links/:id", s.can(auth.ManageMembers), s.revokeGuestLink)
+	u.PATCH("/org/members/:id", s.can(auth.ManageMembers), s.setMemberRole)
+	u.DELETE("/org/members/:id", s.can(auth.ManageMembers), s.removeMember)
+	u.GET("/org/permissions", s.can(auth.ViewMembers), s.rolePermissions)
+	u.GET("/org/emails", s.can(auth.ViewEmails), s.accountEmails)
+	u.PUT("/org/permissions", s.can(auth.ManageRoles), s.saveRolePermissions)
+
+	// ---- cameras ----
+	watch := s.canAny(auth.ViewLive, auth.ViewEvents, auth.ManageCameras, auth.ViewLogs)
+	cams := s.can(auth.ManageCameras)
+	u.GET("/cameras", watch, s.listCameras)
+	u.POST("/cameras", cams, s.homeOrgOnly, s.addCamera)
+	u.POST("/cameras/phone", cams, s.homeOrgOnly, s.addPhoneCamera)
+	u.POST("/cameras/:id/phone-link", cams, s.homeOrgOnly, s.newPhoneLink)
+	u.PATCH("/cameras/:id", cams, s.updateCamera)
+	u.PUT("/cameras/order", cams, s.cameraOrder)
+	u.DELETE("/cameras/:id", cams, s.homeOrgOnly, s.deleteCamera)
+	u.POST("/cameras/:id/pause", cams, s.homeOrgOnly, s.pauseResume("pause", "disabled"))
+	u.POST("/cameras/:id/resume", cams, s.homeOrgOnly, s.pauseResume("resume", "online"))
+	u.POST("/cameras/:id/switch", cams, s.homeOrgOnly, s.switchCamera)
+	u.GET("/zones", watch, s.listZones)
+	u.GET("/notifications", s.notifications)
+	u.GET("/logs", s.can(auth.ViewLogs), s.listLogs)
+	u.GET("/export/incidents.csv", s.can(auth.ViewReports), s.exportIncidents)
+	u.GET("/export/logs.csv", s.canAny(auth.ViewLogs, auth.ViewReports), s.exportLogs)
+
+	// ---- incidents and alerts ----
+	events := s.canAny(auth.ViewEvents, auth.ViewReports)
+	respond := s.can(auth.ManageAlerts)
+	u.GET("/incidents", events, s.listIncidents)
+	u.GET("/incidents/:id", events, s.getIncident)
+	u.PATCH("/incidents/:id", respond, s.updateIncident)
+	u.POST("/incidents/:id/notes", respond, s.addNote)
+	u.GET("/alerts", events, s.listAlerts)
+	u.POST("/alerts/:id/acknowledge", respond, s.alertStatus("acknowledged"))
+	u.POST("/alerts/:id/resolve", respond, s.alertStatus("resolved"))
+	u.POST("/alerts/:id/false-positive", respond, s.alertStatus("false_positive"))
+	u.POST("/alerts/:id/reopen", respond, s.reopenAlert)
+
+	// ---- incident reports (WSIB / OHSA / OSHA / internal) ----
+	reports := s.canAny(auth.ViewReports, auth.CreateReports)
+	writeReports := s.can(auth.CreateReports)
+	u.GET("/incident-reports", reports, s.listIncidentReports)
+	u.GET("/incident-reports/deleted", writeReports, s.listDeletedIncidentReports)
+	u.GET("/incident-reports/:id", reports, s.getIncidentReport)
+	u.PUT("/incident-reports/:id", writeReports, s.updateIncidentReport)
+	u.DELETE("/incident-reports/:id", writeReports, s.deleteIncidentReport)
+	u.POST("/incident-reports/:id/restore", writeReports, s.restoreIncidentReport)
+	u.GET("/incidents/:id/reports", reports, s.listIncidentReports)
+	u.GET("/incidents/:id/report-facts", writeReports, s.reportFacts)
+	u.POST("/incidents/:id/reports", writeReports, s.createIncidentReport)
+	u.GET("/incidents/:id/share-links", writeReports, s.listShareLinks)
+	u.POST("/incidents/:id/share-links", writeReports, s.createShareLink)
+	u.DELETE("/share-links/:id", writeReports, s.revokeShareLink)
+	u.GET("/share-links/:id/views", writeReports, s.shareLinkViews)
+
+	// ---- notifications ----
+	notif := s.can(auth.ManageNotifications)
+	u.GET("/notification-settings", notif, s.notificationSettings)
+	u.PUT("/notification-settings", notif, s.saveNotificationSettings)
+	u.PUT("/notification-settings/email-provider", notif, s.saveEmailProvider)
+	u.PUT("/notification-settings/sms-provider", notif, s.saveSMSProvider)
+	u.POST("/notification-settings/test-email", notif, strict, s.testEmail)
+	u.POST("/notification-settings/test-sms", notif, strict, s.testSMS)
+	u.POST("/notification-settings/preview", notif, s.previewTemplate)
+	u.GET("/notification-settings/deliveries", notif, s.notificationDeliveries)
+
+	// ---- settings ----
+	u.GET("/stats", s.stats)
+	u.GET("/detection", s.detection)
+	u.PUT("/detection", s.can(auth.ManageDetection), s.saveDetection)
+	u.GET("/settings", s.settings)
+	u.PUT("/settings", s.can(auth.ManageSettings), s.saveSettings)
+	u.PUT("/settings/theme", s.can(auth.ManageSettings), s.saveDefaultTheme)
+	u.GET("/gateway/config", s.can(auth.ManageSettings), s.homeOrgOnly, s.gatewayConfig)
+	u.PUT("/gateway/config", s.can(auth.ManageSettings), s.homeOrgOnly, s.gatewayConfig)
+
+	// ---- gateways (Settings → Gateways; one in use at a time, gateways.go) ----
+	gwAdmin := s.can(auth.ManageSettings)
+	u.GET("/gateways", gwAdmin, s.homeOrgOnly, s.listGateways)
+	u.PUT("/gateways/active", gwAdmin, s.homeOrgOnly, s.setGateway)
+	u.PATCH("/gateways/:id", gwAdmin, s.homeOrgOnly, s.updateGateway)
+	u.DELETE("/gateways/:id", gwAdmin, s.homeOrgOnly, s.deleteGateway)
+	u.GET("/gateways/:id/config", gwAdmin, s.homeOrgOnly, s.gatewayConfigOf)
+	u.PUT("/gateways/:id/config", gwAdmin, s.homeOrgOnly, s.gatewayConfigOf)
 }
 
 // ---------- helpers ----------
@@ -105,7 +241,7 @@ func fail(c *gin.Context, err error) {
 	case strings.Contains(err.Error(), "unreachable"):
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 	default:
-		log.Printf("%s %s: %v", c.Request.Method, c.Request.URL.Path, err)
+		log.Printf("%s %s: %v", c.Request.Method, redactShareToken(c.Request.URL.Path), err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 	}
 }
@@ -121,7 +257,7 @@ func RequestLog() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		c.Next()
-		p := c.Request.URL.Path
+		p := redactShareToken(c.Request.URL.Path)
 		if c.Request.Method == http.MethodGet && quietRoutes[p] && c.Writer.Status() < 400 {
 			return
 		}
@@ -146,7 +282,7 @@ func (s *Server) health(c *gin.Context) {
 	checks := map[string]func(context.Context) error{
 		"database": s.db.Ping,
 		"gateway-back": func(ctx context.Context) error {
-			return s.gateway.do(ctx, http.MethodGet, "/gateway/actions/health", nil, nil)
+			return s.gw(ctx).do(ctx, http.MethodGet, "/gateway/actions/health", nil, nil) // the gateway in use
 		},
 		// ml-service has no API of its own: it is up if it keeps reporting its status.
 		"ml-service": func(ctx context.Context) error { _, err := s.mlFrameAges(ctx); return err },
@@ -186,7 +322,7 @@ type CameraView struct {
 	Name            string           `json:"name"`
 	Location        *string          `json:"location"`
 	Zone            *string          `json:"zone"`
-	Status          string           `json:"status"` // gateway state: online | paused | not_on_gateway
+	Status          string           `json:"status"` // gateway state: online | paused | not_on_gateway | other_gateway
 	Health          string           `json:"health"` // online | paused | not_working | connecting | not_connected
 	HealthSince     *time.Time       `json:"health_since"`
 	AlertOffline    bool             `json:"alert_offline"` // notify when it stops working
@@ -198,6 +334,12 @@ type CameraView struct {
 	LastFrameAgeS   *float64         `json:"last_frame_age_s"`
 	ActiveIncidents int              `json:"active_incidents"`
 	TenantID        string           `json:"tenant_id"`
+
+	Phone bool `json:"phone"` // a phone streaming to the camera relay (new QR code possible)
+
+	GatewayName *string `json:"gateway_name,omitempty"` // status other_gateway: the gateway it's on
+
+	Video bool `json:"video"` // its video reaches stream-hub (Live View works, even without ml-service)
 }
 
 // liveState is what ml-service is doing right now, from the database: when it last
@@ -205,6 +347,7 @@ type CameraView struct {
 type liveState struct {
 	frameAge map[string]float64
 	people   map[string][]map[string]any
+	videoAge map[string]float64 // stream-hub: seconds since each camera's last frame
 }
 
 func (s *Server) liveState(ctx context.Context) liveState {
@@ -213,12 +356,25 @@ func (s *Server) liveState(ctx context.Context) liveState {
 	if err != nil {
 		log.Printf("recent people: %v", err)
 	}
-	return liveState{frameAge: frameAge, people: people}
+	return liveState{frameAge: frameAge, people: people, videoAge: s.videoAges(ctx)}
 }
 
 func (s *Server) listCameras(c *gin.Context) {
 	ctx := c.Request.Context()
-	gw, gwErr := s.gateway.cameras(ctx)
+	// The gateways belong to the home organization; others only see their own database cameras.
+	// The camera list comes from the gateway in use; other gateways' cameras show as such.
+	var gw []GatewayCamera
+	var gwErr error
+	var st gatewayState
+	client := s.gateway
+	if s.isHomeOrg(c) {
+		var err error
+		if st, err = s.gatewayState(ctx); err != nil {
+			log.Printf("gateways: %v", err)
+		}
+		client = st.client(s)
+		gw, gwErr = client.cameras(ctx)
+	}
 	dbCams, err := s.db.Cameras(ctx)
 	if err != nil {
 		fail(c, err)
@@ -247,6 +403,15 @@ func (s *Server) listCameras(c *gin.Context) {
 				for _, d := range dbCams {
 					byID[d.ID] = d
 				}
+			}
+		}
+		if st.inUse != nil {
+			ids := make([]string, len(gw))
+			for i, g := range gw {
+				ids[i] = g.ID
+			}
+			if err := s.db.SetCamerasGateway(ctx, st.inUse.ID, ids); err != nil {
+				log.Printf("cameras of gateway %s: %v", st.inUse.ID, err)
 			}
 		}
 	}
@@ -285,12 +450,23 @@ func (s *Server) listCameras(c *gin.Context) {
 		}
 		v := CameraView{ID: d.ID, Name: d.Name, Location: d.Location, Zone: d.Zone, Status: "not_on_gateway",
 			CreatedAt: d.CreatedAt, People: []map[string]any{}}
+		if d.GatewayID != nil && (st.inUse == nil || *d.GatewayID != st.inUse.ID) {
+			if g := st.find(*d.GatewayID); g != nil { // on a gateway not in use: back when it's switched to
+				v.Status, v.GatewayName = "other_gateway", &g.DisplayName
+			}
+		}
 		v.addLive(live, active)
 		v.setHealth(&d, true)
 		out = append(out, v)
 	}
+	if phones, err := s.db.PhoneCameraIDs(ctx); err == nil {
+		for i := range out {
+			out[i].Phone = phones[out[i].ID]
+		}
+	}
 	sortByOrder(out, dbCams)
-	resp := gin.H{"cameras": out, "limits": s.gateway.limits(ctx)}
+	resp := gin.H{"cameras": out, "limits": client.limits(ctx), "phone_cameras": st.phoneCamerasOn(s.cfg.PhoneRelayURL),
+		"gateway": st.inUseView()}
 	if gwErr != nil {
 		resp["gateway_error"] = gwErr.Error()
 	}
@@ -314,6 +490,9 @@ func sortByOrder(out []CameraView, dbCams []store.Camera) {
 }
 
 func (v *CameraView) addLive(live liveState, active map[string]int) {
+	if age, ok := live.videoAge[v.ID]; ok && age < notWorkingAfter.Seconds() {
+		v.Video = true
+	}
 	if age, ok := live.frameAge[v.ID]; ok {
 		v.Live = age < 10
 		v.LastFrameAgeS = &age
@@ -372,7 +551,8 @@ func (s *Server) addCamera(c *gin.Context) {
 	}
 	name := strings.TrimSpace(*in.Name)
 	ctx := c.Request.Context()
-	cam, err := s.gateway.addCamera(ctx, name, in.RTSPURL, in.Username, in.Password)
+	client, inUse := s.gwInUse(ctx)
+	cam, err := client.addCamera(ctx, name, in.RTSPURL, in.Username, in.Password)
 	if err != nil {
 		fail(c, err)
 		return
@@ -382,6 +562,7 @@ func (s *Server) addCamera(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	s.recordGateway(ctx, inUse, cam.ID)
 	if in.AlertOffline != nil && !*in.AlertOffline {
 		if err := s.db.SetCameraAlert(ctx, cam.ID, false); err != nil {
 			fail(c, err)
@@ -426,7 +607,7 @@ func (s *Server) updateCamera(c *gin.Context) {
 func (s *Server) deleteCamera(c *gin.Context) {
 	ctx := c.Request.Context()
 	id := c.Param("id")
-	if err := s.gateway.deleteCamera(ctx, id); err != nil {
+	if err := s.gatewayOfCamera(ctx, id).deleteCamera(ctx, id); err != nil {
 		var up *upstreamError
 		if !(errors.As(err, &up) && up.Status < 500) { // gone from the gateway already: still remove the row
 			fail(c, err)
@@ -438,6 +619,9 @@ func (s *Server) deleteCamera(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	if err := s.db.DeletePhoneCamera(ctx, id); err != nil { // its password stops working
+		log.Printf("removing phone camera %s: %v", id, err)
+	}
 	s.auditCamera(c, "camera.removed", id, name, "Camera removed", nil)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -445,7 +629,7 @@ func (s *Server) deleteCamera(c *gin.Context) {
 func (s *Server) pauseResume(action, status string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		cam, err := s.gateway.camera(ctx, action, c.Param("id"))
+		cam, err := s.gw(ctx).camera(ctx, action, c.Param("id"))
 		if err != nil {
 			fail(c, err)
 			return
@@ -473,14 +657,15 @@ func (s *Server) switchCamera(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	old, err := s.gateway.camera(ctx, "pause", in.ReplaceID)
+	gw := s.gw(ctx)
+	old, err := gw.camera(ctx, "pause", in.ReplaceID)
 	if err != nil {
 		fail(c, err)
 		return
 	}
-	cam, err := s.gateway.camera(ctx, "resume", id)
+	cam, err := gw.camera(ctx, "resume", id)
 	if err != nil {
-		if _, rerr := s.gateway.camera(ctx, "resume", in.ReplaceID); rerr != nil {
+		if _, rerr := gw.camera(ctx, "resume", in.ReplaceID); rerr != nil {
 			log.Printf("switch: could not resume %s again: %v", in.ReplaceID, rerr)
 		}
 		fail(c, err)
@@ -593,8 +778,8 @@ func (s *Server) updateIncident(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-// addNote appends a note. author is the name typed in the app; there are no user
-// accounts yet, so it falls back to actor() ("Current user").
+// addNote appends a note. The author is the signed-in user (the name typed in the app is
+// only used by API clients without a session).
 func (s *Server) addNote(c *gin.Context) {
 	var in struct {
 		Author string `json:"author"`
@@ -609,7 +794,7 @@ func (s *Server) addNote(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "text is required (at most 4000 characters); author at most 80"})
 		return
 	}
-	if author == "" {
+	if session(c) != nil || author == "" {
 		author = actor(c)
 	}
 	note, err := s.db.AddNote(c.Request.Context(), c.Param("id"), author, text)
@@ -771,26 +956,27 @@ func (s *Server) zone(c *gin.Context) string {
 	return "UTC"
 }
 
+// gatewayConfig: GET / PUT /api/gateway/config, the connection settings of the gateway in use.
 func (s *Server) gatewayConfig(c *gin.Context) {
-	var body any
-	if c.Request.Method == http.MethodPut {
-		if err := c.ShouldBindJSON(&body); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
-			return
-		}
-	}
-	var out any
-	if err := s.gateway.do(c.Request.Context(), c.Request.Method, "/gateway/actions/config", body, &out); err != nil {
-		fail(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, out)
+	s.proxyGatewayConfig(c, s.gw(c.Request.Context()))
 }
 
 func (s *Server) gatewayAdd(c *gin.Context) {
+	if !gatewayCaller(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": errGatewaySignup.Error()})
+		return
+	}
 	var req GatewayRegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body payload"})
+		return
+	}
+	if req.URL != "" && !gatewayURL.MatchString(req.URL) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "url: http(s)://host[:port] where the API reaches this gateway"})
+		return
+	}
+	if req.Kind != "" && req.Kind != store.GatewayCloud && req.Kind != store.GatewayOnsite {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "kind: cloud or onsite"})
 		return
 	}
 
@@ -812,7 +998,8 @@ func (s *Server) gatewayAdd(c *gin.Context) {
 	}
 
 	// Call the store method to validate tenant slug, register the gateway, and get IDs.
-	tenantID, gatewayID, err := s.db.RegisterGateway(c.Request.Context(), req.TenantName, gatewayName, authTokenHash)
+	tenantID, gatewayID, err := s.db.RegisterGateway(c.Request.Context(), req.TenantName, gatewayName, authTokenHash,
+		strings.TrimRight(req.URL, "/"), req.Kind)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

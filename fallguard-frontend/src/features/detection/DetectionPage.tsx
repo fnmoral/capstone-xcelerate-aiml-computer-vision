@@ -5,6 +5,7 @@ import { usePolling } from '../../services/api/usePolling';
 import { formatDuration } from '../../lib/format';
 import { PersonConfidence } from './PersonConfidence';
 import { ModelDevice } from './ModelDevice';
+import { PERM, useAuth } from '../auth/AuthContext';
 
 const RULES: { key: string; label: string; unit: string; help: string }[] = [
   { key: 'lying_torso_angle_deg', label: 'Lying: torso angle', unit: '°', help: 'Torso this far from vertical counts fully as lying' },
@@ -33,6 +34,7 @@ function SettingsCols() {
 }
 
 export default function DetectionPage() {
+  const canChange = useAuth().can(PERM.manageDetection);
   const { data: d, error, reload } = usePolling(() => api.detection(), 5000);
   const { data: cams } = usePolling(() => api.cameras(), 15000);
   const names = Object.fromEntries((cams?.cameras ?? []).map((c) => [c.id, c.name]));
@@ -82,9 +84,11 @@ export default function DetectionPage() {
             </section>
           )}
 
-          <ModelDevice key={`${d.saved.model}|${d.saved.device}`} d={d} onSaved={reload} />
-
-          <PersonConfidence key={String(d.saved.person_confidence)} d={d} onSaved={reload} />
+          <fieldset disabled={!canChange} className="detection-edit" style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: 'grid', gap: 20 }}>
+            {!canChange && <p className="notice" style={{ margin: 0 }}>View only: your role can't change detection settings.</p>}
+            <ModelDevice key={`${d.saved.model}|${d.saved.device}`} d={d} onSaved={reload} />
+            <PersonConfidence key={String(d.saved.person_confidence)} d={d} onSaved={reload} />
+          </fieldset>
 
           <section className="card" style={{ padding: 16 }}>
             <h2 className="section-title">Labels</h2>

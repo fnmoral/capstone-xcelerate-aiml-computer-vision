@@ -5,3 +5,7 @@
 }
 @media (min-width: 640px) { .footer { padding: 14px 24px; } }
 @media (min-width: 1024px) { .footer { padding: 14px 32px; } }
+
+.footer { align-items: center; }
+.footer__powered { margin-left: auto; }
+@media (max-width: 640px) { .footer__powered { margin-left: 0; } }

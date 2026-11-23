@@ -9,6 +9,9 @@ import { alertBy, byWhen, formatDuration, formatTime, LABEL_TEXT, secondsSince, 
 import type { Incident, LogEntry, Prediction } from '../../types/domain';
 import { IncidentVideos } from './IncidentVideos';
 import { Notes } from './Notes';
+import { IncidentReportsPanel } from '../incident-reports/IncidentReportsPanel';
+import { ShareLinksPanel } from './ShareLinksPanel';
+import { PERM, useAuth } from '../auth/AuthContext';
 import './events.css';
 
 /** What the detector saw, second by second: one colored step per prediction. */
@@ -52,6 +55,8 @@ function History({ inc, activity }: { inc: Incident; activity: LogEntry[] }) {
 
 export default function IncidentPage() {
   const { id = '' } = useParams();
+  const { can } = useAuth();
+  const respond = can(PERM.manageAlerts);
   const { data, error, reload } = usePolling(() => api.incident(id), 3000, [id]);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -126,7 +131,7 @@ export default function IncidentPage() {
                 {alert.status === 'false_positive' && (
                   <p className="muted ev-sub">Marked as a false alarm by {alertBy(alert.closed_by, alert.closed_at)}</p>
                 )}
-                <div className="row">
+                {respond && <div className="row">
                   {alert.status === 'open' && (
                     <button className="btn btn--primary" disabled={busy} onClick={() => run(() => api.alertAction(alert.id, 'acknowledge'))}>
                       <Icon name="check" size={16} /> Acknowledge
@@ -140,7 +145,7 @@ export default function IncidentPage() {
                       onClick={() => confirm('Mark this as a false alarm? It is left out of the statistics. You can undo this.') &&
                         run(() => api.alertAction(alert.id, 'false-positive'))}>False alarm</button>
                   )}
-                </div>
+                </div>}
               </>
             )}
           </section>
@@ -150,8 +155,18 @@ export default function IncidentPage() {
           </section>
           <section className="card ev-section">
             <h2 className="section-title">Notes ({inc.note_list.length})</h2>
-            <Notes incidentId={inc.id} notes={inc.note_list} onAdded={reload} />
+            <Notes incidentId={inc.id} notes={inc.note_list} onAdded={reload} canAdd={respond} />
           </section>
+          <section className="card ev-section">
+            <h2 className="section-title">Incident reports</h2>
+            <IncidentReportsPanel incidentId={inc.id} />
+          </section>
+          {can(PERM.incidentReports) && (
+            <section className="card ev-section">
+              <h2 className="section-title">Share video</h2>
+              <ShareLinksPanel incidentId={inc.id} />
+            </section>
+          )}
           <section className="card ev-section">
             <h2 className="section-title">Cameras that saw it</h2>
             <ul className="ev-list">
@@ -164,7 +179,7 @@ export default function IncidentPage() {
                 ))}
             </ul>
           </section>
-          {alert && (alert.status === 'resolved' || alert.status === 'false_positive') && (
+          {respond && alert && (alert.status === 'resolved' || alert.status === 'false_positive') && (
             <section className="card ev-section ev-undo">
               <h2 className="section-title">Undo</h2>
               {alert.status === 'resolved' ? (

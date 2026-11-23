@@ -24,14 +24,15 @@ func (s *Server) DevWebcam(ctx context.Context) {
 			return
 		case <-time.After(5 * time.Second): // the gateway may still be starting
 		}
-		cams, err := s.gateway.cameras(ctx)
+		client, inUse := s.gwInUse(ctx)
+		cams, err := client.cameras(ctx)
 		if err != nil {
 			continue
 		}
 		if len(cams) > 0 {
 			return
 		}
-		cam, err := s.gateway.addCamera(ctx, devWebcamName, devWebcamURL, "", "")
+		cam, err := client.addCamera(ctx, devWebcamName, devWebcamURL, "", "")
 		if err != nil {
 			// The gateway refuses cameras until it has registered with this API, which it
 			// does by itself shortly after both start: try again.
@@ -43,6 +44,7 @@ func (s *Server) DevWebcam(ctx context.Context) {
 			log.Printf("dev mode: registering the webcam camera: %v", err)
 			return
 		}
+		s.recordGateway(ctx, inUse, cam.ID)
 		if err := s.db.CameraEvent(ctx, cam.ID, devWebcamName, "added", "info",
 			"Added automatically (dev mode): this PC's webcam through the test-camera relay"); err != nil {
 			log.Printf("dev mode: logging the webcam camera: %v", err)

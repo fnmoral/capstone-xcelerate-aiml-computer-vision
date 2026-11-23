@@ -1,0 +1,10 @@
+/* Public share-link page (/shared/:token): one incident's video, no app chrome. */
+.shared-page { place-content: start center; }
+.shared-card { width: min(860px, calc(100vw - 32px)); padding: 28px; }
+.shared-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px 20px; margin: 0 0 20px; }
+.shared-facts dt { font-size: 12px; color: var(--text-muted); }
+.shared-facts dd { margin: 2px 0 0; font-weight: 600; }
+.shared-media { margin: 0 0 16px; }
+.shared-media video, .shared-media img { display: block; width: 100%; max-height: 70vh; border-radius: var(--radius); background: #000; }
+.shared-media figcaption { margin-top: 6px; font-size: 13px; }
+.shared-note { margin: 8px 0 0; font-size: 13px; }

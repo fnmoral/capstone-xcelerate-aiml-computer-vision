@@ -46,10 +46,14 @@ func writeClip(ffmpeg, dir string, c *clip) (string, float64, error) {
 		stream.Write(n)
 	}
 
+	// -r as an input option forces our frame rate: without it ffmpeg trusts the timing written
+	// in the stream itself, which some cameras get wrong (a phone app declared 58 fps with odd
+	// timing: a 48 s clip came out 1.7 s long, every frame squeezed together).
+	rate := fmt.Sprintf("%.3f", fps)
 	cmd := exec.Command(ffmpeg,
 		"-hide_banner", "-loglevel", "error", "-y",
 		"-fflags", "+genpts",
-		"-f", format, "-framerate", fmt.Sprintf("%.3f", fps),
+		"-f", format, "-framerate", rate, "-r", rate,
 		"-i", "pipe:0",
 		"-c", "copy", "-tag:v", tag,
 		"-movflags", "+faststart",

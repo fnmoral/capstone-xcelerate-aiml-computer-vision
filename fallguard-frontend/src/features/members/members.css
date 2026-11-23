@@ -1,0 +1,29 @@
+.role-cards { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); margin-bottom: 20px; }
+.role-card { padding: 16px; }
+.role-card__summary { margin: 6px 0 4px; font-weight: 600; }
+.role-card__detail { margin: 0; font-size: 13px; }
+.members-section { padding: 20px; }
+.members-sub { font-size: 12px; }
+.members-error { color: var(--danger); font-size: 12px; margin-top: 4px; }
+
+.invite-form { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.invite-form .field { min-width: min(100%, 220px); flex: 1; }
+.invite-form__result { flex-basis: 100%; margin: 0; overflow-wrap: anywhere; }
+
+.roles-table { min-width: 560px; }
+.roles-table__role { text-align: center !important; width: 96px; }
+.roles-table__group th { background: var(--surface-2); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); padding: 6px 12px; }
+.roles-table th.roles-table__perm { display: grid; gap: 2px; font-weight: 500; text-align: left; text-transform: none; letter-spacing: 0; color: var(--text); font-size: 14px; white-space: normal; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.roles-table th.roles-table__perm small { font-weight: 400; font-size: 12px; color: var(--text-muted); }
+.roles-table__cell { text-align: center; }
+.roles-table__cell input { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
+.roles-table__cell input:disabled { cursor: not-allowed; }
+.roles-table__lock { color: var(--text-muted); }
+
+.demo-created { margin: 12px 0 0; overflow-wrap: anywhere; }
+.demo-created__url { flex: 1; min-width: 0; font: inherit; font-family: var(--mono); font-size: 12px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }
+.invite-share-row td { background: var(--surface-2); }
+
+/* Invite team member + Temporary access links side by side (stacked on narrow screens) */
+.members-pair { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); align-items: stretch; }
+.members-pair > .members-section { min-width: 0; }

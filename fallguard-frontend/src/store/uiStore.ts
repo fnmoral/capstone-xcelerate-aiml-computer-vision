@@ -3,6 +3,12 @@ import { persist } from 'zustand/middleware';
 
 export type Theme = 'light' | 'dark' | 'system';
 
+/** The theme in use: this browser's choice, else the organization's default (remembered from
+ *  the last sign-in, so sign-in pages match), else light. */
+export function effectiveTheme(s: { theme: Theme | null; orgTheme: Theme | null }): Theme {
+  return s.theme ?? s.orgTheme ?? 'light';
+}
+
 /** Live View layouts: 'auto' = every camera, scrolling; '1' / '2' / '4' / '8' = that many
  *  per page, fitted to the window; 'fit' = all cameras fitted to the window. */
 export type LiveLayout = 'auto' | '1' | '2' | '4' | '8' | 'fit';
@@ -28,7 +34,8 @@ interface UiState {
   navOpen: boolean; // mobile drawer
   navCollapsed: boolean; // desktop rail
   navPinned: boolean; // tablet-width windows: keep the menu open beside the page instead of a pop-out
-  theme: Theme;
+  theme: Theme | null; // this browser's choice; null = follow the organization's default
+  orgTheme: Theme | null; // the organization's default theme (Settings), remembered here
   liveLayout: LiveLayout; // Live View's default layout
   overlayDefault: LiveOverlay; // Live View's overlays when the app opens (saved in this browser)
   liveOverlay: LiveOverlay; // the overlays shown now (not saved)
@@ -40,7 +47,8 @@ interface UiState {
   toggleNav: () => void;
   toggleCollapsed: () => void;
   togglePinned: () => void;
-  setTheme: (t: Theme) => void;
+  setTheme: (t: Theme | null) => void;
+  setOrgTheme: (t: Theme | null) => void;
   setLiveLayout: (l: LiveLayout) => void;
   setLiveOverlay: (o: LiveOverlay) => void;
   setOverlayDefault: (o: LiveOverlay) => void;
@@ -56,7 +64,8 @@ export const useUiStore = create<UiState>()(
       navOpen: false,
       navCollapsed: false,
       navPinned: false,
-      theme: 'system',
+      theme: null,
+      orgTheme: null,
       liveLayout: 'auto',
       overlayDefault: DEFAULT_OVERLAY,
       liveOverlay: DEFAULT_OVERLAY,
@@ -69,6 +78,7 @@ export const useUiStore = create<UiState>()(
       toggleCollapsed: () => set((s) => ({ navCollapsed: !s.navCollapsed })),
       togglePinned: () => set((s) => ({ navPinned: !s.navPinned, navOpen: false })),
       setTheme: (theme) => set({ theme }),
+      setOrgTheme: (orgTheme) => set({ orgTheme }),
       setLiveLayout: (liveLayout) => set({ liveLayout }),
       setLiveOverlay: (liveOverlay) => set({ liveOverlay }),
       setOverlayDefault: (overlayDefault) => set({ overlayDefault }),
@@ -78,7 +88,8 @@ export const useUiStore = create<UiState>()(
     }),
     {
       name: 'fallguard-ui',
-      partialize: (s) => ({ navCollapsed: s.navCollapsed, navPinned: s.navPinned, theme: s.theme, liveLayout: s.liveLayout,
+      partialize: (s) => ({ navCollapsed: s.navCollapsed, navPinned: s.navPinned, theme: s.theme, orgTheme: s.orgTheme,
+        liveLayout: s.liveLayout,
         overlayDefault: s.overlayDefault, noteAuthor: s.noteAuthor,
         notifClearedAt: s.notifClearedAt, timeZone: s.timeZone }),
       // The overlays shown start from the saved default each time the app opens; options
@@ -86,7 +97,9 @@ export const useUiStore = create<UiState>()(
       merge: (persisted, current) => {
         const saved = persisted as Partial<UiState> | undefined;
         const overlay = { ...DEFAULT_OVERLAY, ...saved?.overlayDefault };
-        return { ...current, ...saved, overlayDefault: overlay, liveOverlay: overlay };
+        // Older versions saved 'system' as the built-in default: treat it as "no choice yet".
+        const theme = saved?.theme === 'system' ? null : saved?.theme ?? null;
+        return { ...current, ...saved, theme, overlayDefault: overlay, liveOverlay: overlay };
       },
     },
   ),

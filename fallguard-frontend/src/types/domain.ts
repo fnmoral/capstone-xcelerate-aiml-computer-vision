@@ -5,12 +5,14 @@ export type CameraStatus =
   | "online"
   | "paused"
   | "not_on_gateway"
+  | "other_gateway" // on a gateway that isn't in use (gateway_name)
   | "offline"
   | string;
 
 /** What a camera is doing right now (kept by the backend's camera monitor). */
 export type CameraHealth =
   | "online"
+  | "video_only" // video arrives, but the fall detector isn't analysing it
   | "paused"
   | "not_working"
   | "connecting"
@@ -45,6 +47,29 @@ export interface Camera {
   last_frame_age_s: number | null;
   active_incidents: number;
   tenant_id: string; // without credentials
+  phone?: boolean; // a phone streaming to the camera relay (can get a new QR code)
+  gateway_name?: string; // status other_gateway: the gateway it's on
+}
+
+/** A gateway (Settings → Gateways). The cloud one runs on the server and reads phone cameras;
+ *  on-site ones run next to the cameras. One is in use at a time. */
+export interface Gateway {
+  id: string;
+  gateway_name_id: string; // the gateway's own ID
+  name: string; // the place, e.g. "Cloud", "Office server"
+  location: string | null;
+  kind: "cloud" | "onsite";
+  last_seen_at: string | null;
+  created_at: string;
+  cameras: number;
+  online: boolean;
+  in_use: boolean;
+}
+
+export interface GatewaysState {
+  mode: "automatic" | "chosen"; // automatic: on-site if one is online, else cloud
+  in_use: string | null;
+  gateways: Gateway[];
 }
 
 export type IncidentStatus =
@@ -224,8 +249,12 @@ export interface DetectionSettings {
   zones: Record<string, string[]>;
 }
 
+/** A gateway's own connection settings (saving re-registers it with these values). */
 export interface GatewayConfig {
-  cloud_address: string;
-  server_port: string;
-  tenant_id: string;
+  stream_hub_address: string; // where it sends video, host:port
+  back_end_address: string;
+  tenant_name: string;
+  gateway_name_id: string;
+  tenant_id?: string;
+  gateway_id?: string;
 }

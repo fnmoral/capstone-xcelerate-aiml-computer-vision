@@ -1,0 +1,63 @@
+.rep-banner { padding: 14px 16px; margin-bottom: 16px; font-size: 14px; }
+.rep-banner p { margin: 0 0 4px; }
+.rep-section { padding: 20px; }
+.rep-note { margin: -6px 0 12px; font-size: 13px; }
+.rep-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); }
+.rep-field--wide { grid-column: 1 / -1; }
+.rep-field--empty input, .rep-field--empty select, .rep-field--empty textarea { border-color: color-mix(in srgb, var(--warn) 55%, var(--border)); }
+.rep-label { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.rep-req { color: var(--danger); }
+.rep-chip { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); }
+.rep-chip--need { background: color-mix(in srgb, var(--warn) 14%, var(--surface)); color: var(--warn); }
+.rep-delete { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-top: 32px; padding: 14px 16px; border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); }
+.rep-delete p { margin: 2px 0 0; font-size: 13px; }
+.rep-actions { position: sticky; bottom: 12px; z-index: 5; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 20px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 4px 16px rgb(0 0 0 / .08); }
+
+/* Incident page: the incident's reports (each card opens the report), then Create */
+.rep-empty { margin: 0 0 12px; }
+.rep-list { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 8px; }
+.rep-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: inherit; text-decoration: none; transition: border-color .15s, background-color .15s; }
+.rep-card:hover, .rep-card:focus-visible { border-color: var(--accent); background: var(--accent-soft); }
+.rep-card__body { display: grid; gap: 4px; min-width: 0; }
+.rep-card__title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.rep-card__meta { font-size: 12px; }
+.rep-card__open { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; font-size: 13px; font-weight: 600; color: var(--accent); }
+.rep-card__arrow { display: inline-flex; transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .rep-card { transition: none; } }
+
+.rep-choose { display: grid; gap: 10px; }
+.rep-choose__intro { margin: 0 0 2px; font-size: 13px; line-height: 1.45; }
+.rep-choose__item { display: grid; gap: 4px; text-align: left; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: inherit; cursor: pointer; font: inherit; }
+.rep-choose__item:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); }
+.rep-choose__item:disabled { opacity: .6; cursor: progress; }
+.rep-choose__desc { font-size: 12px; color: var(--text-muted); line-height: 1.45; }
+.rep-choose__authority { font-size: 13px; }
+
+/* Printable report: hidden on screen, the only thing printed */
+.rep-print { display: none; }
+@media print {
+  @page { margin: 16mm; }
+  body { background: #fff !important; color: #000 !important; }
+  .header, .nav, .nav-scrim, .footer, .no-print, .skip-link { display: none !important; }
+  .layout__body, .main, .main__inner { display: block !important; margin: 0 !important; padding: 0 !important; max-width: none !important; }
+  .rep-print { display: block; font-size: 11pt; line-height: 1.4; color: #000; }
+  .rep-print__for { font-size: 9pt; color: #444; }
+  .rep-print__head { display: flex; justify-content: space-between; gap: 16px; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 10px; }
+  .rep-print__head h1 { font-size: 16pt; margin: 0 0 4px; }
+  .rep-print__head p { margin: 0; }
+  .rep-print__meta { text-align: right; font-size: 9pt; }
+  .rep-print__deadline { font-size: 9pt; margin: 0 0 10px; }
+  .rep-print__section { break-inside: avoid-page; margin-bottom: 10px; }
+  .rep-print__section h2 { font-size: 12pt; background: #eee; padding: 3px 6px; margin: 0 0 6px; }
+  .rep-print dl { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; margin: 0; }
+  .rep-print dl > div { break-inside: avoid; }
+  .rep-print dl > div.wide { grid-column: 1 / -1; }
+  .rep-print dt { font-size: 8.5pt; color: #444; }
+  .rep-print dd { margin: 0; white-space: pre-wrap; border-bottom: 1px solid #ccc; min-height: 1.3em; }
+  .rep-print__snap { max-width: 60%; max-height: 70mm; }
+  .rep-print__foot { margin-top: 14px; font-size: 9pt; border-top: 1px solid #000; padding-top: 6px; }
+}
+
+/* Printed reports carry the FallGuard Vision logo (light version: printed on white). */
+.rep-print__logo { height: 28px; width: auto; display: block; margin-bottom: 6px; }
+.rep-link-action { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: -6px; font-size: 13px; }

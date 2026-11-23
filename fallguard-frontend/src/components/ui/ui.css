@@ -41,7 +41,7 @@
 
 /* Forms */
 .form-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
-.field { display: grid; gap: 4px; font-size: 13px; font-weight: 500; }
+.field { display: grid; gap: 4px; font-size: 13px; font-weight: 500; align-content: start; } /* boxes line up across a row; captions hang below */
 .field input, .field textarea, .field select { font: inherit; font-weight: 400; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; min-width: 0; }
 .field textarea { min-height: 80px; resize: vertical; }
 .field small { color: var(--text-muted); font-weight: 400; }
@@ -87,3 +87,30 @@
 .table--settings .col-value { width: 22%; }
 .table--settings td, .table--settings th { overflow-wrap: anywhere; }
 .table--settings .num { padding-right: 24px; }
+
+/* Select boxes: one modern look everywhere (form fields and stand-alone, e.g. in tables).
+   Native arrow replaced by a chevron that follows the theme. */
+:root { --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235b6470' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); }
+:root[data-theme="dark"] { --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239aa3ae' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239aa3ae' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); }
+}
+.select, .field select {
+  appearance: none; -webkit-appearance: none;
+  font: inherit; font-weight: 400; color: var(--text);
+  background: var(--bg) var(--chevron) no-repeat right 10px center / 12px 12px;
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 32px 8px 10px; min-width: 0; cursor: pointer;
+  transition: border-color .15s, box-shadow .15s;
+}
+.select:hover:not(:disabled), .field select:hover:not(:disabled) { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.select:focus-visible, .field select:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.select:disabled, .field select:disabled { opacity: .6; cursor: not-allowed; }
+.select--sm { padding: 5px 30px 5px 10px; font-size: 13px; border-radius: 7px; }
+
+/* Confirmation dialog (UnsavedChangesGuard) */
+.confirm-dialog { width: min(460px, calc(100vw - 32px)); padding: 22px 22px 18px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); box-shadow: 0 16px 48px rgb(0 0 0 / .25); }
+.confirm-dialog::backdrop { background: rgb(0 0 0 / .45); }
+.confirm-dialog__title { margin: 0 0 8px; font-size: 18px; }
+.confirm-dialog__body { margin: 0 0 18px; color: var(--text-muted); line-height: 1.5; }
+.confirm-dialog__actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

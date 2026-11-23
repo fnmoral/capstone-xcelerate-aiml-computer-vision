@@ -22,6 +22,10 @@ services:
       # Register with the backend by itself at start-up (no "Configure Now" step needed).
       # The values stay editable on the gateway page; false = register by hand there.
       GATEWAY_AUTO_REGISTER: ${GATEWAY_AUTO_REGISTER:-true}
+      # How the API reaches this gateway (empty = the API's GATEWAY_URL) and its type:
+      # onsite (next to the cameras) or cloud (on the server; phone cameras only).
+      GATEWAY_API_URL: ${GATEWAY_API_URL:-}
+      GATEWAY_KIND: ${GATEWAY_KIND:-onsite}
     ports:
       - "${GATEWAY_PORT:-8080}:8080"   # web UI + /gateway/actions API
     volumes:

@@ -30,7 +30,8 @@ def open_webcam(index: int, width: int, height: int, fps: int) -> cv2.VideoCaptu
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--index", type=int, default=0, help="webcam number (0 = first)")
-    parser.add_argument("--url", default="rtsp://localhost:8554/webcam", help="RTSP address to publish to")
+    parser.add_argument("--url", default="rtsp://localhost:8554/webcam",
+                        help="RTSP address to publish to, or an rtmp(s):// phone-camera address from the Azure app")
     parser.add_argument("--width", type=int, default=1280)
     parser.add_argument("--height", type=int, default=720)
     parser.add_argument("--fps", type=int, default=15)
@@ -72,7 +73,12 @@ RETRY_FIRST_S, RETRY_MAX_S = 3.0, 30.0
 def stream_until_lost(cap, args, width: int, height: int) -> int:
     """Send frames until the webcam stops or q is pressed (returns the count); raises
     av.FFmpegError if the connection can't be opened or is lost."""
-    out = av.open(args.url, mode="w", format="rtsp", options={"rtsp_transport": "tcp"})
+    # rtsp:// = the local test-camera relay; rtmp(s):// = a phone-camera address from the
+    # Azure app (Cameras -> Add phone camera), so the webcam joins like a phone.
+    if args.url.startswith(("rtmp://", "rtmps://")):
+        out = av.open(args.url, mode="w", format="flv")
+    else:
+        out = av.open(args.url, mode="w", format="rtsp", options={"rtsp_transport": "tcp"})
     stream = out.add_stream("libx264", rate=args.fps)
     stream.width, stream.height, stream.pix_fmt = width, height, "yuv420p"
     # Keyframe every 2 s so a receiver that joins late starts decoding quickly.

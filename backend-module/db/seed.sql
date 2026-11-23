@@ -22,8 +22,8 @@ INSERT INTO users (id, email, password_hash, full_name) VALUES
 ('22222222-2222-2222-2222-222222222222', 'operator@demo.com', 'dev-only-not-a-real-hash', 'Demo Operator');
 
 INSERT INTO memberships (tenant_id, user_id, role) VALUES
-('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222221', 'owner'),
-('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222', 'operator');
+('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222221', 'admin'),
+('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222', 'member');
 
 -- ---------- Site, gateway, cameras ----------
 -- These three are sample cameras for the history below (database only, "Not connected").

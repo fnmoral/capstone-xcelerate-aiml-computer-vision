@@ -4,6 +4,8 @@ import { api } from "../../services/api/fallguard";
 import { usePolling } from "../../services/api/usePolling";
 import { Icon } from "../ui/Icon";
 import { NotificationsMenu } from "./NotificationsMenu";
+import { UserMenu } from "./UserMenu";
+import { BrandLogo, BrandMark } from "../ui/Brand";
 import "./Header.css";
 
 export function Header() {
@@ -23,10 +25,8 @@ export function Header() {
         <Icon name={navOpen || navPinned ? "close" : "menu"} />
       </button>
       <Link to="/" className="header__brand" aria-label="FallGuard Vision home">
-        <img src="/logo.jpeg" alt="FallGuard Logo" className="header__logo" />
-        <span className="header__name">
-          FallGuard <strong>Vision</strong>
-        </span>
+        <BrandLogo height={38} className="header__logo" />
+        <BrandMark size={32} className="header__mark" />
       </Link>
       <div className="header__spacer" />
       {active > 0 && (
@@ -40,9 +40,7 @@ export function Header() {
       )}
       <div className="header__actions">
         <NotificationsMenu />
-        <Link to="/settings" className="header__icon-btn" aria-label="Settings">
-          <Icon name="user" />
-        </Link>
+        <UserMenu />
       </div>
     </header>
   );

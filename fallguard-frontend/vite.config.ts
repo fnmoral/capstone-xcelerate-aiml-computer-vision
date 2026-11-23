@@ -81,6 +81,7 @@ export default defineConfig(({ mode }) => {
         "/api": {
           target: env.VITE_API_PROXY ?? "http://localhost:8000",
           changeOrigin: true,
+          xfwd: true, // X-Forwarded-Host: the API's same-origin check and email links
         },
         "/stream-hub": {
           target: env.VITE_STREAM_PROXY ?? "http://localhost:9000",

@@ -1,0 +1,32 @@
+/* Logo: show the light or dark file to match the theme (data-theme set from Settings, else the system). */
+.brand { display: inline-flex; align-items: center; line-height: 0; flex: 0 0 auto; }
+.brand__img { display: block; height: 100%; width: auto; max-width: 100%; }
+.brand__img--dark { display: none; }
+:root[data-theme="dark"] .brand__img--light { display: none; }
+:root[data-theme="dark"] .brand__img--dark { display: block; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .brand__img--light { display: none; }
+  :root:not([data-theme="light"]) .brand__img--dark { display: block; }
+}
+.brand-mark { display: block; border-radius: 8px; flex: 0 0 auto; }
+
+/* Powered by Xcelerate Industries: the company logo is white on blue, readable in both themes. */
+.powered-by { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.powered-by__logo { height: 20px; width: auto; border-radius: 4px; display: block; }
+
+/* Loading screen */
+.brand-loader { min-height: 100dvh; display: grid; place-content: center; justify-items: center; gap: 22px; background: var(--bg); padding: 24px; }
+.brand-loader__logo { animation: brand-breathe 2.4s ease-in-out infinite; }
+.brand-loader__bar { width: 120px; height: 3px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.brand-loader__bar span { display: block; width: 40%; height: 100%; border-radius: 3px; background: var(--accent); animation: brand-slide 1.2s ease-in-out infinite; }
+@keyframes brand-breathe { 0%, 100% { opacity: .85; transform: scale(1); } 50% { opacity: 1; transform: scale(1.03); } }
+@keyframes brand-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
+@media (prefers-reduced-motion: reduce) {
+  .brand-loader__logo, .brand-loader__bar span { animation: none; }
+}
+
+/* Printing is always on white: use the light logo. */
+@media print {
+  .brand__img--light { display: block !important; }
+  .brand__img--dark { display: none !important; }
+}

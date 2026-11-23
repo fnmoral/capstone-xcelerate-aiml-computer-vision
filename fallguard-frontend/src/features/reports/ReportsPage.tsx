@@ -9,6 +9,8 @@ import { api, exportUrl, type IncidentQuery, type LogQuery } from '../../service
 import { usePolling } from '../../services/api/usePolling';
 import { alertBy, formatDuration, formatTime } from '../../lib/format';
 import type { Incident } from '../../types/domain';
+import { IncidentReportsList } from '../incident-reports/IncidentReportsList';
+import { useAuth, PERM } from '../auth/AuthContext';
 import './reports.css';
 
 const PREVIEW_ROWS = 50;
@@ -42,6 +44,7 @@ function handledBy(i: Incident): string {
 }
 
 export default function ReportsPage() {
+  const { can } = useAuth();
   const [range, setRange] = useState<TimeWindowValue>(DEFAULT_WINDOW);
   const [f, setF] = useState<Filters>(NO_FILTERS);
   const [logKind, setLogKind] = useState<NonNullable<LogQuery['kind']>>('');
@@ -121,7 +124,7 @@ export default function ReportsPage() {
 
       <section className="card rp-section">
         <div className="rp-head">
-          <h2 className="section-title">Incident report</h2>
+          <h2 className="section-title">Incident log</h2>
           <a className="btn btn--primary" href={exportUrl.incidents(incidentQuery(f, range))} download>
             <Icon name="download" size={16} /> Download incidents (CSV)
           </a>
@@ -181,6 +184,8 @@ export default function ReportsPage() {
           ))}
         </div>
       </section>
+
+      {(can(PERM.viewReports) || can(PERM.incidentReports)) && <IncidentReportsList />}
     </>
   );
 }

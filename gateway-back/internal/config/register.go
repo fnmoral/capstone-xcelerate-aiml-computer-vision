@@ -33,6 +33,11 @@ func (h *ConfigHandler) register(p UpdateConfigPayload) error {
 	body, err := json.Marshal(map[string]string{
 		"tenant_name":     p.TenantName,
 		"gateway_name_id": p.GatewayNameID,
+		// How the main system reaches this gateway (e.g. http://gateway-back:8080 on the same
+		// server, or an SSH tunnel port for an on-site gateway), and "cloud" or "onsite".
+		// Empty = the backend's own GATEWAY_URL.
+		"url":  strings.TrimSpace(os.Getenv("GATEWAY_API_URL")),
+		"kind": strings.TrimSpace(os.Getenv("GATEWAY_KIND")),
 	})
 	if err != nil {
 		return fmt.Errorf("marshal registration payload: %w", err)
@@ -68,15 +73,14 @@ func (h *ConfigHandler) register(p UpdateConfigPayload) error {
 	return nil
 }
 
-// AutoRegister registers a gateway that hasn't been registered yet, using the settings it
-// started with (config.json, filled from the GATEWAY_* variables), so cameras can be added
-// without the one-time "Configure Now" step. It retries until the backend is up (it may start
-// after the gateway). A gateway that is already registered, for example with values changed
-// in the UI, is left alone. GATEWAY_AUTO_REGISTER=false turns this off.
+// AutoRegister registers the gateway at start-up, using its saved settings (config.json,
+// filled from the GATEWAY_* variables on first start), so cameras can be added without the
+// one-time "Configure Now" step. A gateway registered before announces itself again with the
+// same settings, so the backend learns its current address and type (GATEWAY_API_URL,
+// GATEWAY_KIND). It retries until the backend is up (it may start after the gateway).
+// GATEWAY_AUTO_REGISTER=false turns this off.
 func (h *ConfigHandler) AutoRegister(ctx context.Context) {
-	if h.cfg.GatewayInfoUpdated {
-		return
-	}
+	again := h.cfg.GatewayInfoUpdated
 	if v := strings.ToLower(strings.TrimSpace(os.Getenv("GATEWAY_AUTO_REGISTER"))); v == "false" || v == "0" || v == "no" {
 		log.Println("auto-register: off (GATEWAY_AUTO_REGISTER=false); register on the gateway page")
 		return
@@ -95,7 +99,7 @@ func (h *ConfigHandler) AutoRegister(ctx context.Context) {
 	lastErr := ""
 	for wait := 2 * time.Second; ; wait = min(wait*2, 30*time.Second) {
 		registerMu.Lock()
-		done := h.cfg.GatewayInfoUpdated // registered from the UI meanwhile
+		done := !again && h.cfg.GatewayInfoUpdated // registered from the UI meanwhile
 		registerMu.Unlock()
 		if done {
 			return

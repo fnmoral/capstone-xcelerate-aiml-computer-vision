@@ -1,0 +1,64 @@
+# On-site gateway for FallGuard on Azure: runs on a computer next to the cameras (a laptop on
+# demo day) and sends their video to the VM. Nothing on this computer is reachable from outside.
+#
+#   docker compose -f deploy/onsite-gateway/docker-compose.yml up -d --build
+#   (then on the VM: bash deploy/azure/gateway-mode.sh onsite; see deploy/azure/README.md)
+#
+#   test-camera  relay for the laptop webcam: publish_webcam.py --url rtsp://127.0.0.1:8554/webcam
+#                (127.0.0.1, not localhost: Windows tries IPv6 first and the relay only listens on IPv4);
+#                in the app the camera is rtsp://test-camera:8554/webcam (IP cameras: their own address)
+#   gateway      pulls the cameras, sends the video to stream-hub on the VM
+#   tunnel       one outgoing SSH connection to the VM's "tunnel" user (port forwarding only):
+#                  tunnel:8090 -> VM stream-hub ingest   tunnel:8100 -> VM API (gateway sign-up)
+#                  VM :18080   -> gateway:8080 (the API adds / pauses cameras through it;
+#                                another on-site gateway: GATEWAY_TUNNEL_PORT=18081 and its own GATEWAY_NAME_ID)
+#   In the app: Settings -> Gateways (name it, e.g. "Office server"; one gateway in use at a time).
+#                key: ~/.ssh/fallguard_gateway (its .pub is in the VM's tunnel authorized_keys)
+name: fallguard-onsite
+
+services:
+  test-camera:
+    image: bluenviron/mediamtx:1.21.2-ffmpeg
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8554:8554"
+    logging: &logs
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+  tunnel:
+    build: ./tunnel
+    image: capstone/onsite-tunnel:latest
+    restart: unless-stopped
+    environment:
+      VM: ${FALLGUARD_VM:-fallguard-vision.canadacentral.cloudapp.azure.com}
+      # Each on-site gateway needs its own port on the VM (and its key allowed for it there).
+      GATEWAY_TUNNEL_PORT: ${GATEWAY_TUNNEL_PORT:-18080}
+    volumes:
+      # Windows: USERPROFILE; Mac / Linux / WSL: HOME. Or set FALLGUARD_GATEWAY_KEY to the file.
+      - ${FALLGUARD_GATEWAY_KEY:-${HOME:-${USERPROFILE}}/.ssh/fallguard_gateway}:/run/secrets/key:ro
+    logging: *logs
+
+  gateway:
+    build: ../../gateway-back
+    image: capstone/gateway-back:latest
+    restart: unless-stopped
+    depends_on: [tunnel]
+    environment:
+      GATEWAY_STREAM_HUB_ADDRESS: tunnel:8090
+      GATEWAY_BACKEND_ADDRESS: tunnel:8100
+      GATEWAY_TENANT_ID: ${GATEWAY_TENANT_ID:-demo-facility}
+      GATEWAY_TENANT_NAME: ${GATEWAY_TENANT_NAME:-demo-facility}
+      GATEWAY_NAME_ID: ${GATEWAY_NAME_ID:-onsite_gateway}
+      GATEWAY_ID: ${GATEWAY_ID:-onsite_id}
+      GATEWAY_AUTO_REGISTER: "true"
+      GATEWAY_API_URL: http://host.docker.internal:${GATEWAY_TUNNEL_PORT:-18080}   # the VM's end of this tunnel
+      GATEWAY_KIND: onsite
+    ports:
+      - "127.0.0.1:8081:8080"   # gateway UI on this computer (8080 is the local stack's gateway)
+    volumes:
+      - gateway-data:/data      # its own cameras and config, separate from the local stack
+    logging: *logs
+
+volumes:
+  gateway-data:

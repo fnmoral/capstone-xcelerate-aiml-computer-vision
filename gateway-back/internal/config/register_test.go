@@ -74,13 +74,28 @@ func TestAutoRegisterRetriesUntilBackendIsUp(t *testing.T) {
 	}
 }
 
-// A gateway that is already registered (e.g. edited in the UI) is left alone.
-func TestAutoRegisterSkipsRegisteredGateway(t *testing.T) {
-	srv, calls := fakeBackend(t, 0)
+// A gateway registered before announces itself again with its saved settings (not the
+// GATEWAY_* defaults), sending how the backend reaches it and its type.
+func TestAutoRegisterAnnouncesRegisteredGateway(t *testing.T) {
+	t.Setenv("GATEWAY_API_URL", "http://host.docker.internal:18080")
+	t.Setenv("GATEWAY_KIND", "onsite")
+	var got map[string]string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		_ = json.NewEncoder(w).Encode(map[string]string{"tenant_id": "tenant-uuid", "gateway_id": "gateway-uuid"})
+	}))
+	t.Cleanup(srv.Close)
 	h, _ := newHandler(t, srv.URL, true)
-	h.AutoRegister(context.Background())
-	if calls.Load() != 0 {
-		t.Fatalf("backend called %d times, want 0", calls.Load())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	h.AutoRegister(ctx)
+
+	if got["gateway_name_id"] != "default_gateway" || got["url"] != "http://host.docker.internal:18080" || got["kind"] != "onsite" {
+		t.Fatalf("announcement = %v", got)
+	}
+	if h.cfg.StreamHubAddress != "stream-hub:8090" {
+		t.Fatalf("saved settings changed: %+v", h.cfg)
 	}
 }
 

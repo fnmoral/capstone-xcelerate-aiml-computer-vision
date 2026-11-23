@@ -3,8 +3,10 @@ import type {
   Camera,
   DetectionOverrides,
   DetectionSettings,
+  Gateway,
   GatewayLimits,
   GatewayConfig,
+  GatewaysState,
   Health,
   Incident,
   IncidentStatus,
@@ -63,6 +65,33 @@ export interface CameraInput {
   alert_offline?: boolean; // notify when it stops working (default on)
 }
 
+/** An account email (invitation, email check, password reset) and whether it went out. */
+export interface AccountEmail {
+  id: string;
+  kind: string;
+  recipient: string;
+  subject: string;
+  from_email: string;
+  via: string;
+  status: "sent" | "logged" | "failed" | string;
+  error: string | null;
+  created_at: string;
+}
+
+/** How a phone connects: Larix setup link (as a QR code) or the address for another app. */
+export interface PhoneLinks {
+  id: string;
+  status?: string;
+  name: string;
+  publish_url: string;
+  server_url: string;
+  stream_key: string;
+  setup_url: string;
+  path: string;
+  rtmp_server_url: string; // plain RTMP, for apps without RTMPS such as Streamza ("" = none)
+  rtmp_publish_url: string;
+}
+
 /** Every call the frontend makes to the core backend (backend-module/api). */
 export const api = {
   health: () => apiRequest<Health>("/health"),
@@ -74,7 +103,18 @@ export const api = {
       cameras: Camera[];
       gateway_error?: string;
       limits?: GatewayLimits;
+      phone_cameras?: boolean; // phone cameras possible now (the cloud gateway is in use)
+      gateway?: Gateway | null; // the gateway in use (null: none signed up yet)
     }>("/cameras"),
+  /** Settings > Emails sent. */
+  accountEmails: () =>
+    apiRequest<{ emails: AccountEmail[]; server_from: string; kept_days: number }>("/org/emails"),
+  /** A phone that streams to the camera relay; the links (password inside) are shown once. */
+  addPhoneCamera: (c: { name: string; location?: string; zone?: string }) =>
+    apiRequest<PhoneLinks>("/cameras/phone", { method: "POST", ...json(c) }),
+  /** New password and QR code for a phone camera (the old one stops working). */
+  newPhoneLink: (id: string) =>
+    apiRequest<PhoneLinks>("/cameras/" + enc(id) + "/phone-link", { method: "POST" }),
   /** status "paused" = saved on standby (the gateway is at its streaming limit). */
   addCamera: (c: CameraInput) =>
     apiRequest<{ id: string; status: string }>("/cameras", {
@@ -145,7 +185,10 @@ export const api = {
     apiRequest<{ entries: LogEntry[] }>("/logs" + query(q)),
 
   /** Facility-wide settings: timezone null = each browser's own. */
-  settings: () => apiRequest<{ timezone: string | null }>("/settings"),
+  settings: () => apiRequest<{ timezone: string | null; theme: "light" | "dark" | "system" | null }>("/settings"),
+  /** The organization's default theme (people who chose their own keep it). */
+  saveDefaultTheme: (theme: "light" | "dark" | "system") =>
+    apiRequest("/settings/theme", { method: "PUT", ...json({ theme }) }),
   saveSettings: (s: { timezone: string | null }) =>
     apiRequest("/settings", { method: "PUT", ...json(s) }),
 
@@ -163,9 +206,21 @@ export const api = {
     }
     return apiRequest("/detection", { method: "PUT", ...json(next) });
   },
-  gatewayConfig: () => apiRequest<GatewayConfig>("/gateway/config"),
-  saveGatewayConfig: (c: GatewayConfig) =>
-    apiRequest("/gateway/config", { method: "PUT", ...json(c) }),
+  /** Settings → Gateways: every gateway, which answer, and the one in use. */
+  gateways: () => apiRequest<GatewaysState>("/gateways"),
+  /** The gateway to use; null = automatic (on-site if one is online, else cloud). */
+  setGateway: (id: string | null) =>
+    apiRequest<GatewaysState>("/gateways/active", { method: "PUT", ...json({ gateway_id: id }) }),
+  updateGateway: (id: string, c: { name?: string; location?: string }) =>
+    apiRequest<GatewaysState>("/gateways/" + enc(id), { method: "PATCH", ...json(c) }),
+  /** Forget a gateway (not the one in use); removeCameras also removes its cameras. */
+  deleteGateway: (id: string, removeCameras: boolean) =>
+    apiRequest<{ ok: boolean; cameras_removed: number }>(
+      "/gateways/" + enc(id) + (removeCameras ? "?remove_cameras=true" : ""), { method: "DELETE" }),
+  /** A gateway's own connection settings (it must be online); saving re-registers it. */
+  gatewayConfig: (id: string) => apiRequest<GatewayConfig>("/gateways/" + enc(id) + "/config"),
+  saveGatewayConfig: (id: string, c: GatewayConfig) =>
+    apiRequest("/gateways/" + enc(id) + "/config", { method: "PUT", ...json(c) }),
 };
 
 /** CSV downloads (open in Excel / Sheets); times in the browser's time zone. */

@@ -3,6 +3,7 @@ package hub
 import (
 	"bytes"
 	"sync"
+	"time"
 )
 
 // StreamBroker manages streams grouped by tenant and camera for both clients and AI workers.
@@ -12,6 +13,20 @@ type StreamBroker struct {
 	aiWorkers   map[string]map[string][]*AIWorker // tenantID -> cameraID -> list of AI workers
 	pmu         sync.RWMutex
 	params      map[string]*paramSets // "tenant/camera" -> SPS/PPS
+
+	lastFrame sync.Map // camera id -> time.Time of its last frame (VideoAges)
+}
+
+// VideoAges returns, per camera id, how many seconds ago its last frame arrived: whether a
+// camera's video reaches the hub, with or without ml-service analysing it.
+func (b *StreamBroker) VideoAges() map[string]float64 {
+	out := map[string]float64{}
+	now := time.Now()
+	b.lastFrame.Range(func(k, v any) bool {
+		out[k.(string)] = now.Sub(v.(time.Time)).Seconds()
+		return true
+	})
+	return out
 }
 
 // paramSets keeps the last SPS and PPS (already in Annex B) of a camera.
@@ -102,6 +117,7 @@ func (b *StreamBroker) BroadcastFrame(tenantID, cameraID string, frame Frame) {
 	// Frontend clients get Annex B (what the browser-side muxer expects)
 	annexB := Frame{PTS: frame.PTS, Data: ToAnnexB(frame.Data)}
 	b.cacheParams(tenantID, cameraID, annexB.Data)
+	b.lastFrame.Store(cameraID, time.Now())
 
 	b.mu.RLock()
 	defer b.mu.RUnlock()

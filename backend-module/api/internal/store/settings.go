@@ -35,13 +35,14 @@ var migrations = []string{
 // Settings are facility-wide app settings.
 type Settings struct {
 	Timezone *string `json:"timezone"` // IANA zone, e.g. America/Toronto; null = each browser's own
+	Theme    *string `json:"theme"`    // organization default: light | dark | system; null = light
 }
 
 // Settings returns the facility's settings.
 func (s *Store) Settings(ctx context.Context) (Settings, error) {
 	var out Settings
 	err := s.tx(ctx, func(tx pgx.Tx, tid string) error {
-		return tx.QueryRow(ctx, `SELECT timezone FROM tenants WHERE id::text = $1`, tid).Scan(&out.Timezone)
+		return tx.QueryRow(ctx, `SELECT timezone, default_theme FROM tenants WHERE id::text = $1`, tid).Scan(&out.Timezone, &out.Theme)
 	})
 	return out, err
 }
