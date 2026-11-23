@@ -102,7 +102,7 @@ func (s *Server) checkCameras(ctx context.Context, noVideoSince map[string]time.
 			msg := ""
 			if d.GatewayID != nil && st.inUse != nil && *d.GatewayID != st.inUse.ID {
 				if g := st.find(*d.GatewayID); g != nil {
-					msg = "On another gateway (" + g.DisplayName + "), not in use"
+					msg = "Inactive: assigned to the " + g.DisplayName + " gateway, which is not in use"
 				}
 			}
 			s.applyStatus(ctx, d.ID, d.Name, "offline", nil, msg)
