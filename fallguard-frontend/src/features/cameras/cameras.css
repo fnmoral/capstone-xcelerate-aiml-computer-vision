@@ -46,3 +46,6 @@
 .qr-field__value { display: block; width: 100%; box-sizing: border-box; font-family: var(--mono); font-size: 12px; line-height: 1.4; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); overflow-wrap: anywhere; word-break: break-all; }
 .qr-field__hint { margin: 0; font-size: 12px; }
 .phone-setup > .row .btn--primary { min-width: 96px; }
+
+/* Which gateway the cameras go through (Settings -> Gateways) */
+.cams-gateway { margin: -8px 0 16px; font-size: 14px; }

@@ -3,8 +3,10 @@ import type {
   Camera,
   DetectionOverrides,
   DetectionSettings,
+  Gateway,
   GatewayLimits,
   GatewayConfig,
+  GatewaysState,
   Health,
   Incident,
   IncidentStatus,
@@ -101,7 +103,8 @@ export const api = {
       cameras: Camera[];
       gateway_error?: string;
       limits?: GatewayLimits;
-      phone_cameras?: boolean; // the server can take phone cameras
+      phone_cameras?: boolean; // phone cameras possible now (the cloud gateway is in use)
+      gateway?: Gateway | null; // the gateway in use (null: none signed up yet)
     }>("/cameras"),
   /** Settings > Emails sent. */
   accountEmails: () =>
@@ -203,9 +206,21 @@ export const api = {
     }
     return apiRequest("/detection", { method: "PUT", ...json(next) });
   },
-  gatewayConfig: () => apiRequest<GatewayConfig>("/gateway/config"),
-  saveGatewayConfig: (c: GatewayConfig) =>
-    apiRequest("/gateway/config", { method: "PUT", ...json(c) }),
+  /** Settings → Gateways: every gateway, which answer, and the one in use. */
+  gateways: () => apiRequest<GatewaysState>("/gateways"),
+  /** The gateway to use; null = automatic (on-site if one is online, else cloud). */
+  setGateway: (id: string | null) =>
+    apiRequest<GatewaysState>("/gateways/active", { method: "PUT", ...json({ gateway_id: id }) }),
+  updateGateway: (id: string, c: { name?: string; location?: string }) =>
+    apiRequest<GatewaysState>("/gateways/" + enc(id), { method: "PATCH", ...json(c) }),
+  /** Forget a gateway (not the one in use); removeCameras also removes its cameras. */
+  deleteGateway: (id: string, removeCameras: boolean) =>
+    apiRequest<{ ok: boolean; cameras_removed: number }>(
+      "/gateways/" + enc(id) + (removeCameras ? "?remove_cameras=true" : ""), { method: "DELETE" }),
+  /** A gateway's own connection settings (it must be online); saving re-registers it. */
+  gatewayConfig: (id: string) => apiRequest<GatewayConfig>("/gateways/" + enc(id) + "/config"),
+  saveGatewayConfig: (id: string, c: GatewayConfig) =>
+    apiRequest("/gateways/" + enc(id) + "/config", { method: "PUT", ...json(c) }),
 };
 
 /** CSV downloads (open in Excel / Sheets); times in the browser's time zone. */

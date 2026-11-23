@@ -1,14 +1,14 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState } from 'react';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { useUiStore, type LiveLayout, type Theme } from '../../store/uiStore';
 import { TimeZoneSettings } from './TimeZoneSettings';
 import { OrgProfileSettings } from './OrgProfileSettings';
 import { EmailsSentSettings } from './EmailsSentSettings';
+import { GatewaysSettings } from './GatewaysSettings';
 import { PERM, useAuth } from '../auth/AuthContext';
 import { api } from '../../services/api/fallguard';
 import { usePolling } from '../../services/api/usePolling';
-import type { GatewayConfig } from '../../types/domain';
 
 const THEMES: Theme[] = ['light', 'dark', 'system'];
 const THEME_LABEL: Record<Theme, string> = { light: 'Light', dark: 'Dark', system: 'Same as this device' };
@@ -63,47 +63,6 @@ const SERVICES: Record<string, string> = {
   'ml-service': 'Fall detector (ML service)',
 };
 
-function GatewaySettings() {
-  const [cfg, setCfg] = useState<GatewayConfig | null>(null);
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    api.gatewayConfig().then(setCfg).catch((e) => setMessage({ ok: false, text: e.message }));
-  }, []);
-
-  const save = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!cfg) return;
-    setSaving(true);
-    try {
-      await api.saveGatewayConfig(cfg);
-      setMessage({ ok: true, text: 'Saved. Cameras pick up the new address when they reconnect.' });
-    } catch (err) {
-      setMessage({ ok: false, text: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <section className="card" style={{ padding: 20 }}>
-      <h2 className="section-title">Gateway</h2>
-      {message && <p className={`notice${message.ok ? '' : ' notice--error'}`}>{message.text}</p>}
-      {cfg && (
-        <form onSubmit={save} className="stack">
-          <label className="field">Stream hub address
-            <input value={cfg.cloud_address} onChange={(e) => setCfg({ ...cfg, cloud_address: e.target.value })} required />
-            <small>Where the gateway sends video, host:port (stream-hub:8090 inside Docker)</small>
-          </label>
-          <p className="muted" style={{ margin: 0 }}>Tenant: <span className="mono">{cfg.tenant_id}</span></p>
-          <div><button className="btn btn--primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button></div>
-        </form>
-      )}
-    </section>
-  );
-}
-
 export default function SettingsPage() {
   const { liveLayout, setLiveLayout } = useUiStore();
   const { data: health, error } = usePolling(() => api.health(), 5000);
@@ -112,7 +71,7 @@ export default function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Settings" description="Organization details, system status, gateway connection, emails sent and appearance." />
+      <PageHeader title="Settings" description="Organization details, system status, gateways, emails sent and appearance." />
       <div className="stack" style={{ maxWidth: 720 }}>
         <section className="card" style={{ padding: 20 }}>
           <h2 className="section-title">System status</h2>
@@ -141,7 +100,7 @@ export default function SettingsPage() {
           <TimeZoneSettings />
         </fieldset>
 
-        {manage && me?.org.has_gateway && <GatewaySettings />}
+        {manage && me?.org.has_gateway && <GatewaysSettings />}
 
         {can(PERM.viewEmails) && <EmailsSentSettings />}
 

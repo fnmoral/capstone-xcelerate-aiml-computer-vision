@@ -137,7 +137,9 @@ function CameraRow({ cam, onChange, full, streaming, manage }: {
         ) : (
           <p className="muted cams-row__info">
             {cam.location || 'No location'} · {cam.zone ? `Zone: ${cam.zone}` : 'No zone'}
-            <br /><span className="mono">{cam.rtsp_url || 'Registered in the database only'}</span>
+            <br />{cam.status === 'other_gateway'
+              ? <span>On <strong>{cam.gateway_name}</strong> · not in use (back when that gateway is used again)</span>
+              : <span className="mono">{cam.rtsp_url || 'Registered in the database only'}</span>}
           </p>
         )}
         {cam.on_gateway && manage && (
@@ -203,6 +205,9 @@ export default function CamerasPage() {
   const maxStreaming = data?.limits?.max_streaming ?? 5;
   const maxSaved = data?.limits?.max_saved ?? 50;
   const full = streaming.length >= maxStreaming;
+  // The cloud gateway (on the server) only reads phones; an on-site one reads IP cameras.
+  const gateway = data?.gateway ?? null;
+  const ipCameras = !gateway || gateway.kind !== 'cloud';
 
   return (
     <>
@@ -217,11 +222,20 @@ export default function CamerasPage() {
                 <Icon name="plus" size={16} /> Add phone camera
               </button>
             )}
-            <button className="btn btn--primary" disabled={onGateway.length >= maxSaved} onClick={() => setAdding('ip')}>
-              <Icon name="plus" size={16} /> {onGateway.length >= maxSaved ? `Gateway full (${maxSaved})` : 'Add camera'}
-            </button>
+            {ipCameras && (
+              <button className="btn btn--primary" disabled={onGateway.length >= maxSaved} onClick={() => setAdding('ip')}>
+                <Icon name="plus" size={16} /> {onGateway.length >= maxSaved ? `Gateway full (${maxSaved})` : 'Add camera'}
+              </button>
+            )}
           </div>
         )} />
+      {gateway && (
+        <p className="muted cams-gateway">
+          Gateway in use: <strong>{gateway.name}</strong>{gateway.location ? ` · ${gateway.location}` : ''}
+          {' '}({gateway.kind === 'cloud' ? 'cloud: phone cameras only' : 'on-site'}){gateway.online ? '' : ' · offline'}
+          {manage && <> · <Link to="/settings">change in Settings</Link></>}
+        </p>
+      )}
       {error && <p className="notice notice--error">{error}</p>}
       {!manage && <p className="notice">View only: your role can't change cameras.</p>}
       {manage && me && !me.org.has_gateway && <p className="notice">No gateway is connected to this organization yet, so cameras can't be added here.</p>}
