@@ -173,14 +173,19 @@ export function GatewaysSettings() {
         <label className="field gw-mode">Gateway in use
           <select value={data.mode === 'chosen' && data.in_use ? data.in_use : ''} disabled={busy}
             onChange={(e) => void choose(e.target.value || null)}>
-            <option value="">Automatic: on-site when one is online, else cloud</option>
+            <option value="">Automatic (recommended)</option>
             {gateways.map((g) => (
               <option key={g.id} value={g.id}>{g.name}{g.location ? ` (${g.location})` : ''} · {KIND[g.kind]}{g.online ? '' : ' · offline'}</option>
             ))}
           </select>
           <small>
-            {inUse ? <>Using <strong>{inUse.name}</strong>{inUse.online ? '' : ' (offline: its cameras are disconnected until it is back)'}.</> : 'No gateway has signed up yet.'}
-            {data.mode === 'chosen' && ' Chosen by an admin: kept even while offline.'}
+            {data.mode === 'chosen'
+              ? 'Selected by an administrator. It remains in use while offline.'
+              : 'Uses an on-site gateway whenever one is online, and the Cloud gateway otherwise.'}
+            {' '}
+            {inUse
+              ? <>Currently in use: <strong>{inUse.name}</strong>{inUse.online ? '' : ' (offline; its cameras reconnect when it is back online)'}.</>
+              : 'No gateway has registered yet.'}
           </small>
         </label>
       )}

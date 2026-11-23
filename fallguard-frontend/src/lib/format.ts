@@ -79,7 +79,7 @@ export const STATUS_TEXT: Record<string, string> = {
   online: 'Online',
   paused: 'Paused',
   not_on_gateway: 'Not on gateway',
-  other_gateway: 'On another gateway',
+  other_gateway: 'Inactive',
   not_working: 'Not working',
   video_only: 'Video only (no detection)',
   connecting: 'Waiting for video',

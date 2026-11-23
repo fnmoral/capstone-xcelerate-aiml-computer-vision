@@ -125,7 +125,7 @@ function CameraRow({ cam, onChange, full, streaming, manage }: {
         <div className="cams-row__title">
           <strong>{cam.name}</strong>
           {cam.phone && <span className="badge cams-row__phone">Phone</span>}
-          <StatusBadge value={cam.health} />
+          <StatusBadge value={cam.status === 'other_gateway' ? 'other_gateway' : cam.health} />
           <span className="muted cams-row__since">since {formatTime(cam.health_since)}</span>
           {cam.active_incidents > 0 && <StatusBadge value="active" label={`${cam.active_incidents} active incident(s)`} />}
         </div>
@@ -138,7 +138,7 @@ function CameraRow({ cam, onChange, full, streaming, manage }: {
           <p className="muted cams-row__info">
             {cam.location || 'No location'} · {cam.zone ? `Zone: ${cam.zone}` : 'No zone'}
             <br />{cam.status === 'other_gateway'
-              ? <span>On <strong>{cam.gateway_name}</strong> · not in use (back when that gateway is used again)</span>
+              ? <span>Assigned to the <strong>{cam.gateway_name}</strong> gateway, which is not in use. It reconnects automatically when that gateway is selected.</span>
               : <span className="mono">{cam.rtsp_url || 'Registered in the database only'}</span>}
           </p>
         )}
@@ -232,8 +232,8 @@ export default function CamerasPage() {
       {gateway && (
         <p className="muted cams-gateway">
           Gateway in use: <strong>{gateway.name}</strong>{gateway.location ? ` · ${gateway.location}` : ''}
-          {' '}({gateway.kind === 'cloud' ? 'cloud: phone cameras only' : 'on-site'}){gateway.online ? '' : ' · offline'}
-          {manage && <> · <Link to="/settings">change in Settings</Link></>}
+          {' · '}{gateway.kind === 'cloud' ? 'Cloud gateway (phone cameras only)' : 'On-site gateway'}{gateway.online ? '' : ' · Offline'}
+          {manage && <> · <Link to="/settings">Manage in Settings</Link></>}
         </p>
       )}
       {error && <p className="notice notice--error">{error}</p>}

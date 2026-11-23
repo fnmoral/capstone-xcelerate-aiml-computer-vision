@@ -71,7 +71,7 @@ export default function CameraLogsPage() {
               {cameras.map((c) => (
                 <tr key={c.id} className={c.health === 'not_working' && c.alert_offline ? 'cl-down' : undefined}>
                   <td><strong>{c.name}</strong><div className="muted cl-sub">{c.location ?? 'No location'}</div></td>
-                  <td><StatusBadge value={c.health} /></td>
+                  <td><StatusBadge value={c.status === 'other_gateway' ? 'other_gateway' : c.health} /></td>
                   <td>{formatTime(c.health_since)}</td>
                   <td className="num">{c.health_since ? formatDuration(secondsSince(c.health_since)) : '—'}</td>
                   <td>{c.on_gateway ? (c.alert_offline ? 'On' : <span className="muted">Off</span>) : <span className="muted">—</span>}</td>
