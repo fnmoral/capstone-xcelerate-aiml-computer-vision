@@ -33,7 +33,7 @@ func (r *RecordingsHandler) Snapshot(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 		return
 	}
-	c.Header("Cache-Control", "max-age=86400")
+	c.Header("Cache-Control", "no-cache") // revalidate (cheap 304): a file can be replaced, e.g. a repaired clip
 	c.File(path)
 }
 
@@ -46,6 +46,6 @@ func (r *RecordingsHandler) Clip(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 		return
 	}
-	c.Header("Cache-Control", "max-age=86400")
+	c.Header("Cache-Control", "no-cache") // revalidate (cheap 304): a file can be replaced, e.g. a repaired clip
 	c.File(path)
 }
