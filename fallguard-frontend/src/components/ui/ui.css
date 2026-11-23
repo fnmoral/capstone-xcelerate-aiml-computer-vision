@@ -107,3 +107,10 @@
 .select:focus-visible, .field select:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
 .select:disabled, .field select:disabled { opacity: .6; cursor: not-allowed; }
 .select--sm { padding: 5px 30px 5px 10px; font-size: 13px; border-radius: 7px; }
+
+/* Confirmation dialog (UnsavedChangesGuard) */
+.confirm-dialog { width: min(460px, calc(100vw - 32px)); padding: 22px 22px 18px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); box-shadow: 0 16px 48px rgb(0 0 0 / .25); }
+.confirm-dialog::backdrop { background: rgb(0 0 0 / .45); }
+.confirm-dialog__title { margin: 0 0 8px; font-size: 18px; }
+.confirm-dialog__body { margin: 0 0 18px; color: var(--text-muted); line-height: 1.5; }
+.confirm-dialog__actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

@@ -42,3 +42,4 @@
 .share-form .field:first-child { flex: 1 1 240px; }
 .share-created__row { display: flex; gap: 8px; margin-top: 8px; }
 .share-created__row input { flex: 1; min-width: 0; font-family: var(--font-mono, monospace); font-size: 12px; }
+.share-intro { margin: 0 0 8px; font-size: 13px; line-height: 1.5; }

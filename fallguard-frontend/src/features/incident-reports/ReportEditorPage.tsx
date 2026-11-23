@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { UnsavedChangesGuard } from '../../components/ui/UnsavedChangesGuard';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Icon } from '../../components/ui/Icon';
@@ -7,7 +9,7 @@ import { incidentReports, type IncidentReport, type ReportFacts } from '../../se
 import { snapshotUrl } from '../../services/api/fallguard';
 import { formatTime } from '../../lib/format';
 import { PERM, useAuth } from '../auth/AuthContext';
-import { autoFill, formById, hasBlanks, missing, type Field } from './forms';
+import { autoFill, formById, hasBlanks, missing, shareLinkIn, withShareLink, type Field } from './forms';
 import './reports.css';
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message.charAt(0).toUpperCase() + e.message.slice(1) : String(e));
@@ -62,7 +64,8 @@ function PrintView({ report, fields, facts }: { report: IncidentReport; fields: 
         <div>
           <img src="/brand/logo-horizontal-vision-light.svg" alt="FallGuard Vision" className="rep-print__logo" />
           <h1>{form.name}</h1>
-          <p>{facts?.org.legal_name || facts?.org.name} · {form.authority}</p>
+          <p>{facts?.org.legal_name || facts?.org.name}</p>
+          <p className="rep-print__for">Prepared for: {form.authority}</p>
         </div>
         <div className="rep-print__meta">
           <div>Status: {report.status === 'final' ? 'Final' : 'Draft'}</div>
@@ -125,13 +128,6 @@ export default function ReportEditorPage() {
       if (canEdit) incidentReports.facts(r.incident_id).then(setFacts).catch(() => undefined);
     }).catch((e) => setMsg({ ok: false, text: errorText(e) }));
   }, [id, canEdit]);
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [dirty]);
-
   const form = report ? formById(report.form) : undefined;
   const need = useMemo(() => (form ? missing(form, fields) : []), [form, fields]);
   if (!report || !form) return msg ? <p className="notice notice--error">{msg.text}</p> : <p className="muted">Loading…</p>;
@@ -145,17 +141,20 @@ export default function ReportEditorPage() {
     setMsg(null);
   };
 
-  const save = async (status: 'draft' | 'final') => {
+  /** Saves; true when saved (the unsaved-changes prompt leaves the page only then). */
+  const save = async (status: 'draft' | 'final'): Promise<boolean> => {
     if (status === 'final' && need.length > 0 &&
-      !confirm(`${need.length} field${need.length > 1 ? 's' : ''} still need${need.length > 1 ? '' : 's'} input (empty, or [ ] parts not filled in). Mark as final anyway?`)) return;
+      !confirm(`${need.length} field${need.length > 1 ? 's' : ''} still need${need.length > 1 ? '' : 's'} input (empty, or [ ] parts not filled in). Mark as final anyway?`)) return false;
     setBusy(true);
     try {
       const { report: r } = await incidentReports.save(report.id, { title, status, content: { fields, auto, from, facts_at: report.content.facts_at } });
       setReport(r);
       setDirty(false);
       setMsg({ ok: true, text: status === 'final' ? 'Marked as final. It can no longer be edited unless reopened.' : 'Saved.' });
+      return true;
     } catch (e) {
       setMsg({ ok: false, text: errorText(e) });
+      return false;
     } finally {
       setBusy(false);
     }
@@ -172,7 +171,9 @@ export default function ReportEditorPage() {
       const nextAuto = new Set(auto);
       for (const k of filled.auto) {
         if (auto.includes(k) || !(fields[k] ?? '').trim()) {
-          next[k] = filled.fields[k];
+          // Keep the video link created with the report (the fresh text has the placeholder).
+          const link = shareLinkIn(fields[k]);
+          next[k] = link ? withShareLink(filled.fields[k], link) : filled.fields[k];
           nextAuto.add(k);
         }
       }
@@ -189,6 +190,7 @@ export default function ReportEditorPage() {
 
   return (
     <>
+      <UnsavedChangesGuard when={dirty && !locked} onSave={() => save('draft')} />
       <div className="no-print">
         <Link to={`/events/${report.incident_id}`} className="row muted ev-back"><Icon name="back" size={16} /> Back to the incident</Link>
         <PageHeader title={form.short}
@@ -255,7 +257,11 @@ export default function ReportEditorPage() {
             </div>
             <button className="btn btn--danger" disabled={busy} onClick={async () => {
               if (!confirm('Delete this report? It can be restored from Reports & Export → Recently deleted until the retention period ends.')) return;
-              try { await incidentReports.remove(report.id); navigate(`/events/${report.incident_id}`); } catch (e) { setMsg({ ok: false, text: errorText(e) }); }
+              try {
+                await incidentReports.remove(report.id);
+                flushSync(() => setDirty(false)); // deleted: nothing left to save, so no "unsaved changes" prompt
+                navigate(`/events/${report.incident_id}`);
+              } catch (e) { setMsg({ ok: false, text: errorText(e) }); }
             }}><Icon name="trash" size={16} /> Delete</button>
           </section>
         )}

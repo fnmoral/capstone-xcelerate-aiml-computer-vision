@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Icon } from '../../components/ui/Icon';
+import { UnsavedChangesGuard } from '../../components/ui/UnsavedChangesGuard';
 import {
   notifications, type Delivery, type EmailProvider, type NotificationSettings, type NotifyChannel, type NotifyConfig,
   type NotifyEvent, type NotifySeverity, type Recipient, type SMSProvider,
@@ -428,24 +429,20 @@ export default function NotificationsPage() {
   useEffect(() => {
     notifications.settings().then((d) => { setData(d); setCfg(d.config); }).catch((e) => setMsg({ ok: false, text: errorText(e) }));
   }, []);
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [dirty]);
-
   const set = (c: NotifyConfig) => { setCfg(c); setDirty(true); setMsg(null); };
-  const save = async () => {
-    if (!cfg) return;
+  /** Saves; true when saved (the unsaved-changes prompt leaves the page only then). */
+  const save = async (): Promise<boolean> => {
+    if (!cfg) return false;
     setSaving(true);
     try {
       const r = await notifications.save(cfg);
       setCfg(r.config);
       setDirty(false);
       setMsg({ ok: true, text: 'Notification settings saved.' });
+      return true;
     } catch (e) {
       setMsg({ ok: false, text: errorText(e) });
+      return false;
     } finally {
       setSaving(false);
     }
@@ -465,6 +462,7 @@ export default function NotificationsPage() {
 
   return (
     <>
+      <UnsavedChangesGuard when={dirty} onSave={save} />
       <PageHeader title="Notifications"
         description="Who is told about falls, how, and at which severity. A fall starts at Medium and rises to High and Critical the longer the person stays down; each level reached sends its own message." />
       <div className="stack">

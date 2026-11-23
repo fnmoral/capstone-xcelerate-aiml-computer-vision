@@ -135,15 +135,40 @@ function notesText(f: ReportFacts) {
   return f.incident.note_list.map((n) => `${when(f, n.at)!.time} ${n.author}: ${n.text}`).join('\n');
 }
 
-export function evidence(f: ReportFacts): string {
+/** Stands for the recipient's view-only video link in the Evidence text, until it's filled in. */
+export const SHARE_PLACEHOLDER = '[share link]';
+/** Days a video link created with a report stays valid. */
+export const REPORT_SHARE_DAYS = 30;
+
+/** Puts a share link in place of the placeholder (no change if there is none). */
+export const withShareLink = (text: string, url: string) => text.replace(SHARE_PLACEHOLDER, url);
+
+/** The share link already in a text, if any (kept when the auto-filled text is refreshed). */
+export const shareLinkIn = (text: string | undefined) => text?.match(/https?:\/\/\S+\/shared\/[A-Za-z0-9_-]+/)?.[0] ?? null;
+
+/** The evidence FallGuard holds, grouped under headings; videoLink adds the recipient's
+ *  view-only video link (reports for an authority). */
+export function evidence(f: ReportFacts, videoLink = true): string {
   const i = f.incident;
+  const cameras = f.cameras.map((c) => (c.location && c.location !== c.name ? `${c.name} (${c.location})` : c.name ?? 'Camera'));
+  const clips = f.cameras.filter((c) => c.clip_key).length;
+  const snaps = f.cameras.filter((c) => c.snapshot_key).length;
+  const confidence = i.peak_confidence != null ? `${Math.round(i.peak_confidence * 100)}%` : 'Not recorded';
   const lines = [
-    `FallGuard incident ${i.id}`,
-    `Video (view-only link for the recipient): [share link]`,
-    `Incident page (staff with a FallGuard account): ${f.app_url}/events/${i.id}`,
-    `Cameras: ${f.cameras.map((c) => [c.name, c.location].filter(Boolean).join(' – ')).join('; ')}`,
-    `Video clips saved: ${f.cameras.filter((c) => c.clip_key).length}; snapshots: ${f.cameras.filter((c) => c.snapshot_key).length}`,
-    `Detection: peak confidence ${i.peak_confidence?.toFixed(2) ?? 'n/a'}, ${f.prediction_count} per-second readings${f.model ? `, model ${f.model}` : ''}`,
+    `Incident reference: ${i.id}`,
+    'Source: FallGuard Vision automated fall detection',
+    '',
+    'Video evidence',
+    ...(videoLink ? [`  Video link (view-only, valid ${REPORT_SHARE_DAYS} days): ${SHARE_PLACEHOLDER}`] : []),
+    `  Recordings retained: ${clips} video clip${clips === 1 ? '' : 's'}, ${snaps} snapshot${snaps === 1 ? '' : 's'}`,
+    `  Camera${cameras.length === 1 ? '' : 's'}: ${cameras.join('; ') || 'Not recorded'}`,
+    '',
+    'Detection',
+    `  Peak detection confidence: ${confidence}`,
+    `  Detector readings: ${f.prediction_count} (one per second)`,
+    '',
+    'Staff access',
+    `  Incident record (FallGuard account required): ${f.app_url}/events/${i.id}`,
   ];
   return lines.join('\n');
 }
@@ -176,17 +201,20 @@ const preparedBy = (extra: Field[] = []): Section => ({
   ],
 });
 
-const fallGuardEvidence: Section = {
+/** FallGuard's evidence; videoLink: the report goes to an authority, which gets a video link. */
+const fallGuardEvidence = (videoLink = true): Section => ({
   title: 'FallGuard records (video and detection evidence)',
   note: 'Keep the video clips and snapshots: authorities and insurers may ask for them.',
   fields: [
     {
-      key: 'evidence_summary', label: 'Evidence', type: 'textarea', wide: true, auto: evidence,
-      help: 'Create a view-only link under "Share video" on the incident page and paste it in place of [share link].',
+      key: 'evidence_summary', label: 'Evidence', type: 'textarea', wide: true, auto: (f) => evidence(f, videoLink),
+      help: videoLink
+        ? `The view-only video link is created with the report and stays valid for ${REPORT_SHARE_DAYS} days. Manage or revoke it under "Share video" on the incident page.`
+        : undefined,
     },
     { key: 'timeline', label: 'Timeline', type: 'textarea', wide: true, auto: timeline },
   ],
-};
+});
 
 const YES_NO = ['Yes', 'No'];
 const YES_NO_UNKNOWN = ['Yes', 'No', 'Not known yet'];
@@ -259,7 +287,7 @@ export const FORMS: FormDef[] = [
           { key: 'regular_hours', label: 'Regular work schedule / hours', wide: true, reuse: 'incident' },
         ],
       },
-      fallGuardEvidence,
+      fallGuardEvidence(),
       preparedBy(),
     ],
   },
@@ -316,7 +344,7 @@ export const FORMS: FormDef[] = [
           { key: 'prevention', label: 'Steps taken to prevent a recurrence', type: 'textarea', wide: true, required: true, reuse: 'incident', same: 'corrective_actions' },
         ],
       },
-      fallGuardEvidence,
+      fallGuardEvidence(),
       preparedBy(),
     ],
   },
@@ -376,7 +404,7 @@ export const FORMS: FormDef[] = [
           { key: 'establishment', label: 'Establishment name', auto: (f) => f.org.establishment || f.org.name, reuse: 'org' },
         ],
       },
-      fallGuardEvidence,
+      fallGuardEvidence(),
       preparedBy(),
     ],
   },
@@ -436,7 +464,7 @@ export const FORMS: FormDef[] = [
           { key: 'follow_up_date', label: 'Follow-up review date', type: 'date', reuse: 'incident' },
         ],
       },
-      fallGuardEvidence,
+      fallGuardEvidence(false),
       preparedBy([
         { key: 'reviewed_by', label: 'Reviewed by' },
         { key: 'review_date', label: 'Review date', type: 'date' },

@@ -61,16 +61,19 @@ export function ShareLinksPanel({ incidentId }: { incidentId: string }) {
   const links = data?.links ?? [];
   return (
     <>
-      <p className="muted" style={{ marginTop: 0 }}>
-        A view-only page with this incident's video and its time, place and outcome, for someone without an account,
-        such as a regulator. No notes or staff names are shown. Anyone with the link can watch until it expires or is revoked,
-        so send it only to the intended recipient. Every view is logged in the history.
+      <p className="muted share-intro">
+        Share this incident's video with a recipient who has no FallGuard account, such as a regulator or insurer.
+        The link opens a view-only page with the video, time, location and outcome; notes and staff names are not included.
+      </p>
+      <p className="muted share-intro">
+        Anyone with the link can view it until it expires or is revoked, so send it only to the intended recipient.
+        Each view is recorded in the incident history.
       </p>
       {error && <p className="notice notice--error">{error}</p>}
       {msg && <p className="notice notice--error">{msg}</p>}
       {created && (
         <div className="notice share-created" role="status">
-          <strong>Link for {created.recipient}</strong>: copy it now, it is shown only once.
+          <strong>Link created for {created.recipient}.</strong> Copy it now: for security it is shown only once.
           <div className="share-created__row">
             <input readOnly value={created.url} onFocus={(e) => e.target.select()} aria-label="Share link" />
             <button className="btn btn--sm" onClick={() => void copy()}>{copied ? 'Copied' : 'Copy'}</button>
@@ -79,11 +82,11 @@ export function ShareLinksPanel({ incidentId }: { incidentId: string }) {
         </div>
       )}
       <form className="share-form" onSubmit={create}>
-        <label className="field">For
-          <input value={recipient} required maxLength={120} placeholder="e.g. WSIB claims, Ministry of Labour inspector"
+        <label className="field">Recipient
+          <input value={recipient} required maxLength={120} placeholder="e.g. WSIB Claims, Ministry of Labour inspector"
             onChange={(e) => setRecipient(e.target.value)} />
         </label>
-        <label className="field">Expires after
+        <label className="field">Valid for
           <select value={days} onChange={(e) => setDays(Number(e.target.value))}>
             {DAYS.map((d) => <option key={d} value={d}>{d} day{d > 1 ? 's' : ''}</option>)}
           </select>
