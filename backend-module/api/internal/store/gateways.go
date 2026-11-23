@@ -57,6 +57,7 @@ func (s *Store) RegisterGateway(ctx context.Context, tenantSlug, gatewayName, au
 		ON CONFLICT (tenant_id, name) DO UPDATE SET
 			url = coalesce(nullif(EXCLUDED.url, ''), gateways.url),
 			kind = EXCLUDED.kind,
+			display_name = coalesce(gateways.display_name, EXCLUDED.display_name), -- signed up before names existed
 			last_seen_at = now()
 		RETURNING id::text`, tenantID, gatewayName, authTokenHash, url, kind, display).Scan(&gatewayID)
 	return tenantID, gatewayID, err
