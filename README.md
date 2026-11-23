@@ -513,6 +513,10 @@ Every route, its permission and its payload: [backend-module/api/README.md](back
 
 - ml-service and gateway-back serve the home tenant only; other organizations can sign in and
   configure everything but can't connect cameras yet.
+- The app uses one gateway at a time (on Azure: the VM's, or an on-site one switched in with
+  `deploy/azure/gateway-mode.sh`). Choosing gateways in the app is planned.
+- Gateways register with the API without a password (`POST /api/gateway/add`); a per-gateway
+  registration key is to do.
 - stream-hub's HTTP port (9000) is still published on the host, which bypasses the nginx
   session check; bind it to `127.0.0.1` in production.
 - The API connects to PostgreSQL as the table owner (row-level security is not forced); a

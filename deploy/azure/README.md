@@ -62,16 +62,29 @@ SSH: `ssh -i ~/.ssh/fallguard_azure fallguard@fallguard-vision.canadacentral.clo
 
 ## Connect the fall detector
 
-From the machine running ml-service (laptop or Fanshawe server):
+ml-service runs on the Fanshawe server (or a laptop) and connects out to the VM. On the server,
+from campus:
 
 ```bash
-ssh -N -i ~/.ssh/fallguard_tunnel -R 0.0.0.0:9999:localhost:9999 -L 15432:127.0.0.1:5433 \
-    tunnel@fallguard-vision.canadacentral.cloudapp.azure.com
+sh fallguard/tunnel-azure.sh     # stays connected, reconnects; log ~/fallguard/tunnel.log
+sh fallguard/start-ml.sh         # ml-service; log ~/fallguard/ml-service/ml.log
 ```
 
-ml-service then writes to `postgresql://ml_service:<password>@127.0.0.1:15432/fallguard`.
+- The VM's `tunnel` user can only forward ports (no shell); each machine has its own key.
+- The VM firewall allows SSH only from listed IPs (rule `ssh-from-fanshawe`: the Fanshawe
+  server and the campus laptop). A new address needs adding there.
+- Check: `/api/health` shows ml-service OK.
 
-To do: create the `tunnel` user (port forwarding only) and check outbound SSH from the Fanshawe server.
+## On-site gateway (cameras on a local network)
+
+The product design: the gateway runs next to the cameras and only the video goes to Azure.
+
+1. On the computer with the cameras: `docker compose -f deploy/onsite-gateway/docker-compose.yml up -d --build`
+   (key `~/.ssh/fallguard_gateway`, allowed on the VM's `tunnel` user).
+2. On the VM: `bash deploy/azure/gateway-mode.sh onsite` (back: `... vm`). One gateway at a
+   time; phone cameras need `vm`.
+3. Laptop webcam: `publish_webcam.py --index 1 --url rtsp://127.0.0.1:8554/webcam`, then in the
+   app add `rtsp://test-camera:8554/webcam`. IP cameras: their own address.
 
 ## Phone cameras (temporary, for demos)
 
@@ -93,6 +106,10 @@ Video flows only while that computer is on and the script runs. It needs the VM 
 
 ## To do
 
+- **Gateways in the app:** on-site gateway by default; the VM's gateway (phone cameras only)
+  when none is online; admins pick the active gateway in Settings. Planned.
+- **Gateway registration key:** gateways sign up without a password today (the SSH key limits
+  who can connect). Add a per-gateway key created by an admin.
 - **Schedule:** start/stop windows with Azure Automation (e.g. weekdays 8 AM–8 PM ≈ $28/month).
 - **Auto-deploy from GitHub:** rebuild on every push to `main` on GitHub, from anyone's machine (GitHub Actions).
 

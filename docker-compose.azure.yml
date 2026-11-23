@@ -55,6 +55,10 @@ services:
     environment:
       PHONE_RELAY_URL: rtmps://${SITE_ADDRESS}:1936
       PHONE_RTMP_URL: rtmp://${SITE_ADDRESS}:1935   # apps without RTMPS (Streamza)
+    # An on-site gateway (deploy/onsite-gateway) is reached through its SSH tunnel on the VM's
+    # port 18080: deploy/azure/gateway-mode.sh sets GATEWAY_URL=http://host.docker.internal:18080.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # Camera relay. Two ways in:
   # - Phone cameras send RTMPS (encrypted) to port 1936, open to the internet. The relay asks the
