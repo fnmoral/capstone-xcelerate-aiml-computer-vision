@@ -67,6 +67,17 @@ func (s *Server) listShareLinks(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"links": links})
 }
 
+// shareLinkViews: GET /api/share-links/:id/views, each opening of the shared page (newest
+// first): when, from which IP address and browser.
+func (s *Server) shareLinkViews(c *gin.Context) {
+	views, err := s.db.ShareLinkViews(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"views": views})
+}
+
 func (s *Server) revokeShareLink(c *gin.Context) {
 	if err := s.db.RevokeShareLink(c.Request.Context(), c.Param("id"), actor(c)); err != nil {
 		fail(c, err)
@@ -135,7 +146,7 @@ func (s *Server) sharedView(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if err := s.db.ShareLinkViewed(ctx, link, c.ClientIP()); err != nil {
+	if err := s.db.ShareLinkViewed(ctx, link, c.ClientIP(), c.Request.UserAgent()); err != nil {
 		fail(c, err)
 		return
 	}
@@ -210,7 +221,7 @@ func (s *Server) sharedFile(c *gin.Context) {
 			r.Out.Header.Del("Cookie") // the viewer's own cookies are none of stream-hub's business
 		},
 		ModifyResponse: func(res *http.Response) error {
-			res.Header.Set("Cache-Control", "private, max-age=300")
+			res.Header.Set("Cache-Control", "private, no-cache")
 			res.Header.Set("X-Robots-Tag", "noindex")
 			return nil
 		},

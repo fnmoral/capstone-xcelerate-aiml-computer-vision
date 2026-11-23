@@ -116,9 +116,12 @@ func (s *Store) SharedLinkByToken(ctx context.Context, tokenHash string) (*Share
 	return &l, err
 }
 
-// ShareLinkViewed counts a view of the shared page and logs it on the incident.
-// ctx must carry the link's tenant (WithTenant).
-func (s *Store) ShareLinkViewed(ctx context.Context, l *SharedLink, ip string) error {
+// ShareLinkViewed counts a view of the shared page and logs it on the incident, with the
+// viewer's IP address and browser. ctx must carry the link's tenant (WithTenant).
+func (s *Store) ShareLinkViewed(ctx context.Context, l *SharedLink, ip, userAgent string) error {
+	if len(userAgent) > 300 {
+		userAgent = userAgent[:300]
+	}
 	return s.tx(ctx, func(tx pgx.Tx, tid string) error {
 		var recipient string
 		if err := tx.QueryRow(ctx, `UPDATE shared_links SET views = views + 1, last_viewed_at = now()
@@ -126,6 +129,33 @@ func (s *Store) ShareLinkViewed(ctx context.Context, l *SharedLink, ip string) e
 			return err
 		}
 		return audit(ctx, tx, tid, "Shared link", "incident.share_viewed", "incident", l.IncidentID, map[string]any{
-			"message": "Shared video opened (link for " + recipient + ")", "incident_id": l.IncidentID, "share_link_id": l.ID, "ip": ip})
+			"message": "Shared video opened (link for " + recipient + ")", "incident_id": l.IncidentID, "share_link_id": l.ID,
+			"ip": ip, "user_agent": userAgent})
 	})
+}
+
+// ShareView is one opening of a shared page.
+type ShareView struct {
+	At        time.Time `json:"at"`
+	IP        string    `json:"ip"`
+	UserAgent string    `json:"user_agent"`
+}
+
+// ShareLinkViews lists a share link's views, newest first (from the activity log).
+func (s *Store) ShareLinkViews(ctx context.Context, linkID string) ([]ShareView, error) {
+	out := []ShareView{}
+	err := s.tx(ctx, func(tx pgx.Tx, tid string) error {
+		rows, err := tx.Query(ctx, `SELECT created_at, coalesce(details->>'ip', ''), coalesce(details->>'user_agent', '')
+			FROM audit_logs WHERE tenant_id = $1 AND action = 'incident.share_viewed' AND details->>'share_link_id' = $2
+			ORDER BY created_at DESC LIMIT 200`, tid, linkID)
+		if err != nil {
+			return err
+		}
+		out, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (ShareView, error) {
+			var v ShareView
+			return v, r.Scan(&v.At, &v.IP, &v.UserAgent)
+		})
+		return err
+	})
+	return out, err
 }

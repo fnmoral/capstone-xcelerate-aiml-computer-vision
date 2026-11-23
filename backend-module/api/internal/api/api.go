@@ -190,6 +190,7 @@ func (s *Server) Register(r *gin.Engine) {
 	u.GET("/incidents/:id/share-links", writeReports, s.listShareLinks)
 	u.POST("/incidents/:id/share-links", writeReports, s.createShareLink)
 	u.DELETE("/share-links/:id", writeReports, s.revokeShareLink)
+	u.GET("/share-links/:id/views", writeReports, s.shareLinkViews)
 
 	// ---- notifications ----
 	notif := s.can(auth.ManageNotifications)
