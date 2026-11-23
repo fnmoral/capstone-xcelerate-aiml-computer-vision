@@ -29,6 +29,9 @@ export interface Field {
   reuse?: Reuse;
   /** The same question in other forms when the key differs (worker_name = person_name). */
   same?: string;
+  /** When no earlier report has the same question: build the answer from what a person typed
+   *  in another form of this incident (e.g. WSIB's body part, side and nature of injury). */
+  combine?: (typed: Record<string, string>) => string | null;
 }
 
 export interface Section {
@@ -77,11 +80,15 @@ const orgAddress = (f: ReportFacts) =>
   [f.org.address, [f.org.city, f.org.province].filter(Boolean).join(', '), f.org.postal_code, f.org.country].filter(Boolean).join(', ');
 
 const mainCamera = (f: ReportFacts) => f.cameras[0];
+/** "2nd floor hallway, Zone Ward A (captured by Camera 1)": location and zone, camera in brackets. */
 const place = (f: ReportFacts) => {
   const c = mainCamera(f);
   const loc = f.incident.location_label || c?.location;
-  const bits = [loc, f.incident.zone ? `zone ${f.incident.zone}` : null, `camera ${f.incident.camera_name ?? c?.name ?? 'unknown'}`].filter(Boolean);
-  return bits.join(', ');
+  const zone = f.incident.zone && f.incident.zone.toLowerCase() !== loc?.toLowerCase() ? `Zone ${f.incident.zone}` : null;
+  const where = [loc, zone].filter(Boolean).join(', ');
+  const camera = f.incident.camera_name ?? c?.name;
+  if (!camera) return where || 'Location not recorded';
+  return where ? `${where} (captured by ${camera})` : `Captured by ${camera}`;
 };
 
 const statusText: Record<string, string> = {
@@ -123,10 +130,17 @@ export function narrative(f: ReportFacts): string {
 }
 
 /** Timeline of the incident, one event per line. */
+/** Activity that belongs in a regulator's timeline: the fall and how the alert was handled
+ *  (acknowledged, resolved, false alarm, reopened). Report saves, shared links and notes don't. */
+const responseEvent = (action: string) => action.startsWith('alert.') || action === 'incident.status';
+
+/** The fall and the response, one event per line, as recorded when the report is filled in. */
 export function timeline(f: ReportFacts): string {
   const rows: [string, string][] = [[f.incident.started_at, 'Fall detected by FallGuard']];
   if (f.incident.alert) rows.push([f.incident.alert.triggered_at, `Alert raised (severity ${f.incident.severity})`]);
-  for (const e of f.activity) rows.push([e.at, `${e.message}${e.actor ? ` (${e.actor})` : ''}`]);
+  for (const e of f.activity) {
+    if (responseEvent(e.action)) rows.push([e.at, `${e.message}${e.actor ? ` (${e.actor})` : ''}`]);
+  }
   if (f.incident.recovered_at) rows.push([f.incident.recovered_at, 'Person seen getting up']);
   return rows.sort((a, b) => a[0].localeCompare(b[0])).map(([at, text]) => `${when(f, at)!.date} ${when(f, at)!.time}  ${text}`).join('\n');
 }
@@ -186,6 +200,16 @@ const witnessText = (contact: string) => (f: ReportFacts) => {
   return `Witnesses: [name], [job title], [${contact}].\nResponded at the scene: ${r.length ? r.join(', ') : '[names]'}.`;
 };
 const WITNESS_HELP = 'A suggested wording: change the names or the sentence. "Responded at the scene" lists who acted on the alert in FallGuard; they may not have been there.';
+
+/** "Left wrist: sprain" from WSIB Form 7's body part, side and nature of injury. */
+const injuryFromParts = (typed: Record<string, string>): string | null => {
+  const part = typed.body_part?.trim();
+  const nature = typed.injury_nature?.trim();
+  const side = typed.body_side && typed.body_side !== 'Not applicable' ? typed.body_side : '';
+  if (!part && !nature) return null;
+  const where = part ? (side ? `${side} ${part.charAt(0).toLowerCase()}${part.slice(1)}` : part) : '';
+  return [where, nature].filter(Boolean).join(': ');
+};
 
 // ---------- shared field groups ----------
 
@@ -337,7 +361,7 @@ export const FORMS: FormDef[] = [
         title: 'Occurrence',
         fields: [
           { key: 'circumstances', label: 'Nature and circumstances of the occurrence', type: 'textarea', wide: true, required: true, auto: narrative, reuse: 'incident', same: 'what_happened' },
-          { key: 'bodily_injury', label: 'Description of the bodily injury', type: 'textarea', wide: true, required: true, reuse: 'incident', same: 'injury' },
+          { key: 'bodily_injury', label: 'Description of the bodily injury', type: 'textarea', wide: true, required: true, reuse: 'incident', same: 'injury', combine: injuryFromParts },
           { key: 'equipment', label: 'Machinery, equipment or materials involved', type: 'textarea', wide: true, reuse: 'incident' },
           { key: 'witnesses', label: 'Names and addresses of witnesses', type: 'textarea', wide: true, auto: witnessText('address'), help: WITNESS_HELP, reuse: 'incident' },
           { key: 'physician', label: 'Name and address of attending physician / health care provider', wide: true, reuse: 'incident', same: 'health_care_provider' },
@@ -387,7 +411,7 @@ export const FORMS: FormDef[] = [
           { key: 'event_time', label: '13. Time of event', type: 'time', auto: incTime },
           { key: 'doing_before', label: '14. What was the employee doing just before the incident occurred?', type: 'textarea', wide: true, required: true, reuse: 'incident', same: 'activity' },
           { key: 'what_happened', label: '15. What happened? Tell us how the injury occurred.', type: 'textarea', wide: true, required: true, auto: narrative, reuse: 'incident' },
-          { key: 'injury', label: '16. What was the injury or illness? (part of body and how it was affected)', type: 'textarea', wide: true, required: true, reuse: 'incident' },
+          { key: 'injury', label: '16. What was the injury or illness? (part of body and how it was affected)', type: 'textarea', wide: true, required: true, reuse: 'incident', combine: injuryFromParts },
           { key: 'object', label: '17. What object or substance directly harmed the employee?', wide: true, auto: () => 'Floor / ground surface (fall)' },
           { key: 'death_date', label: '18. If the employee died, date of death', type: 'date', reuse: 'incident' },
         ],
@@ -440,7 +464,7 @@ export const FORMS: FormDef[] = [
           { key: 'person_type', label: 'Person', type: 'select', required: true, options: ['Employee', 'Resident', 'Patient', 'Visitor', 'Contractor', 'Unknown'], reuse: 'incident' },
           { key: 'person_name', label: 'Name (or identifier)', reuse: 'incident' },
           { key: 'injury_level', label: 'Injury', type: 'select', required: true, options: ['No injury', 'Minor (first aid)', 'Medical treatment', 'Serious / hospitalized', 'Fatal', 'Not known yet'], reuse: 'incident' },
-          { key: 'injury_details', label: 'Injury details', type: 'textarea', wide: true, reuse: 'incident', same: 'injury' },
+          { key: 'injury_details', label: 'Injury details', type: 'textarea', wide: true, reuse: 'incident', same: 'injury', combine: injuryFromParts },
         ],
       },
       {
@@ -525,6 +549,18 @@ export function carryOver(form: FormDef, incidentId: string, filled: { fields: R
       auto.delete(fd.key);
       from[fd.key] = formById(r.form)!.short + (r.incident_id === incidentId ? '' : ', an earlier incident');
       break;
+    }
+    if (!from[fd.key] && fd.combine && fd.reuse === 'incident') {
+      for (const r of earlier) {
+        if (r.incident_id !== incidentId) continue;
+        const typed = Object.fromEntries(Object.entries(r.content.fields ?? {}).filter(([k, v]) => v?.trim() && !r.content.auto?.includes(k)));
+        const value = fd.combine(typed);
+        if (!value) continue;
+        fields[fd.key] = value;
+        auto.delete(fd.key);
+        from[fd.key] = formById(r.form)!.short;
+        break;
+      }
     }
   }
   return { fields, auto: [...auto], from };

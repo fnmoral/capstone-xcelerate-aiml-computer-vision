@@ -327,6 +327,12 @@ export interface ShareLink {
   last_viewed_at: string | null;
 }
 
+export interface ShareView {
+  at: string;
+  ip: string;
+  user_agent: string;
+}
+
 /** What the public /shared/:token page shows. Media URLs are API paths. */
 export interface SharedView {
   organization: string;
@@ -349,6 +355,8 @@ export const shareLinks = {
   create: (incidentId: string, b: { recipient: string; days: number }) =>
     apiRequest<{ link: ShareLink; url: string }>("/incidents/" + enc(incidentId) + "/share-links", post(b)),
   revoke: (id: string) => apiRequest("/share-links/" + enc(id), { method: "DELETE" }),
+  /** Each opening of the shared page: when, IP address, browser (user agent). */
+  views: (id: string) => apiRequest<{ views: ShareView[] }>("/share-links/" + enc(id) + "/views"),
   /** Public: no account needed, the token is the permission. */
   view: (token: string) => apiRequest<SharedView>("/shared/" + enc(token)),
 };

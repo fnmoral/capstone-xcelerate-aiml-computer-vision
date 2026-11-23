@@ -43,3 +43,15 @@
 .share-created__row { display: flex; gap: 8px; margin-top: 8px; }
 .share-created__row input { flex: 1; min-width: 0; font-family: var(--font-mono, monospace); font-size: 12px; }
 .share-intro { margin: 0 0 8px; font-size: 13px; line-height: 1.5; }
+/* Share links as cards (like the incident's report cards) */
+.share-list { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 8px; }
+.share-card { padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.share-card--ended { opacity: .75; }
+.share-card__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.share-card__body { display: grid; gap: 4px; min-width: 0; }
+.share-card__title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.share-card__meta { font-size: 12px; }
+.share-card__actions { gap: 6px; flex-shrink: 0; }
+.share-views { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.share-views__table { font-size: 13px; }
+.share-views__note { margin: 6px 0 0; font-size: 12px; }

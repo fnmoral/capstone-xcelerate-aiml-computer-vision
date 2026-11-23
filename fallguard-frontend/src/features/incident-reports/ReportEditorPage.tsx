@@ -5,11 +5,13 @@ import { UnsavedChangesGuard } from '../../components/ui/UnsavedChangesGuard';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Icon } from '../../components/ui/Icon';
-import { incidentReports, type IncidentReport, type ReportFacts } from '../../services/api/accounts';
+import { incidentReports, shareLinks, type IncidentReport, type ReportFacts } from '../../services/api/accounts';
 import { snapshotUrl } from '../../services/api/fallguard';
 import { formatTime } from '../../lib/format';
 import { PERM, useAuth } from '../auth/AuthContext';
-import { autoFill, formById, hasBlanks, missing, shareLinkIn, withShareLink, type Field } from './forms';
+import {
+  autoFill, formById, hasBlanks, missing, REPORT_SHARE_DAYS, SHARE_PLACEHOLDER, shareLinkIn, withShareLink, type Field,
+} from './forms';
 import './reports.css';
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message.charAt(0).toUpperCase() + e.message.slice(1) : String(e));
@@ -160,6 +162,28 @@ export default function ReportEditorPage() {
     }
   };
 
+  /** Creates the recipient's video link, puts it in Evidence and saves the report right away
+   *  (the link is shown only once, so it must not be lost by leaving without saving). */
+  const addVideoLink = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await shareLinks.create(report.incident_id, { recipient: `${form.authority} (${form.short})`, days: REPORT_SHARE_DAYS });
+      const next = { ...fields, evidence_summary: withShareLink(fields.evidence_summary ?? '', r.url) };
+      const { report: saved } = await incidentReports.save(report.id, {
+        title, status: report.status, content: { fields: next, auto, from, facts_at: report.content.facts_at },
+      });
+      setFields(next);
+      setReport(saved);
+      setDirty(false);
+      setMsg({ ok: true, text: `Video link created (valid ${REPORT_SHARE_DAYS} days), added to Evidence, and the report saved.` });
+    } catch (e) {
+      setMsg({ ok: false, text: errorText(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   /** Re-fills the fields still marked auto-filled with the latest records (e.g. after the person recovered). */
   const refresh = async () => {
     setBusy(true);
@@ -225,6 +249,14 @@ export default function ReportEditorPage() {
                   <FieldInput key={f.key} f={f} value={fields[f.key] ?? ''} disabled={locked} auto={auto.includes(f.key)}
                     from={from[f.key]} onChange={(v) => change(f.key, v)} />
                 ))}
+                {s.fields.some((f) => f.key === 'evidence_summary') && !locked && (fields.evidence_summary ?? '').includes(SHARE_PLACEHOLDER) && (
+                  <div className="rep-field--wide rep-link-action">
+                    <button type="button" className="btn btn--sm" disabled={busy} onClick={() => void addVideoLink()}>
+                      <Icon name="video" size={16} /> Create video link
+                    </button>
+                    <span className="muted">Creates a view-only link for the recipient (valid {REPORT_SHARE_DAYS} days), adds it to Evidence and saves the report.</span>
+                  </div>
+                )}
               </div>
             </section>
           ))}
