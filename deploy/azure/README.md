@@ -73,9 +73,9 @@ ml-service then writes to `postgresql://ml_service:<password>@127.0.0.1:15432/fa
 
 To do: create the `tunnel` user (port forwarding only) and check outbound SSH from the Fanshawe server.
 
-## Phone cameras
+## Phone cameras (temporary, for demos)
 
-In the app: **Cameras → Add phone camera** → in **Streamza** (Custom RTMP) paste the server and
+May be removed once cameras connect through an on-site gateway. In the app: **Cameras → Add phone camera** → in **Streamza** (Custom RTMP) paste the server and
 stream key (a QR code each) → Go Live. Works from any network; no laptop. How it works: the
 phone sends RTMP to the relay on port 1935 (Streamza can't do RTMPS) or RTMPS on 1936 (Larix,
 OBS; Let's Encrypt certificate from Caddy); the relay asks the API for each connection (same

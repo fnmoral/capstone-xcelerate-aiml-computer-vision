@@ -69,7 +69,7 @@ Sources: [Occupiers' Liability Act](https://www.ontario.ca/laws/statute/90o02) Â
 | **Incident reports** | Fill in a WSIB Form 7, an Ontario Ministry of Labour notice, an OSHA 301 or an internal report. FallGuard fills in everything it already knows. |
 | **Notifications** | Choose who gets told about falls, by app, email or text message, depending on how serious the fall is. |
 | **Members & Roles** | Invite your team and decide what each person is allowed to do. |
-| **Cameras** | Add, rename, pause or remove cameras and choose the order they appear in. Phones can be cameras too, from any network. |
+| **Cameras** | Add, rename, pause or remove cameras and choose the order they appear in. |
 | **Detection Settings** | Fine-tune how the fall detector works (most people never need to change these). |
 
 ## Getting started
@@ -205,9 +205,10 @@ For a demo you can let people in **without an account**:
 
 Only admins can create temporary access links.
 
-## Phone cameras
+## Phone cameras (demo option)
 
-A phone can be a camera, on any Wi-Fi or mobile data. No laptop needed.
+For demos on the cloud server, a phone can stand in for a camera, on any Wi-Fi or mobile data.
+This is a temporary option: it may be removed once cameras connect through an on-site gateway.
 
 1. **Cameras â†’ Add phone camera**: give it a name (e.g. "Lobby phone"). Two QR codes appear.
 2. On the phone, install **Streamza** (free, Android) and choose **Custom RTMP**.
@@ -221,7 +222,7 @@ can use the encrypted address.
 
 Tips: keep the phone plugged in, screen on, in landscape. The QR code is shown once; lost it?
 Use **New QR code** on the camera (the old one stops working). Removing the camera also cuts
-the phone off. The video is encrypted and each phone has its own password.
+the phone off. Each phone has its own password.
 
 ## Emails sent
 
