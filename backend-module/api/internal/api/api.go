@@ -49,15 +49,19 @@ type Config struct {
 type Server struct {
 	cfg     Config
 	db      *store.Store
-	gateway gateway
+	gateway gateway // GATEWAY_URL: gateways that signed up without an address (gateways.go)
 	hub     *httpClient
 	box     *notify.Box // encrypts email / SMS provider secrets
+
+	gws *gatewayPool // clients of the registered gateways and whether they answer
 }
 
 type GatewayRegisterRequest struct {
 	TenantName    string `json:"tenant_name"`
 	GatewayNameID string `json:"gateway_name_id"`
 	AuthToken     string `json:"auth_token"` // Optional or default hash
+	URL           string `json:"url"`        // how the API reaches the gateway ("" = GATEWAY_URL)
+	Kind          string `json:"kind"`       // cloud | onsite (default)
 }
 
 // New creates the server.
@@ -80,6 +84,7 @@ func New(cfg Config, db *store.Store) *Server {
 		gateway: gateway{newClient("gateway-back", cfg.GatewayURL, 8*time.Second)},
 		hub:     newClient("stream-hub", cfg.StreamHubURL, 3*time.Second),
 		box:     box,
+		gws:     newGatewayPool(),
 	}
 }
 
@@ -206,6 +211,15 @@ func (s *Server) Register(r *gin.Engine) {
 	u.PUT("/settings/theme", s.can(auth.ManageSettings), s.saveDefaultTheme)
 	u.GET("/gateway/config", s.can(auth.ManageSettings), s.homeOrgOnly, s.gatewayConfig)
 	u.PUT("/gateway/config", s.can(auth.ManageSettings), s.homeOrgOnly, s.gatewayConfig)
+
+	// ---- gateways (Settings → Gateways; one in use at a time, gateways.go) ----
+	gwAdmin := s.can(auth.ManageSettings)
+	u.GET("/gateways", gwAdmin, s.homeOrgOnly, s.listGateways)
+	u.PUT("/gateways/active", gwAdmin, s.homeOrgOnly, s.setGateway)
+	u.PATCH("/gateways/:id", gwAdmin, s.homeOrgOnly, s.updateGateway)
+	u.DELETE("/gateways/:id", gwAdmin, s.homeOrgOnly, s.deleteGateway)
+	u.GET("/gateways/:id/config", gwAdmin, s.homeOrgOnly, s.gatewayConfigOf)
+	u.PUT("/gateways/:id/config", gwAdmin, s.homeOrgOnly, s.gatewayConfigOf)
 }
 
 // ---------- helpers ----------
@@ -267,7 +281,7 @@ func (s *Server) health(c *gin.Context) {
 	checks := map[string]func(context.Context) error{
 		"database": s.db.Ping,
 		"gateway-back": func(ctx context.Context) error {
-			return s.gateway.do(ctx, http.MethodGet, "/gateway/actions/health", nil, nil)
+			return s.gw(ctx).do(ctx, http.MethodGet, "/gateway/actions/health", nil, nil) // the gateway in use
 		},
 		// ml-service has no API of its own: it is up if it keeps reporting its status.
 		"ml-service": func(ctx context.Context) error { _, err := s.mlFrameAges(ctx); return err },
@@ -307,7 +321,7 @@ type CameraView struct {
 	Name            string           `json:"name"`
 	Location        *string          `json:"location"`
 	Zone            *string          `json:"zone"`
-	Status          string           `json:"status"` // gateway state: online | paused | not_on_gateway
+	Status          string           `json:"status"` // gateway state: online | paused | not_on_gateway | other_gateway
 	Health          string           `json:"health"` // online | paused | not_working | connecting | not_connected
 	HealthSince     *time.Time       `json:"health_since"`
 	AlertOffline    bool             `json:"alert_offline"` // notify when it stops working
@@ -321,6 +335,8 @@ type CameraView struct {
 	TenantID        string           `json:"tenant_id"`
 
 	Phone bool `json:"phone"` // a phone streaming to the camera relay (new QR code possible)
+
+	GatewayName *string `json:"gateway_name,omitempty"` // status other_gateway: the gateway it's on
 
 	Video bool `json:"video"` // its video reaches stream-hub (Live View works, even without ml-service)
 }
@@ -344,11 +360,19 @@ func (s *Server) liveState(ctx context.Context) liveState {
 
 func (s *Server) listCameras(c *gin.Context) {
 	ctx := c.Request.Context()
-	// The gateway belongs to the home organization; others only see their own database cameras.
+	// The gateways belong to the home organization; others only see their own database cameras.
+	// The camera list comes from the gateway in use; other gateways' cameras show as such.
 	var gw []GatewayCamera
 	var gwErr error
+	var st gatewayState
+	client := s.gateway
 	if s.isHomeOrg(c) {
-		gw, gwErr = s.gateway.cameras(ctx)
+		var err error
+		if st, err = s.gatewayState(ctx); err != nil {
+			log.Printf("gateways: %v", err)
+		}
+		client = st.client(s)
+		gw, gwErr = client.cameras(ctx)
 	}
 	dbCams, err := s.db.Cameras(ctx)
 	if err != nil {
@@ -378,6 +402,15 @@ func (s *Server) listCameras(c *gin.Context) {
 				for _, d := range dbCams {
 					byID[d.ID] = d
 				}
+			}
+		}
+		if st.inUse != nil {
+			ids := make([]string, len(gw))
+			for i, g := range gw {
+				ids[i] = g.ID
+			}
+			if err := s.db.SetCamerasGateway(ctx, st.inUse.ID, ids); err != nil {
+				log.Printf("cameras of gateway %s: %v", st.inUse.ID, err)
 			}
 		}
 	}
@@ -416,6 +449,11 @@ func (s *Server) listCameras(c *gin.Context) {
 		}
 		v := CameraView{ID: d.ID, Name: d.Name, Location: d.Location, Zone: d.Zone, Status: "not_on_gateway",
 			CreatedAt: d.CreatedAt, People: []map[string]any{}}
+		if d.GatewayID != nil && (st.inUse == nil || *d.GatewayID != st.inUse.ID) {
+			if g := st.find(*d.GatewayID); g != nil { // on a gateway not in use: back when it's switched to
+				v.Status, v.GatewayName = "other_gateway", &g.DisplayName
+			}
+		}
 		v.addLive(live, active)
 		v.setHealth(&d, true)
 		out = append(out, v)
@@ -426,7 +464,8 @@ func (s *Server) listCameras(c *gin.Context) {
 		}
 	}
 	sortByOrder(out, dbCams)
-	resp := gin.H{"cameras": out, "limits": s.gateway.limits(ctx), "phone_cameras": s.cfg.PhoneRelayURL != ""}
+	resp := gin.H{"cameras": out, "limits": client.limits(ctx), "phone_cameras": st.phoneCamerasOn(s.cfg.PhoneRelayURL),
+		"gateway": st.inUseView()}
 	if gwErr != nil {
 		resp["gateway_error"] = gwErr.Error()
 	}
@@ -511,7 +550,8 @@ func (s *Server) addCamera(c *gin.Context) {
 	}
 	name := strings.TrimSpace(*in.Name)
 	ctx := c.Request.Context()
-	cam, err := s.gateway.addCamera(ctx, name, in.RTSPURL, in.Username, in.Password)
+	client, inUse := s.gwInUse(ctx)
+	cam, err := client.addCamera(ctx, name, in.RTSPURL, in.Username, in.Password)
 	if err != nil {
 		fail(c, err)
 		return
@@ -521,6 +561,7 @@ func (s *Server) addCamera(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	s.recordGateway(ctx, inUse, cam.ID)
 	if in.AlertOffline != nil && !*in.AlertOffline {
 		if err := s.db.SetCameraAlert(ctx, cam.ID, false); err != nil {
 			fail(c, err)
@@ -565,7 +606,7 @@ func (s *Server) updateCamera(c *gin.Context) {
 func (s *Server) deleteCamera(c *gin.Context) {
 	ctx := c.Request.Context()
 	id := c.Param("id")
-	if err := s.gateway.deleteCamera(ctx, id); err != nil {
+	if err := s.gatewayOfCamera(ctx, id).deleteCamera(ctx, id); err != nil {
 		var up *upstreamError
 		if !(errors.As(err, &up) && up.Status < 500) { // gone from the gateway already: still remove the row
 			fail(c, err)
@@ -587,7 +628,7 @@ func (s *Server) deleteCamera(c *gin.Context) {
 func (s *Server) pauseResume(action, status string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		cam, err := s.gateway.camera(ctx, action, c.Param("id"))
+		cam, err := s.gw(ctx).camera(ctx, action, c.Param("id"))
 		if err != nil {
 			fail(c, err)
 			return
@@ -615,14 +656,15 @@ func (s *Server) switchCamera(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	old, err := s.gateway.camera(ctx, "pause", in.ReplaceID)
+	gw := s.gw(ctx)
+	old, err := gw.camera(ctx, "pause", in.ReplaceID)
 	if err != nil {
 		fail(c, err)
 		return
 	}
-	cam, err := s.gateway.camera(ctx, "resume", id)
+	cam, err := gw.camera(ctx, "resume", id)
 	if err != nil {
-		if _, rerr := s.gateway.camera(ctx, "resume", in.ReplaceID); rerr != nil {
+		if _, rerr := gw.camera(ctx, "resume", in.ReplaceID); rerr != nil {
 			log.Printf("switch: could not resume %s again: %v", in.ReplaceID, rerr)
 		}
 		fail(c, err)
@@ -913,26 +955,27 @@ func (s *Server) zone(c *gin.Context) string {
 	return "UTC"
 }
 
+// gatewayConfig: GET / PUT /api/gateway/config, the connection settings of the gateway in use.
 func (s *Server) gatewayConfig(c *gin.Context) {
-	var body any
-	if c.Request.Method == http.MethodPut {
-		if err := c.ShouldBindJSON(&body); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
-			return
-		}
-	}
-	var out any
-	if err := s.gateway.do(c.Request.Context(), c.Request.Method, "/gateway/actions/config", body, &out); err != nil {
-		fail(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, out)
+	s.proxyGatewayConfig(c, s.gw(c.Request.Context()))
 }
 
 func (s *Server) gatewayAdd(c *gin.Context) {
+	if !gatewayCaller(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": errGatewaySignup.Error()})
+		return
+	}
 	var req GatewayRegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body payload"})
+		return
+	}
+	if req.URL != "" && !gatewayURL.MatchString(req.URL) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "url: http(s)://host[:port] where the API reaches this gateway"})
+		return
+	}
+	if req.Kind != "" && req.Kind != store.GatewayCloud && req.Kind != store.GatewayOnsite {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "kind: cloud or onsite"})
 		return
 	}
 
@@ -954,7 +997,8 @@ func (s *Server) gatewayAdd(c *gin.Context) {
 	}
 
 	// Call the store method to validate tenant slug, register the gateway, and get IDs.
-	tenantID, gatewayID, err := s.db.RegisterGateway(c.Request.Context(), req.TenantName, gatewayName, authTokenHash)
+	tenantID, gatewayID, err := s.db.RegisterGateway(c.Request.Context(), req.TenantName, gatewayName, authTokenHash,
+		strings.TrimRight(req.URL, "/"), req.Kind)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

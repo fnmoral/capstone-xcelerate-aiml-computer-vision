@@ -37,7 +37,12 @@ from ml-service.
 | `GET /api/clips/:name` | Incident video clip, MP4 (from ml-service; Range requests pass through for seeking). Incidents return `clip_key` and each camera's `clip_key` |
 | `GET /api/detection` | ml-service's detection settings (what it runs with now) + `saved`: values set in the app |
 | `PUT /api/detection` | `{person_confidence}` (0.05–0.95; `{}` = back to config.yaml). Stored in the fall rule's `parsed_config.detection`; ml-service applies it within 15 s. Logged as `settings.detection` |
-| `GET` · `PUT /api/gateway/config` | gateway-back's settings (stream-hub address) |
+| `GET` · `PUT /api/gateway/config` | The gateway in use: its own settings (stream-hub address) |
+| `GET /api/gateways` | Settings → Gateways: `{mode: automatic\|chosen, in_use, gateways[]}`; each with `name` (the place), `location`, `kind` (`cloud`: phone cameras only, `onsite`), `online`, `in_use`, `cameras`, `last_seen_at` |
+| `PUT /api/gateways/active` | `{gateway_id}` or `null` (automatic: an online on-site gateway, else cloud). A chosen gateway stays in use while offline. Switching pauses the old gateway's streaming cameras and resumes them when it's used again |
+| `PATCH /api/gateways/:id` · `DELETE /api/gateways/:id[?remove_cameras=true]` | Name and location / remove (not the one in use; optionally with its cameras, else they stay on no gateway) |
+| `GET` · `PUT /api/gateways/:id/config` | A gateway's own settings (it must be online) |
+| `POST /api/gateway/add` | Gateway sign-up at every start: `{tenant_name, gateway_name_id, url, kind}` (`url`: how the API reaches it). Only from the server or a private network, never through nginx (403) |
 
 ## Accounts, roles and organizations
 

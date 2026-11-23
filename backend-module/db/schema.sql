@@ -143,11 +143,18 @@ CREATE TABLE gateways (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id     UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     site_id       UUID REFERENCES sites(id) ON DELETE SET NULL,
-    name          TEXT NOT NULL,
+    name          TEXT NOT NULL,               -- the gateway's own ID (GATEWAY_NAME_ID)
     auth_token_hash TEXT NOT NULL,
     last_seen_at  TIMESTAMPTZ,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    display_name  TEXT,                        -- the place, shown in the app: 'Cloud', 'Office server'
+    location      TEXT,                        -- optional detail: '2nd floor'
+    url           TEXT,                        -- how the API reaches it (sent at sign-up)
+    kind          TEXT NOT NULL DEFAULT 'onsite' -- cloud (on the server, phone cameras) | onsite (next to the cameras)
 );
+CREATE UNIQUE INDEX gateways_tenant_name ON gateways (tenant_id, name);
+-- The gateway in use, chosen by an admin; NULL = automatic (on-site if one is online, else cloud).
+ALTER TABLE tenants ADD COLUMN active_gateway_id UUID REFERENCES gateways(id) ON DELETE SET NULL;
 
 -- Cameras that see the same area. A fall seen by several cameras of one zone is recorded
 -- as one incident (ml-service merges them). A camera belongs to at most one zone.

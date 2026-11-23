@@ -77,6 +77,12 @@ func (s *Server) phoneCamerasEnabled(c *gin.Context) bool {
 			"code": "no_phone_relay"})
 		return false
 	}
+	// Only the cloud gateway can read the relay the phones push to.
+	if st, err := s.gatewayState(c.Request.Context()); err == nil && !st.phoneCamerasOn(s.cfg.PhoneRelayURL) {
+		c.JSON(http.StatusConflict, gin.H{"error": "phone cameras need the Cloud gateway in use; an on-site gateway is in use (Settings → Gateways)",
+			"code": "phone_needs_cloud_gateway"})
+		return false
+	}
 	return true
 }
 
@@ -104,7 +110,8 @@ func (s *Server) addPhoneCamera(c *gin.Context) {
 	}
 	ctx := c.Request.Context()
 	rtsp := s.relayRTSP(path)
-	cam, err := s.gateway.addCamera(ctx, name, rtsp, "", "")
+	client, inUse := s.gwInUse(ctx)
+	cam, err := client.addCamera(ctx, name, rtsp, "", "")
 	if err != nil {
 		fail(c, err)
 		return
@@ -113,6 +120,7 @@ func (s *Server) addPhoneCamera(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	s.recordGateway(ctx, inUse, cam.ID)
 	if err := s.db.AddPhoneCamera(ctx, cam.ID, path, hash); err != nil {
 		fail(c, err)
 		return

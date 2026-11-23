@@ -26,6 +26,8 @@ type Camera struct {
 	StatusSince  *time.Time `json:"status_since"`
 	AlertOffline bool       `json:"alert_offline"`
 	CreatedAt    time.Time  `json:"created_at"`
+
+	GatewayID *string `json:"gateway_id"` // the gateway it was added on (nil = not known)
 }
 
 // ErrNameTaken is returned when another camera already has the name.
@@ -48,7 +50,7 @@ func (s *Store) Cameras(ctx context.Context) ([]Camera, error) {
 		rows, err := tx.Query(ctx, `
 			SELECT c.id::text, c.tenant_id::text, c.name, c.location, z.name, c.status,
 			       (c.metadata->>'status_since')::timestamptz,
-			       coalesce((c.metadata->>'alert_offline')::boolean, true), c.created_at
+			       coalesce((c.metadata->>'alert_offline')::boolean, true), c.created_at, c.gateway_id::text
 			FROM cameras c LEFT JOIN zones z ON z.id = c.zone_id
 			WHERE c.tenant_id = $1 ORDER BY coalesce((c.metadata->>'sort_order')::int, 2147483647), c.created_at`, tid)
 		if err != nil {
@@ -57,7 +59,7 @@ func (s *Store) Cameras(ctx context.Context) ([]Camera, error) {
 		out, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (Camera, error) {
 			var c Camera
 			// Scanned c.TenantID right after c.ID
-			err := r.Scan(&c.ID, &c.TenantID, &c.Name, &c.Location, &c.Zone, &c.Status, &c.StatusSince, &c.AlertOffline, &c.CreatedAt)
+			err := r.Scan(&c.ID, &c.TenantID, &c.Name, &c.Location, &c.Zone, &c.Status, &c.StatusSince, &c.AlertOffline, &c.CreatedAt, &c.GatewayID)
 			return c, err
 		})
 		return err

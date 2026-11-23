@@ -50,7 +50,12 @@ func (s *Server) WatchCameras(ctx context.Context) {
 func (s *Server) checkCameras(ctx context.Context, noVideoSince map[string]time.Time) error {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	gw, err := s.gateway.cameras(ctx)
+	st, err := s.gatewayState(ctx)
+	if err != nil {
+		return err
+	}
+	s.resumeSwitchPaused(ctx, st)
+	gw, err := st.client(s).cameras(ctx) // the gateway in use
 	if err != nil {
 		return err // can't tell paused from broken without the gateway; try again next tick
 	}
@@ -89,19 +94,49 @@ func (s *Server) checkCameras(ctx context.Context, noVideoSince map[string]time.
 			}
 			want = "error"
 		}
-		s.applyStatus(ctx, g.ID, g.Name, want, mlErr)
+		s.applyStatus(ctx, g.ID, g.Name, want, mlErr, "")
 	}
 	for _, d := range dbCams {
 		if !onGateway[d.ID] {
 			delete(noVideoSince, d.ID)
-			s.applyStatus(ctx, d.ID, d.Name, "offline", nil)
+			msg := ""
+			if d.GatewayID != nil && st.inUse != nil && *d.GatewayID != st.inUse.ID {
+				if g := st.find(*d.GatewayID); g != nil {
+					msg = "On another gateway (" + g.DisplayName + "), not in use"
+				}
+			}
+			s.applyStatus(ctx, d.ID, d.Name, "offline", nil, msg)
 		}
 	}
 	return nil
 }
 
-// applyStatus stores the status and, if it changed, logs it with a readable message.
-func (s *Server) applyStatus(ctx context.Context, id, name, want string, mlErr error) {
+// resumeSwitchPaused resumes the cameras paused by a gateway switch once their gateway is in
+// use and answers again, also when Automatic switched back to it (e.g. the laptop came back).
+func (s *Server) resumeSwitchPaused(ctx context.Context, st gatewayState) {
+	if st.inUse == nil || !st.online[st.inUse.ID] {
+		return
+	}
+	ids, err := s.db.SwitchPausedIDs(ctx, st.inUse.ID)
+	if err != nil || len(ids) == 0 {
+		return
+	}
+	var resumed []string
+	for _, id := range ids {
+		if _, err := st.client(s).camera(ctx, "resume", id); err != nil {
+			log.Printf("camera monitor: resuming %s: %v", id, err)
+			continue
+		}
+		resumed = append(resumed, id)
+	}
+	if err := s.db.MarkSwitchPaused(ctx, resumed, false); err != nil {
+		log.Printf("camera monitor: %v", err)
+	}
+}
+
+// applyStatus stores the status and, if it changed, logs it with a readable message
+// (offlineMsg replaces the default "Not connected to a gateway").
+func (s *Server) applyStatus(ctx context.Context, id, name, want string, mlErr error, offlineMsg string) {
 	from, changed, err := s.db.SetCameraStatus(ctx, id, want)
 	if err != nil {
 		log.Printf("camera monitor: %s: %v", id, err)
@@ -127,6 +162,9 @@ func (s *Server) applyStatus(ctx context.Context, id, name, want string, mlErr e
 		}
 	case "offline":
 		level, msg = "warning", "Not connected to a gateway"
+		if offlineMsg != "" {
+			level, msg = "info", offlineMsg
+		}
 	}
 	if err := s.db.CameraEvent(ctx, id, name, healthOf[want], level, msg); err != nil {
 		log.Printf("camera monitor: logging %s: %v", id, err)
