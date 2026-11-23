@@ -50,6 +50,20 @@ func TestPickGateway(t *testing.T) {
 	}
 }
 
+// A gateway without an address isn't taken for the one already at GATEWAY_URL.
+func TestNoDefaultURLWhenTaken(t *testing.T) {
+	list := []store.Gateway{{ID: "cloud", URL: "http://gateway-back:8080"}, {ID: "old"}}
+	noDefaultURL(list, "http://gateway-back:8080")
+	if list[1].URL != unreachable || list[0].URL != "http://gateway-back:8080" {
+		t.Fatalf("got %+v", list)
+	}
+	local := []store.Gateway{{ID: "only"}} // local stack: one gateway, no address
+	noDefaultURL(local, "http://gateway-back:8080")
+	if local[0].URL != "" {
+		t.Fatalf("local stack gateway must keep using GATEWAY_URL, got %q", local[0].URL)
+	}
+}
+
 func TestPhoneCamerasOnlyWithTheCloudGateway(t *testing.T) {
 	cloud := &store.Gateway{Kind: store.GatewayCloud}
 	onsite := &store.Gateway{Kind: store.GatewayOnsite}

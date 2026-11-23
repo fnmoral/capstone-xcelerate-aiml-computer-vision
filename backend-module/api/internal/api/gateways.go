@@ -103,6 +103,7 @@ func (s *Server) gatewayState(ctx context.Context) (gatewayState, error) {
 	if err != nil {
 		return gatewayState{}, err
 	}
+	noDefaultURL(list, strings.TrimRight(s.cfg.GatewayURL, "/"))
 	st := gatewayState{list: list, online: s.online(ctx, list)}
 	chosen, err := s.db.ActiveGatewayID(ctx)
 	if err != nil {
@@ -110,6 +111,27 @@ func (s *Server) gatewayState(ctx context.Context) (gatewayState, error) {
 	}
 	st.inUse, st.chosen = pickGateway(list, st.online, chosen)
 	return st, nil
+}
+
+// unreachable is the address given to a gateway that has none while another gateway already
+// uses GATEWAY_URL: it must not be taken for that one (it shows offline until it announces).
+const unreachable = "http://unreachable.invalid:1"
+
+// noDefaultURL: a gateway without an address (signed up before addresses were sent) is reached
+// at GATEWAY_URL, unless another gateway has that address (e.g. the cloud gateway on Azure).
+func noDefaultURL(list []store.Gateway, defaultURL string) {
+	taken := false
+	for _, g := range list {
+		taken = taken || (g.URL != "" && strings.TrimRight(g.URL, "/") == defaultURL)
+	}
+	if !taken {
+		return
+	}
+	for i := range list {
+		if list[i].URL == "" {
+			list[i].URL = unreachable
+		}
+	}
 }
 
 // pickGateway: the chosen gateway if it still exists (even offline); else automatic: the
