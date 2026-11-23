@@ -213,12 +213,13 @@ cameras. The app uses one gateway at a time.
 
 - **Settings → Gateways** lists them, online or offline, with how many cameras each has. Give
   each one a name (where it is, e.g. "Office server") and a location.
-- **Gateway in use:** *Automatic* uses an on-site gateway while one is online, otherwise Cloud.
-  An admin can also pick one; it stays in use even while it's offline.
+- **Gateway in use:** *Automatic* (recommended) uses an on-site gateway whenever one is online,
+  and the Cloud gateway otherwise. An administrator can also select a gateway; it remains in
+  use while offline.
 - The **Cameras** page shows the gateway in use. With an on-site gateway you add cameras with
   **Add camera**; with Cloud, only **Add phone camera** is shown.
-- Cameras belong to the gateway they were added on. On another gateway they show as "not in
-  use" and come back when that gateway is used again.
+- Cameras belong to the gateway they were added on. Cameras assigned to a gateway that isn't in
+  use are shown as **Inactive** and reconnect automatically when that gateway is selected.
 - **Remove** forgets a gateway that's no longer used, optionally with its cameras.
 
 ## Phone cameras (demo option)
