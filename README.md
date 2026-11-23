@@ -205,6 +205,22 @@ For a demo you can let people in **without an account**:
 
 Only admins can create temporary access links.
 
+## Gateways
+
+A gateway connects your cameras to FallGuard. An **on-site gateway** runs on a computer next to
+the cameras (at your facility); the **Cloud** gateway runs on the server and can only take phone
+cameras. The app uses one gateway at a time.
+
+- **Settings → Gateways** lists them, online or offline, with how many cameras each has. Give
+  each one a name (where it is, e.g. "Office server") and a location.
+- **Gateway in use:** *Automatic* uses an on-site gateway while one is online, otherwise Cloud.
+  An admin can also pick one; it stays in use even while it's offline.
+- The **Cameras** page shows the gateway in use. With an on-site gateway you add cameras with
+  **Add camera**; with Cloud, only **Add phone camera** is shown.
+- Cameras belong to the gateway they were added on. On another gateway they show as "not in
+  use" and come back when that gateway is used again.
+- **Remove** forgets a gateway that's no longer used, optionally with its cameras.
+
 ## Phone cameras (demo option)
 
 For demos on the cloud server, a phone can stand in for a camera, on any Wi-Fi or mobile data.
@@ -513,10 +529,10 @@ Every route, its permission and its payload: [backend-module/api/README.md](back
 
 - ml-service and gateway-back serve the home tenant only; other organizations can sign in and
   configure everything but can't connect cameras yet.
-- The app uses one gateway at a time (on Azure: the VM's, or an on-site one switched in with
-  `deploy/azure/gateway-mode.sh`). Choosing gateways in the app is planned.
-- Gateways register with the API without a password (`POST /api/gateway/add`); a per-gateway
-  registration key is to do.
+- The app uses one gateway at a time (Settings → Gateways): cameras on the others wait until
+  their gateway is used again.
+- Gateways register with the API without a password (`POST /api/gateway/add`, accepted only
+  from the server or its private network); a per-gateway registration key is to do.
 - stream-hub's HTTP port (9000) is still published on the host, which bypasses the nginx
   session check; bind it to `127.0.0.1` in production.
 - The API connects to PostgreSQL as the table owner (row-level security is not forced); a

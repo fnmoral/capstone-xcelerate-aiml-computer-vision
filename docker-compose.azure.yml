@@ -48,15 +48,21 @@ services:
   gateway-back:
     ports: !override
       - "127.0.0.1:${GATEWAY_PORT:-8080}:8080"   # gateway UI: open it through an SSH tunnel
+    environment:
+      # The cloud gateway: reads phone cameras from the relay. On-site gateways (next to the
+      # cameras) sign up as well; the app uses one at a time (Settings → Gateways).
+      GATEWAY_API_URL: http://gateway-back:8080
+      GATEWAY_KIND: cloud
 
   # Phone cameras ("Add phone camera" in the app): the API gives each phone an RTMPS address
   # with its own password (shown once as a QR code) on the relay's public port 1936.
   api:
     environment:
+      # Phone cameras show only while the cloud gateway is in use (Settings → Gateways).
       PHONE_RELAY_URL: rtmps://${SITE_ADDRESS}:1936
       PHONE_RTMP_URL: rtmp://${SITE_ADDRESS}:1935   # apps without RTMPS (Streamza)
     # An on-site gateway (deploy/onsite-gateway) is reached through its SSH tunnel on the VM's
-    # port 18080: deploy/azure/gateway-mode.sh sets GATEWAY_URL=http://host.docker.internal:18080.
+    # port 18080 (it signs up with GATEWAY_API_URL=http://host.docker.internal:18080).
     extra_hosts:
       - "host.docker.internal:host-gateway"
 

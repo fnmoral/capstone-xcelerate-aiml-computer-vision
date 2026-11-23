@@ -80,11 +80,17 @@ sh fallguard/start-ml.sh         # ml-service; log ~/fallguard/ml-service/ml.log
 The product design: the gateway runs next to the cameras and only the video goes to Azure.
 
 1. On the computer with the cameras: `docker compose -f deploy/onsite-gateway/docker-compose.yml up -d --build`
-   (key `~/.ssh/fallguard_gateway`, allowed on the VM's `tunnel` user).
-2. On the VM: `bash deploy/azure/gateway-mode.sh onsite` (back: `... vm`). One gateway at a
-   time; phone cameras need `vm`.
-3. Laptop webcam: `publish_webcam.py --index 1 --url rtsp://127.0.0.1:8554/webcam`, then in the
-   app add `rtsp://test-camera:8554/webcam`. IP cameras: their own address.
+   (key `~/.ssh/fallguard_gateway`, allowed on the VM's `tunnel` user for port 18080).
+2. In the app: **Settings → Gateways**. It signs up as "On-site gateway": rename it to the place
+   (e.g. "Office server"). Automatic uses it while it's online, else the Cloud gateway (phone
+   cameras only). One gateway at a time; admins can pick one.
+3. Laptop webcam: `publish_webcam.py --index 1 --url rtsp://127.0.0.1:8554/webcam`, then
+   **Cameras → Add camera** `rtsp://test-camera:8554/webcam`. IP cameras: their own address.
+
+- A second on-site gateway: `GATEWAY_TUNNEL_PORT=18081` and its own `GATEWAY_NAME_ID`, and its
+  key allowed for that port on the VM.
+- Campus addresses change: if the tunnel times out, the laptop's public IP is no longer in the
+  firewall rule `ssh-from-fanshawe`. Dead tunnels free their port on the VM within ~90 s.
 
 ## Phone cameras (temporary, for demos)
 
@@ -106,10 +112,8 @@ Video flows only while that computer is on and the script runs. It needs the VM 
 
 ## To do
 
-- **Gateways in the app:** on-site gateway by default; the VM's gateway (phone cameras only)
-  when none is online; admins pick the active gateway in Settings. Planned.
-- **Gateway registration key:** gateways sign up without a password today (the SSH key limits
-  who can connect). Add a per-gateway key created by an admin.
+- **Gateway registration key:** gateways sign up without a password; only from the server or
+  its tunnels (not through the website). Add a per-gateway key created by an admin.
 - **Schedule:** start/stop windows with Azure Automation (e.g. weekdays 8 AM–8 PM ≈ $28/month).
 - **Auto-deploy from GitHub:** rebuild on every push to `main` on GitHub, from anyone's machine (GitHub Actions).
 

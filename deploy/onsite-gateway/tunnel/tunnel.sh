@@ -9,5 +9,5 @@ exec ssh -N -i /tmp/key \
     -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ConnectTimeout=15 \
     -L 0.0.0.0:8090:127.0.0.1:8090 \
     -L 0.0.0.0:8100:127.0.0.1:8100 \
-    -R 0.0.0.0:18080:gateway:8080 \
+    -R "0.0.0.0:${GATEWAY_TUNNEL_PORT:-18080}:gateway:8080" \
     "tunnel@$VM"
