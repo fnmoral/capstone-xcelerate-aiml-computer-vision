@@ -18,9 +18,13 @@ func clipFileName(incidentID, cameraID string) string {
 	return incidentID + "_" + cameraID + ".mp4"
 }
 
-// writeClip remuxes a finished clip into an MP4 under dir, without re-encoding.
-// It returns the file path and the clip's length in seconds.
+// writeClip remuxes a finished clip (its .rec file) into an MP4 under dir, without
+// re-encoding, and deletes the .rec file. It returns the file path and the clip's length in seconds.
 func writeClip(ffmpeg, dir string, c *clip) (string, float64, error) {
+	defer c.discard()
+	if err := c.close(); err != nil {
+		return "", 0, fmt.Errorf("recording: %v", err)
+	}
 	if c.pictures < 2 {
 		return "", 0, fmt.Errorf("no video recorded")
 	}
@@ -38,14 +42,6 @@ func writeClip(ffmpeg, dir string, c *clip) (string, float64, error) {
 	path := filepath.Join(dir, clipFileName(c.incidentID, c.cameraID))
 	tmp := path + ".part"
 
-	var stream bytes.Buffer
-	for _, n := range c.nalus {
-		if !bytes.HasPrefix(n, startCode) && !bytes.HasPrefix(n, startCode[1:]) {
-			stream.Write(startCode)
-		}
-		stream.Write(n)
-	}
-
 	// -r as an input option forces our frame rate: without it ffmpeg trusts the timing written
 	// in the stream itself, which some cameras get wrong (a phone app declared 58 fps with odd
 	// timing: a 48 s clip came out 1.7 s long, every frame squeezed together).
@@ -54,12 +50,11 @@ func writeClip(ffmpeg, dir string, c *clip) (string, float64, error) {
 		"-hide_banner", "-loglevel", "error", "-y",
 		"-fflags", "+genpts",
 		"-f", format, "-framerate", rate, "-r", rate,
-		"-i", "pipe:0",
+		"-i", c.rawPath,
 		"-c", "copy", "-tag:v", tag,
 		"-movflags", "+faststart",
 		"-f", "mp4", tmp,
 	)
-	cmd.Stdin = &stream
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {

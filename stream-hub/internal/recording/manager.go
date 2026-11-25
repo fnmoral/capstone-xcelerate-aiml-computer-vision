@@ -78,7 +78,7 @@ func (m *Manager) camera(tenantID, cameraID string) *lockedLoop {
 	defer m.mu.Unlock()
 	c, ok := m.cameras[key]
 	if !ok {
-		c = &lockedLoop{loop: newCameraLoop(tenantID, cameraID, m.cfg)}
+		c = &lockedLoop{loop: newCameraLoop(tenantID, cameraID, m.cfg, m.clipsDir)}
 		m.cameras[key] = c
 	}
 	return c
@@ -140,6 +140,7 @@ func (m *Manager) submit(clips []*clip) {
 		select {
 		case m.jobs <- c:
 		default:
+			c.discard()
 			log.Printf("[%s] clip writer is busy: clip for incident %s dropped", c.cameraID, c.incidentID)
 		}
 	}
@@ -175,6 +176,35 @@ func existing(dir, name string, valid *regexp.Regexp) (string, bool) {
 	path := filepath.Join(dir, name)
 	info, err := os.Stat(path)
 	return path, err == nil && info.Mode().IsRegular()
+}
+
+// Usage is the disk space taken by the saved clips and the limits that prune them.
+type Usage struct {
+	ClipBytes     int64   `json:"clip_bytes"`
+	Clips         int     `json:"clips"`
+	MaxTotalGB    float64 `json:"max_total_gb"`   // 0 = no cap
+	RetentionDays float64 `json:"retention_days"` // 0 = kept
+	MaxClipS      float64 `json:"max_clip_s"`
+}
+
+// Usage adds up the clips on disk (recordings still in progress included).
+func (m *Manager) Usage() Usage {
+	u := Usage{MaxTotalGB: m.cfg.MaxTotalGB, RetentionDays: m.cfg.RetentionDays, MaxClipS: m.cfg.MaxS}
+	entries, _ := os.ReadDir(m.clipsDir)
+	for _, e := range entries {
+		info, err := e.Info()
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		switch filepath.Ext(e.Name()) {
+		case ".mp4":
+			u.Clips++
+			u.ClipBytes += info.Size()
+		case ".rec":
+			u.ClipBytes += info.Size()
+		}
+	}
+	return u
 }
 
 // Close finishes the clips already queued and stops the background work.
@@ -244,7 +274,7 @@ func (m *Manager) prune() {
 		switch filepath.Ext(e.Name()) {
 		case ".mp4":
 			files = append(files, file{path, info.Size(), info.ModTime()})
-		case ".part":
+		case ".part", ".rec": // interrupted writes, or a recording cut off by a restart
 			if now.Sub(info.ModTime()) > 10*time.Minute {
 				os.Remove(path)
 			}

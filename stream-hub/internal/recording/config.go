@@ -11,7 +11,7 @@ type Config struct {
 	Dir           string  `json:"dir"`            // root folder: <dir>/clips and <dir>/snapshots
 	PreRollS      float64 `json:"pre_roll_s"`     // video kept from before the fall
 	PostRollS     float64 `json:"post_roll_s"`    // and after the person is back up / out of view
-	MaxS          float64 `json:"max_s"`          // longest clip
+	MaxS          float64 `json:"max_s"`          // longest clip: a safety cap (the clip normally covers the whole fall)
 	BufferMB      float64 `json:"buffer_mb"`      // cap on each camera's in-memory loop
 	RetentionDays float64 `json:"retention_days"` // delete clips older than this; 0 = keep
 	MaxTotalGB    float64 `json:"max_total_gb"`   // then oldest first while bigger; 0 = no cap
@@ -30,7 +30,7 @@ func (c Config) WithDefaults() Config {
 		c.PostRollS = 10
 	}
 	if c.MaxS <= 0 {
-		c.MaxS = 120
+		c.MaxS = 3600 // clips are written to disk as they record, so length costs disk, not memory
 	}
 	if c.BufferMB <= 0 {
 		c.BufferMB = 64
