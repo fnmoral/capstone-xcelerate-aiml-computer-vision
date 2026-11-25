@@ -57,7 +57,7 @@ export default function EventsPage() {
         <EmptyState icon="alert" title="No fall events" body={status ? 'Nothing with this status.' : 'Confirmed falls appear here within seconds.'} />
       ) : (
         <div className="card table-wrap">
-          <table className="table">
+          <table className="table table--stack">
             <thead>
               <tr>
                 <th>Photo</th><th>Status</th><th>Severity</th><th>Started</th><th className="num">Down for</th>

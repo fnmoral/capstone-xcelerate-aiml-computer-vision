@@ -39,7 +39,7 @@ export function EmailsSentSettings() {
       {data && emails.length === 0 && <p className="muted">No emails yet.</p>}
       {emails.length > 0 && (
         <div style={{ overflowX: 'auto' }}>
-          <table className="table">
+          <table className="table table--stack">
             <thead>
               <tr><th>When</th><th>To</th><th>What</th><th>Status</th></tr>
             </thead>

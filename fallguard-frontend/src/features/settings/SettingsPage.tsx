@@ -78,7 +78,7 @@ export default function SettingsPage() {
           <h2 className="section-title">System status</h2>
           {error && <p className="notice notice--error">{error}</p>}
           {health && (
-            <table className="table">
+            <table className="table table--status">
               <tbody>
                 {Object.entries(SERVICES).map(([key, label]) => {
                   const s = health.services[key];

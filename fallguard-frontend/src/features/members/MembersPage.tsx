@@ -307,7 +307,7 @@ export default function MembersPage() {
             Members ({data?.members.length ?? 0}){manage && (data?.invitations.length ?? 0) > 0 && <span className="muted"> · {data!.invitations.length} invited</span>}
           </h2>
           <div className="table-wrap">
-            <table className="table">
+            <table className="table table--stack">
               <thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Last sign-in</th><th>Joined</th><th /></tr></thead>
               <tbody>
                 {(data?.members ?? []).map((m) => (

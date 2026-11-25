@@ -61,7 +61,7 @@ function RecentlyDeleted({ onRestored }: { onRestored: () => unknown }) {
       {msg && <p className={`notice${msg.ok ? '' : ' notice--error'}`} role="status">{msg.text}</p>}
       {reports.length > 0 && (
         <div className="table-wrap">
-          <table className="table">
+          <table className="table table--stack">
             <thead><tr><th>Report</th><th>Incident</th><th>Deleted</th><th>Removed for good</th><th /></tr></thead>
             <tbody>
               {reports.map((r) => (
@@ -124,7 +124,7 @@ export function IncidentReportsList({ incidentIds }: { incidentIds?: Set<string>
         <p className="muted">{hidden > 0 ? `No reports for these fall events (${hidden} for other events: widen the time window or clear a filter).` : 'No incident reports yet.'}</p>
       ) : (
         <div className="table-wrap">
-          <table className="table">
+          <table className="table table--stack">
             <thead><tr><th>Report</th><th>Fall event</th><th>Status</th><th>Started by</th><th>Updated</th><th /></tr></thead>
             <tbody>
               {reports.map((r) => (

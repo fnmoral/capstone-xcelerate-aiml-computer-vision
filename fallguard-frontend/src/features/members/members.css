@@ -19,6 +19,12 @@
 .roles-table__cell input { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
 .roles-table__cell input:disabled { cursor: not-allowed; }
 .roles-table__lock { color: var(--text-muted); }
+@media (max-width: 640px) {
+  .roles-table { min-width: 0; }
+  .roles-table th, .roles-table td { padding-left: 6px; padding-right: 6px; }
+  .roles-table__role { width: 54px; font-size: 11px; }
+  .roles-table th.roles-table__perm { padding: 8px 6px; font-size: 13px; }
+}
 
 .demo-created { margin: 12px 0 0; overflow-wrap: anywhere; }
 .demo-created__url { flex: 1; min-width: 0; font: inherit; font-family: var(--mono); font-size: 12px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }

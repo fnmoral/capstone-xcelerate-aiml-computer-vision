@@ -75,7 +75,7 @@ export function DemoLinks() {
       )}
       {links.length > 0 && (
         <div className="table-wrap" style={{ marginTop: 12 }}>
-          <table className="table">
+          <table className="table table--stack">
             <thead><tr><th>Link</th><th>Status</th><th className="num">Visits</th><th /></tr></thead>
             <tbody>
               {links.map((l) => (

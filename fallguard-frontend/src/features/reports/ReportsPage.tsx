@@ -138,7 +138,7 @@ export default function ReportsPage() {
           <EmptyState icon="alert" title="No incidents match" body="Widen the time window or clear a filter." />
         ) : (
           <div className="table-wrap">
-            <table className="table">
+            <table className="table table--stack">
               <thead>
                 <tr><th>Started</th><th>Where</th><th>Status</th><th>Severity</th><th className="num">Down for</th><th>Alert</th><th>Handled by</th><th className="num">Notes</th></tr>
               </thead>

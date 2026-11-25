@@ -403,7 +403,7 @@ function DeliveryHistory() {
       {error && <p className="notice notice--error">{error}</p>}
       {list.length === 0 ? <p className="muted">No email or SMS sent yet.</p> : (
         <div className="table-wrap">
-          <table className="table">
+          <table className="table table--stack">
             <thead><tr><th>When</th><th>About</th><th>Channel</th><th>To</th><th>Status</th></tr></thead>
             <tbody>
               {list.map((d) => (

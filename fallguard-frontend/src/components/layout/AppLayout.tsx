@@ -7,6 +7,7 @@ import { Header } from './Header';
 import { Navigation } from './Navigation';
 import { MainContainer } from './MainContainer';
 import { Footer } from './Footer';
+import { useStackedTableLabels } from '../../lib/stackTables';
 import './AppLayout.css';
 
 /** App shell: Header + Navigation + MainContainer(page, Footer). */
@@ -21,6 +22,7 @@ export function AppLayout() {
     setOrgIncidentOverlay(settings.incident_overlay ?? null);
   }, [settings, setTimeZone, setOrgTheme, setOrgIncidentOverlay]);
   const { pathname } = useLocation();
+  useStackedTableLabels(); // tables become one card per row on phones (table--stack)
 
   useEffect(() => closeNav(), [pathname, closeNav]);
   useEffect(() => {

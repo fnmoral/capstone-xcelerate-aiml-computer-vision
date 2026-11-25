@@ -47,7 +47,7 @@
 .field small { color: var(--text-muted); font-weight: 400; }
 
 /* Stat tiles */
-.tiles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); margin-bottom: 24px; }
+.tiles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); margin-bottom: 24px; }
 .tile { padding: 16px; }
 .tile__label { font-size: 13px; color: var(--text-muted); }
 .tile__value { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.2; margin-top: 4px; }
@@ -195,3 +195,27 @@
 .msg-preview__note { margin: 10px 0 0; font-size: 13px; }
 .msg-preview__loading { margin: 0; }
 @media (prefers-reduced-motion: reduce) { .msg-preview__card { animation: none; } }
+
+/* Phones: tables marked table--stack show one card per row, each value under its column's name
+   (data-label, filled in by useStackedTableLabels). Cells without a name (buttons) span the row. */
+@media (max-width: 640px) {
+  .tiles { gap: 10px; }
+  .tile { padding: 12px 14px; }
+  .table--stack { min-width: 0 !important; }
+  .table--stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .table--stack, .table--stack tbody { display: block; width: 100%; }
+  .table--stack tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; padding: 12px 2px;
+    border-bottom: 1px solid var(--border); }
+  .table--stack tbody tr:last-child { border-bottom: 0; }
+  .table--stack td { display: block; min-width: 0; max-width: none !important; padding: 0; border: 0; text-align: left !important;
+    white-space: normal !important; overflow-wrap: anywhere; word-break: normal !important; }
+  .table--stack td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 2px; font-size: 11px;
+    font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); }
+  .table--stack td:not([data-label]) { grid-column: 1 / -1; }
+  .table--stack td:empty { display: none; }
+  .table.table--stack tr.is-link:hover td { background: none; }
+  .table.table--stack tr.is-link:active { background: var(--surface-2); }
+  /* System status: name and badge on one line, the detail (latency or error) under them */
+  .table--status td { padding-left: 0; padding-right: 8px; }
+  .table--status td.num { white-space: normal; overflow-wrap: anywhere; max-width: 38vw; font-size: 12px; }
+}
