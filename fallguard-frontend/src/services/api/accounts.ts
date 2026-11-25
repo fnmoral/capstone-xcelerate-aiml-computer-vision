@@ -295,6 +295,10 @@ export const notifications = {
   preview: (event: NotifyEvent, template: Template) =>
     apiRequest<{ subject: string; body: string; sms: string }>("/notification-settings/preview", post({ event, template })),
   deliveries: () => apiRequest<{ deliveries: Delivery[] }>("/notification-settings/deliveries"),
+  /** One sent message as the recipient got it: the email's HTML, or the SMS text. */
+  deliveryPreview: (id: string) =>
+    apiRequest<{ channel: "email" | "sms"; subject: string | null; body: string; html?: string }>(
+      "/notification-settings/deliveries/" + enc(id) + "/preview"),
 };
 
 export const incidentReports = {

@@ -136,9 +136,9 @@ const OPTIONS: { key: keyof LiveOverlay; label: string; hint: string }[] = [
   { key: 'label', label: 'Status', hint: 'Upright, Falling, Lying or Unclear' },
   { key: 'track', label: 'Person number', hint: "The detector's number for the person (#6), as in Fall Events" },
   { key: 'confidence', label: 'Confidence score', hint: 'How sure the detector is of the status' },
-  { key: 'center', label: 'Center point', hint: 'The middle of the person\'s box' },
   { key: 'skeleton', label: 'Skeleton lines', hint: 'Lines joining the body points the fall rules use' },
   { key: 'keypoints', label: 'Body points', hint: 'The 17 points: eyes, shoulders, hips, knees, ankles...' },
+  { key: 'center', label: 'Center point', hint: 'The middle of the person\'s box' },
   { key: 'grid', label: 'Grid lines', hint: 'An 8 × 8 grid over the picture' },
 ];
 

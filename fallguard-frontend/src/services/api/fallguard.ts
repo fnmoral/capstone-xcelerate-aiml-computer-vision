@@ -110,6 +110,8 @@ export const api = {
   /** Settings > Emails sent. */
   accountEmails: () =>
     apiRequest<{ emails: AccountEmail[]; server_from: string; kept_days: number }>("/org/emails"),
+  /** The kept copy of an account email (its personal link taken out); "" for older emails. */
+  accountEmailPreview: (id: string) => apiRequest<{ html: string }>("/org/emails/" + enc(id) + "/preview"),
   /** A phone that streams to the camera relay; the links (password inside) are shown once. */
   addPhoneCamera: (c: { name: string; location?: string; zone?: string }) =>
     apiRequest<PhoneLinks>("/cameras/phone", { method: "POST", ...json(c) }),

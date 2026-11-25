@@ -6,7 +6,6 @@ import { TimeZoneSettings } from './TimeZoneSettings';
 import { ModelTrainingSettings } from './ModelTrainingSettings';
 import { ServerRows } from './ServerStatus';
 import { OrgProfileSettings } from './OrgProfileSettings';
-import { EmailsSentSettings } from './EmailsSentSettings';
 import { GatewaysSettings } from './GatewaysSettings';
 import { PERM, useAuth } from '../auth/AuthContext';
 import { api } from '../../services/api/fallguard';
@@ -107,7 +106,6 @@ export default function SettingsPage() {
 
         {manage && me?.org.has_gateway && <GatewaysSettings />}
 
-        {can(PERM.viewEmails) && <EmailsSentSettings />}
 
         <section className="card" style={{ padding: 20 }}>
           <h2 className="section-title">Appearance</h2>

@@ -7,6 +7,7 @@ import { usePolling } from '../../services/api/usePolling';
 import { formatDate, formatTime } from '../../lib/format';
 import { PERM, useAuth } from '../auth/AuthContext';
 import { DemoLinks } from './DemoLinks';
+import { EmailsSentSettings } from '../settings/EmailsSentSettings';
 import { ShareLink } from '../../components/ui/ShareLink';
 import './members.css';
 
@@ -329,6 +330,8 @@ export default function MembersPage() {
             <DemoLinks />
           </div>
         )}
+
+        {can(PERM.viewEmails) && <EmailsSentSettings />}
 
         <section className="card members-section">
           <h2 className="section-title">What each role can do</h2>

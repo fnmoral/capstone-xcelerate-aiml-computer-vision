@@ -1,4 +1,6 @@
+import { useCallback, useState } from 'react';
 import { api, type AccountEmail } from '../../services/api/fallguard';
+import { MessagePreview } from '../../components/ui/MessagePreview';
 import { usePolling } from '../../services/api/usePolling';
 import { formatTime } from '../../lib/format';
 
@@ -19,6 +21,11 @@ export function EmailsSentSettings() {
   const { data, error } = usePolling(() => api.accountEmails(), 15000);
   const emails = data?.emails ?? [];
   const from = data?.server_from || emails.find((e) => e.from_email)?.from_email;
+  const [open, setOpen] = useState<AccountEmail | null>(null);
+  const load = useCallback(async () => {
+    const r = await api.accountEmailPreview(open!.id);
+    return r.html ? { html: r.html } : { note: 'The text of emails sent before Nov 25, 2026 was not kept. Newer ones show here, without their personal link.' };
+  }, [open]);
 
   return (
     <section className="card" style={{ padding: 20 }}>
@@ -26,7 +33,7 @@ export function EmailsSentSettings() {
       <p className="muted" style={{ margin: '0 0 12px' }}>
         Invitations, email checks and password resets{from ? <> from <b>{from}</b></> : null}, last {data?.kept_days ?? 90} days.
         “Sent” means the email server accepted it. If it didn't arrive, ask the person to check their spam or junk folder.
-        Fall alerts are listed on the Notifications page.
+        Fall alerts are listed on the Notifications page. Click an email to see it.
       </p>
       {error && <p className="notice notice--error">{error}</p>}
       {data && emails.length === 0 && <p className="muted">No emails yet.</p>}
@@ -38,7 +45,9 @@ export function EmailsSentSettings() {
             </thead>
             <tbody>
               {emails.map((e) => (
-                <tr key={e.id}>
+                <tr key={e.id} className="is-link" tabIndex={0} onClick={() => setOpen(e)}
+                  onKeyDown={(k) => (k.key === 'Enter' || k.key === ' ') && (k.preventDefault(), setOpen(e))}
+                  aria-label={`Preview the email to ${e.recipient}`}>
                   <td className="muted" style={{ whiteSpace: 'nowrap' }}>{formatTime(e.created_at)}</td>
                   <td style={{ wordBreak: 'break-all' }}>{e.recipient}</td>
                   <td title={e.subject}>{KIND[e.kind] ?? e.kind}</td>
@@ -51,6 +60,15 @@ export function EmailsSentSettings() {
             </tbody>
           </table>
         </div>
+      )}
+      {open && (
+        <MessagePreview title={open.subject || KIND[open.kind] || 'Email'} load={load} onClose={() => setOpen(null)}
+          meta={[
+            { label: 'To', value: open.recipient },
+            ...(open.from_email ? [{ label: 'From', value: open.from_email }] : []),
+            { label: 'Sent', value: formatTime(open.created_at) },
+            { label: 'Status', value: <Status e={open} /> },
+          ]} />
       )}
     </section>
   );
