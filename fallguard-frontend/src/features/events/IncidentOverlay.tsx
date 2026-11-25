@@ -144,14 +144,14 @@ const OPTIONS: { key: keyof LiveOverlay; label: string; hint: string }[] = [
 
 const same = (a: LiveOverlay, b: LiveOverlay) => OPTIONS.every((o) => a[o.key] === b[o.key]);
 
-/** "Overlays" button of an incident's video: each overlay on/off, and the organization's default. */
+/** "Overlays" button of an incident's video: a floating list of switches, and the organization's default. */
 export function IncidentOverlayMenu({ value, onChange, orgDefault, canSetDefault, onDefaultSaved }: {
   value: LiveOverlay; onChange: (o: LiveOverlay) => void; orgDefault: LiveOverlay;
   canSetDefault: boolean; onDefaultSaved: (o: LiveOverlay) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -172,51 +172,50 @@ export function IncidentOverlayMenu({ value, onChange, orgDefault, canSetDefault
   const isDefault = same(value, orgDefault);
   const saveDefault = async () => {
     setBusy(true);
-    setMsg(null);
+    setError(null);
     try {
       await api.saveIncidentOverlay(value);
       onDefaultSaved(value);
-      setMsg('Saved as the organization default.');
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : String(e));
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="overlay-menu" ref={ref}>
-      <button className="btn btn--sm" aria-expanded={open} aria-haspopup="true" onClick={() => setOpen(!open)}
+    <div className="ovp" ref={ref}>
+      <button type="button" className="ovp__btn" aria-expanded={open} aria-haspopup="true" onClick={() => setOpen(!open)}
         title="Show this incident's person on the video">
-        <Icon name="layers" size={14} /> Overlays <span className="muted">({shown})</span>
+        <Icon name="layers" size={15} />
+        <span>Overlays</span>
+        <span className="ovp__count">{shown}</span>
       </button>
       {open && (
-        <div className="overlay-menu__panel card" role="group" aria-label="Video overlays">
-          <p className="muted overlay-menu__note" style={{ marginTop: 0 }}>Drawn for this incident's person only.</p>
-          {OPTIONS.map((o) => (
-            <label key={o.key} className="overlay-menu__option" title={o.hint}>
-              <input type="checkbox" checked={value[o.key]} onChange={(e) => onChange({ ...value, [o.key]: e.target.checked })} />
-              <span>{o.label}<small>{o.hint}</small></span>
-            </label>
-          ))}
-          <div className="overlay-menu__actions">
-            {isDefault ? (
-              <span className="muted">The organization's default</span>
-            ) : (
-              <>
-                {canSetDefault && (
-                  <button className="btn btn--sm btn--primary" disabled={busy} onClick={() => void saveDefault()}>
-                    Set as organization default
-                  </button>
-                )}
-                <button className="btn btn--sm" onClick={() => onChange(orgDefault)}>Back to default</button>
-              </>
-            )}
-          </div>
-          {msg && <p className="overlay-menu__note" role="status">{msg}</p>}
-          <p className="muted overlay-menu__note">
-            The default is what everyone sees first on every incident video{canSetDefault ? '' : ' (admins set it)'}.
-          </p>
+        <div className="ovp__panel" role="group" aria-label="Video overlays">
+          <div className="ovp__head">This incident's person</div>
+          <ul className="ovp__list">
+            {OPTIONS.map((o) => (
+              <li key={o.key}>
+                <label className="ovp__item" title={o.hint}>
+                  <span>{o.label}</span>
+                  <input type="checkbox" role="switch" className="ovp__switch" checked={value[o.key]}
+                    onChange={(e) => onChange({ ...value, [o.key]: e.target.checked })} />
+                </label>
+              </li>
+            ))}
+          </ul>
+          {(!isDefault || error) && (
+            <div className="ovp__foot">
+              <button type="button" className="ovp__link" onClick={() => onChange(orgDefault)}>Reset</button>
+              {canSetDefault && (
+                <button type="button" className="ovp__link ovp__link--primary" disabled={busy} onClick={() => void saveDefault()}>
+                  {busy ? 'Saving…' : 'Make organization default'}
+                </button>
+              )}
+            </div>
+          )}
+          {error && <p className="ovp__error" role="alert">{error}</p>}
         </div>
       )}
     </div>
