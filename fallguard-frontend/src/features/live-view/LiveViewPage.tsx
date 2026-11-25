@@ -216,7 +216,7 @@ export default function LiveViewPage() {
                 </button>
               )}
             </div>
-            <div className="live-toolbar__group">
+            <div className="live-toolbar__group live-toolbar__overlay">
               <OverlayMenu />
             </div>
             {pages > 1 && (

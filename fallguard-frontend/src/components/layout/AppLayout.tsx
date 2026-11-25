@@ -8,6 +8,7 @@ import { Navigation } from './Navigation';
 import { MainContainer } from './MainContainer';
 import { Footer } from './Footer';
 import { useStackedTableLabels } from '../../lib/stackTables';
+import { VisitorNamePrompt } from '../../features/auth/VisitorName';
 import './AppLayout.css';
 
 /** App shell: Header + Navigation + MainContainer(page, Footer). */
@@ -44,6 +45,7 @@ export function AppLayout() {
         </MainContainer>
       </div>
       <Footer />
+      <VisitorNamePrompt />
     </div>
   );
 }

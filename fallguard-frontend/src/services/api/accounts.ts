@@ -21,6 +21,8 @@ export interface User {
   /** Demo visitor through a demo access link: view-only until access_until. */
   is_guest?: boolean;
   access_until?: string | null;
+  /** Demo visitor's optional name in this browser: absent = not asked yet, "" = skipped. */
+  visitor_name?: string;
 }
 
 export interface GuestLink {
@@ -265,6 +267,8 @@ export const accounts = {
   demoInfo: (token: string) =>
     apiRequest<{ org_name: string; label: string; expires_at: string }>("/auth/demo/" + enc(token)),
   demoEnter: (token: string) => apiRequest<{ ok: boolean; expires_at: string }>("/auth/demo/" + enc(token), post()),
+  setVisitorName: (name: string) =>
+    apiRequest<{ ok: boolean; visitor_name: string }>("/auth/visitor-name", { method: "PUT", ...json({ name }) }),
 
   org: () => apiRequest<OrgProfile>("/org"),
   saveOrg: (p: OrgProfile) => apiRequest<OrgProfile>("/org", { method: "PUT", ...json(p) }),

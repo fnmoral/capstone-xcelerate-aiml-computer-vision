@@ -145,7 +145,7 @@
 .ovp__btn:hover, .ovp__btn[aria-expanded="true"] { background: var(--surface-2); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
 .ovp__count { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; display: inline-grid; place-items: center;
   background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 700; }
-.ovp__panel { position: absolute; right: 0; top: calc(100% + 8px); z-index: 30; width: 248px; padding: 6px; border: 1px solid var(--border);
+.ovp__panel { position: absolute; right: 0; top: calc(100% + 8px); z-index: 30; width: 248px; max-width: calc(100vw - 24px); padding: 6px; border: 1px solid var(--border);
   border-radius: 14px; background: var(--surface); box-shadow: 0 12px 32px rgb(0 0 0 / .16), 0 2px 6px rgb(0 0 0 / .08);
   transform-origin: top right; animation: ovp-in .14s ease-out; }
 @keyframes ovp-in { from { opacity: 0; transform: translateY(-4px) scale(.98); } }
@@ -232,3 +232,14 @@
 .tip[data-tip]:focus { outline: none; }
 .tip[data-tip]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 @media (prefers-reduced-motion: reduce) { .tip[data-tip]::after { transition: none !important; } }
+
+/* Temporary access visitors: optional name (VisitorName.tsx) */
+.visitor-name { width: min(440px, calc(100vw - 24px)); padding: 0; border: 0; border-radius: 16px; overflow: visible; background: transparent; color: var(--text); }
+.visitor-name::backdrop { background: rgb(0 0 0 / .45); backdrop-filter: blur(2px); }
+.visitor-name__card { display: grid; gap: 14px; padding: 22px; border: 1px solid var(--border); border-radius: 16px;
+  background: var(--surface); box-shadow: 0 24px 64px rgb(0 0 0 / .3); animation: msg-in .16s ease-out; }
+.visitor-name__title { margin: 0; font-size: 18px; }
+.visitor-name__text { margin: 0; font-size: 14px; line-height: 1.5; }
+.visitor-name__card .notice { margin: 0; }
+.visitor-name__actions { display: flex; justify-content: flex-end; gap: 8px; }
+@media (prefers-reduced-motion: reduce) { .visitor-name__card { animation: none; } }

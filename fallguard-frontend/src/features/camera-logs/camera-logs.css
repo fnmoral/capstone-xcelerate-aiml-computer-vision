@@ -2,4 +2,9 @@
 .cl-filters { padding: 0; }
 .cl-sub { font-size: 12px; }
 .cl-time { white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* Phones swipe these tables sideways (like Detection settings) instead of stacking each row */
+.cl-table--now { min-width: 620px; }
+.cl-table--log { min-width: 720px; }
+.cl-table td { white-space: nowrap; }
+.cl-table--log td:nth-child(4) { white-space: normal; min-width: 240px; max-width: 360px; }
 .table tr.cl-down td { background: color-mix(in srgb, var(--danger) 8%, var(--surface)); }
