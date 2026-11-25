@@ -311,7 +311,7 @@ func (s *Server) health(c *gin.Context) {
 	for _, r := range out {
 		all = all && r.OK
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": all, "services": out, "tenant": s.cfg.Tenant})
+	c.JSON(http.StatusOK, gin.H{"ok": all, "services": out, "tenant": s.cfg.Tenant, "resources": s.resources(ctx)})
 }
 
 // ---------- cameras ----------
