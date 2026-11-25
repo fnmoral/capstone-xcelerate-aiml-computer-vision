@@ -47,6 +47,10 @@ type Config struct {
 	// ServerHosting says where the server runs, shown in Settings -> System status
 	// (SERVER_HOSTING, e.g. "Azure"; "" = on-premises).
 	ServerHosting string
+
+	// DefaultTimezone is used for times in alert messages when the organization has not set its
+	// own (Settings -> Time zone): DEFAULT_TIMEZONE, default America/Toronto.
+	DefaultTimezone string
 }
 
 // Server holds the dependencies of the routes.

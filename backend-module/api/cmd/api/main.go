@@ -41,6 +41,8 @@ func main() {
 
 		ServerHosting: strings.TrimSpace(os.Getenv("SERVER_HOSTING")), // shown in System status
 
+		DefaultTimezone: env("DEFAULT_TIMEZONE", "America/Toronto"), // alert times when the organization has none
+
 		// Accounts and notifications (see the root .env.example).
 		AppURL:          os.Getenv("APP_URL"),
 		AppSecret:       os.Getenv("APP_SECRET"),

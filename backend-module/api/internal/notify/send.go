@@ -268,43 +268,75 @@ var twilioBase = "https://api.twilio.com"
 
 // SendSMS sends one text message with the provider (or logs it).
 func SendSMS(ctx context.Context, p SMSProvider, to, text string) (Result, error) {
+	res, _, err := SendSMSInfo(ctx, p, to, text)
+	return res, err
+}
+
+// TrialTemplate is the Twilio trial template sent instead of FallGuard's own text when the
+// Twilio account is a trial: trials may send only Twilio's predefined messages, chosen by
+// putting the template's name in the body (error 572006 "Invalid template name" otherwise).
+const TrialTemplate = "sms_event_notifications"
+
+// twilioTrialOnly is Twilio's error code for a custom body sent from a trial account.
+const twilioTrialOnly = 572006
+
+// SendSMSInfo is SendSMS that also says whether Twilio's trial template went out instead of
+// the text (a trial Twilio account: see TrialTemplate). Upgraded accounts send the text.
+func SendSMSInfo(ctx context.Context, p SMSProvider, to, text string) (Result, bool, error) {
 	if !E164.MatchString(to) {
-		return "", fmt.Errorf("invalid phone number %q (use +1… format)", to)
+		return "", false, fmt.Errorf("invalid phone number %q (use +1… format)", to)
 	}
 	if p.Type != "twilio" {
 		log.Printf("[sms:log] to=%s %s", to, text)
-		return Logged, nil
+		return Logged, false, nil
 	}
 	if p.AccountSID == "" || p.authToken == "" || p.FromNumber == "" {
-		return "", errors.New("Twilio account SID, auth token and from number are required")
+		return "", false, errors.New("Twilio account SID, auth token and from number are required")
 	}
+	code, err := postTwilio(ctx, p, to, text)
+	if err != nil && code == twilioTrialOnly && text != TrialTemplate {
+		log.Printf("[sms] Twilio trial account: sending its %s template to %s instead of the text", TrialTemplate, to)
+		if _, err2 := postTwilio(ctx, p, to, TrialTemplate); err2 != nil {
+			return "", false, err2
+		}
+		return Sent, true, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return Sent, false, nil
+}
+
+// postTwilio sends one message; on failure it returns Twilio's error code (0 if none).
+func postTwilio(ctx context.Context, p SMSProvider, to, text string) (int, error) {
 	form := url.Values{"To": {to}, "From": {p.FromNumber}, "Body": {text}}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		twilioBase+"/2010-04-01/Accounts/"+url.PathEscape(p.AccountSID)+"/Messages.json", strings.NewReader(form.Encode()))
 	if err != nil {
-		return "", err
+		return 0, err
 	}
 	req.SetBasicAuth(p.AccountSID, p.authToken)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("can't reach Twilio: %w", err)
+		return 0, fmt.Errorf("can't reach Twilio: %w", err)
 	}
 	defer res.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
 	if res.StatusCode >= 300 {
 		var e struct {
+			Code    int    `json:"code"`
 			Message string `json:"message"`
 		}
 		_ = json.Unmarshal(body, &e)
 		if e.Message == "" {
 			e.Message = res.Status
 		}
-		return "", fmt.Errorf("Twilio: %s", e.Message)
+		return e.Code, fmt.Errorf("Twilio: %s", e.Message)
 	}
-	return Sent, nil
+	return 0, nil
 }
 
 // SetPassword sets the password directly (server SMTP settings from the environment).
