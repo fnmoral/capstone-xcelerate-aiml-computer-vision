@@ -61,6 +61,7 @@ services:
       # Phone cameras show only while the cloud gateway is in use (Settings → Gateways).
       PHONE_RELAY_URL: rtmps://${SITE_ADDRESS}:1936
       PHONE_RTMP_URL: rtmp://${SITE_ADDRESS}:1935   # apps without RTMPS (Streamza)
+      SERVER_HOSTING: Azure                          # Settings → System status: "Server (Azure)"
     # An on-site gateway (deploy/onsite-gateway) is reached through its SSH tunnel on the VM's
     # port 18080 (it signs up with GATEWAY_API_URL=http://host.docker.internal:18080).
     extra_hosts:
