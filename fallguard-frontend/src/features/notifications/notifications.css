@@ -9,6 +9,8 @@
 .notif-matrix__cell input { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
 .notif-matrix__cell input:disabled { cursor: not-allowed; opacity: .4; }
 .notif-recipients { min-width: 460px; }
+/* The table fits its card, so the box around it needn't scroll: the recipients' tips can stick out above it. */
+.table-wrap:has(> .notif-recipients) { overflow: visible; }
 .notif-recipients .notif-matrix__sev { width: 70px; }
 @media (max-width: 640px) {
   .notif-matrix, .notif-recipients { min-width: 0; }

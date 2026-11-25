@@ -60,13 +60,6 @@ export function OverlayMenu() {
                 </label>
               </li>
             ))}
-            <li>
-              <label className="ovp__item ovp__item--off"
-                title="Not available: the pose model finds boxes and body points, not outlines (needs a segmentation model)">
-                <span>Segmentation mask</span>
-                <input type="checkbox" role="switch" className="ovp__switch" disabled />
-              </label>
-            </li>
           </ul>
           {!isDefault && (
             <div className="ovp__foot">

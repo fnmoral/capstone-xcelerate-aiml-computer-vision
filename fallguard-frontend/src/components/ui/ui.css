@@ -168,9 +168,6 @@
 .ovp__link--primary:hover { color: var(--accent); text-decoration: underline; }
 .ovp__error { margin: 4px 10px; font-size: 12px; color: var(--danger); }
 @media (prefers-reduced-motion: reduce) { .ovp__panel { animation: none; } .ovp__switch, .ovp__switch::after, .ovp__btn { transition: none; } }
-.ovp__item--off { cursor: not-allowed; opacity: .55; }
-.ovp__item--off:hover { background: none; }
-.ovp__switch:disabled { cursor: not-allowed; }
 
 /* Floating preview of a sent email or text message (MessagePreview.tsx) */
 .msg-preview { width: min(680px, calc(100vw - 24px)); max-height: calc(100vh - 32px); padding: 0; border: 0; background: transparent; color: var(--text); }
@@ -219,3 +216,19 @@
   .table--status td { padding-left: 0; padding-right: 8px; }
   .table--status td.num { white-space: normal; overflow-wrap: anywhere; max-width: 38vw; font-size: 12px; }
 }
+
+/* Small tooltip: <span class="tip" data-tip="..."> around an element. Shows after 1 s on hover
+   (the browser's own title tooltip takes ~2 s and can't be changed), at once on keyboard focus
+   or a tap. */
+.tip { position: relative; display: inline-flex; }
+.tip[data-tip]::after { content: attr(data-tip); position: absolute; z-index: 40; bottom: calc(100% + 8px); left: 50%;
+  width: max-content; max-width: 220px; padding: 6px 9px; border-radius: 8px; background: var(--text); color: var(--surface);
+  font-size: 12px; font-weight: 500; line-height: 1.35; text-align: left; white-space: normal; text-transform: none; letter-spacing: 0;
+  box-shadow: 0 4px 14px rgb(0 0 0 / .18); opacity: 0; visibility: hidden; transform: translate(-50%, 2px); pointer-events: none;
+  transition: opacity .12s ease, transform .12s ease, visibility 0s linear .12s; }
+.tip[data-tip]:hover::after { opacity: 1; visibility: visible; transform: translate(-50%, 0);
+  transition: opacity .12s ease 1s, transform .12s ease 1s, visibility 0s linear 1s; }
+.tip[data-tip]:focus::after, .tip[data-tip]:focus-within::after { opacity: 1; visibility: visible; transform: translate(-50%, 0); transition: none; }
+.tip[data-tip]:focus { outline: none; }
+.tip[data-tip]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+@media (prefers-reduced-motion: reduce) { .tip[data-tip]::after { transition: none !important; } }

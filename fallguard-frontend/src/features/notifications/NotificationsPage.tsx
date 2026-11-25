@@ -108,10 +108,13 @@ function Recipients({ kind, list, set, members, matrix }: {
                     {r.user_id && <div className="muted" style={{ fontSize: 12 }}>Member</div>}</td>
                   {SEVERITIES.map((s) => (
                     <td key={s} className="notif-matrix__cell">
-                      <input type="checkbox" checked={r.severities.includes(s)} disabled={!matrix[s]}
-                        title={matrix[s] ? undefined : `${isEmail ? 'Email' : 'SMS'} is off for ${SEV_LABEL[s]} (table above)`}
-                        aria-label={`${r.name || r.address}: ${SEV_LABEL[s]}`}
-                        onChange={(e) => update(i, { severities: e.target.checked ? [...r.severities, s] : r.severities.filter((x) => x !== s) })} />
+                      {/* Off for this severity: a tip (1 s, or tap) says where to switch it on. */}
+                      <span className="tip" tabIndex={matrix[s] ? undefined : 0}
+                        data-tip={matrix[s] ? undefined : `${isEmail ? 'Email' : 'SMS'} is off for ${SEV_LABEL[s]}: turn it on in "When to notify" above`}>
+                        <input type="checkbox" checked={r.severities.includes(s)} disabled={!matrix[s]}
+                          aria-label={`${r.name || r.address}: ${SEV_LABEL[s]}${matrix[s] ? '' : ` (off: turn on ${isEmail ? 'email' : 'SMS'} for ${SEV_LABEL[s]} in When to notify)`}`}
+                          onChange={(e) => update(i, { severities: e.target.checked ? [...r.severities, s] : r.severities.filter((x) => x !== s) })} />
+                      </span>
                     </td>
                   ))}
                   <td><label className="switch"><input type="checkbox" checked={r.enabled} onChange={(e) => update(i, { enabled: e.target.checked })}
