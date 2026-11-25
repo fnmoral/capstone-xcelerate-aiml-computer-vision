@@ -6,7 +6,6 @@ const GB = 1e9;
 const size = (bytes: number) =>
   bytes < GB ? `${Math.max(0, Math.round(bytes / 1e6))} MB` : `${(bytes / GB).toFixed(bytes >= 10 * GB ? 0 : 1)} GB`;
 const level = (pct: number) => (pct >= 90 ? 'danger' : pct >= 75 ? 'warn' : '');
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 interface Part { key: string; label: string; bytes: number }
 
@@ -82,13 +81,6 @@ export function ServerRows({ r }: { r?: Resources }) {
               </div>
             )}
           </div>
-          {v && (
-            <p className="srv__note muted">
-              {plural(v.clips, 'video')} and {plural(v.snapshots, 'photo')} of falls.
-              {v.retention_days > 0 && ` Videos are kept ${v.retention_days} days`}
-              {v.max_total_gb > 0 && `${v.retention_days > 0 ? ';' : ' Videos:'} above ${v.max_total_gb} GB the oldest are deleted first`}.
-            </p>
-          )}
           {hints.map((h) => <p key={String(h)} className="srv__note srv__note--warn">{h}</p>)}
         </td>
       </tr>

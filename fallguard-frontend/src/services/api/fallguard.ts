@@ -17,6 +17,7 @@ import type {
   Stats,
 } from "../../types/domain";
 import { apiRequest, apiUrl, streamHubUrl } from "./client";
+import type { LiveOverlay } from "../../store/uiStore";
 import { appTimeZone } from "../../lib/format";
 
 const json = (body: unknown): RequestInit => ({ body: JSON.stringify(body) });
@@ -185,7 +186,13 @@ export const api = {
     apiRequest<{ entries: LogEntry[] }>("/logs" + query(q)),
 
   /** Facility-wide settings: timezone null = each browser's own. */
-  settings: () => apiRequest<{ timezone: string | null; theme: "light" | "dark" | "system" | null }>("/settings"),
+  settings: () => apiRequest<{
+    timezone: string | null; theme: "light" | "dark" | "system" | null;
+    incident_overlay: Partial<LiveOverlay> | null; // default overlays on incident videos; null = built-in
+  }>("/settings"),
+  /** The organization's default overlays on incident videos (admins). */
+  saveIncidentOverlay: (overlay: LiveOverlay) =>
+    apiRequest<{ incident_overlay: LiveOverlay }>("/settings/incident-overlay", { method: "PUT", ...json(overlay) }),
   /** The organization's default theme (people who chose their own keep it). */
   saveDefaultTheme: (theme: "light" | "dark" | "system") =>
     apiRequest("/settings/theme", { method: "PUT", ...json({ theme }) }),

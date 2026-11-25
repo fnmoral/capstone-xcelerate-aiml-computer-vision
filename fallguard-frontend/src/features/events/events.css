@@ -67,3 +67,9 @@
 .share-views { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
 .share-views__table { font-size: 13px; }
 .share-views__note { margin: 6px 0 0; font-size: 12px; }
+
+/* Incident video: the incident's person drawn over the video (IncidentOverlay.tsx) */
+.ev-video-head { justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.ev-video-head .section-title { margin: 0; }
+.ev-video__stage { position: relative; }
+.ev-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; border-radius: 8px; }

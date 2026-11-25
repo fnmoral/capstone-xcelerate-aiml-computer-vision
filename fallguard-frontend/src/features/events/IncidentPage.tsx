@@ -8,6 +8,8 @@ import { usePolling } from '../../services/api/usePolling';
 import { alertBy, byWhen, formatDuration, formatTime, LABEL_TEXT, secondsSince, shortId } from '../../lib/format';
 import type { Incident, LogEntry, Prediction } from '../../types/domain';
 import { IncidentVideos, type ClipPlayer } from './IncidentVideos';
+import { IncidentOverlayMenu } from './IncidentOverlay';
+import { useUiStore, type LiveOverlay } from '../../store/uiStore';
 import { Notes } from './Notes';
 import { IncidentReportsPanel } from '../incident-reports/IncidentReportsPanel';
 import { ShareLinksPanel } from './ShareLinksPanel';
@@ -102,6 +104,12 @@ function Timeline({ predictions, players, playheadMs }: {
   );
 }
 
+/** "person #6" (several cameras: "person #6, #3"), the detector's number for the incident's person. */
+function persons(inc: Incident): string {
+  const ids = [...new Set(inc.cameras.filter((c) => c.track_id > 0).map((c) => `#${c.track_id}`))];
+  return ids.length ? `person ${ids.join(', ')}` : '';
+}
+
 /** Who did what to this incident and its alert, newest first, ending with the detection itself. */
 function History({ inc, activity }: { inc: Incident; activity: LogEntry[] }) {
   const lines = [
@@ -127,6 +135,10 @@ export default function IncidentPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   // The incident's videos (per camera) and where the one playing is, for the detector timeline.
   const [players, setPlayers] = useState<Map<string, ClipPlayer>>(new Map());
+  // Overlays on the video: the organization's default until changed here (not saved).
+  const { orgIncidentOverlay, setOrgIncidentOverlay } = useUiStore();
+  const [overlayChoice, setOverlay] = useState<LiveOverlay | null>(null);
+  const overlay = overlayChoice ?? orgIncidentOverlay;
   const [playheadMs, setPlayheadMs] = useState<number | null>(null);
   const unlisten = useRef(new Map<string, () => void>());
   const onPlayer = useCallback((cameraId: string, p: ClipPlayer | null) => {
@@ -171,7 +183,7 @@ export default function IncidentPage() {
     <>
       <Link to="/events" className="row muted ev-back"><Icon name="back" size={16} /> All fall events</Link>
       <PageHeader title={`Fall in ${inc.location_label || inc.camera_name || 'unknown camera'}`}
-        description={`Started ${formatTime(inc.started_at)} · incident ${shortId(inc.id)}`}
+        description={[`Started ${formatTime(inc.started_at)}`, persons(inc), `incident ${shortId(inc.id)}`].filter(Boolean).join(' · ')}
         actions={<><StatusBadge value={inc.status} /><StatusBadge value={inc.severity} label={`Severity: ${inc.severity}`} /></>} />
       {actionError && <p className="notice notice--error">{actionError}</p>}
 
@@ -192,8 +204,14 @@ export default function IncidentPage() {
       <div className="ev-layout">
         <div className="stack">
           <section className="card ev-section">
-            <h2 className="section-title">Video</h2>
-            <IncidentVideos inc={inc} onPlayer={onPlayer} />
+            <div className="row ev-video-head">
+              <h2 className="section-title">Video</h2>
+              {players.size > 0 && predictions.some((p) => (p.output as { box?: unknown } | null)?.box) && (
+                <IncidentOverlayMenu value={overlay} onChange={setOverlay} orgDefault={orgIncidentOverlay}
+                  canSetDefault={can(PERM.manageSettings)} onDefaultSaved={setOrgIncidentOverlay} />
+              )}
+            </div>
+            <IncidentVideos inc={inc} onPlayer={onPlayer} overlay={overlay} predictions={predictions} />
           </section>
           <section className="card ev-section">
             <h2 className="section-title">What the detector saw</h2>

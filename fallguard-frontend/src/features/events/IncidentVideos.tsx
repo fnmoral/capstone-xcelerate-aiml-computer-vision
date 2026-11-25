@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { clipUrl, snapshotUrl } from "../../services/api/fallguard";
 import { formatTime, secondsSince, shortId } from "../../lib/format";
-import type { Incident } from "../../types/domain";
+import type { Incident, Prediction } from "../../types/domain";
+import type { LiveOverlay } from "../../store/uiStore";
+import { OverlayCanvas, samplesFor } from "./IncidentOverlay";
 import { Snapshot } from "./Snapshot";
 
 /** A clip is saved post_roll (10 s) after the person is up, then encoded: allow a minute. */
@@ -62,34 +64,42 @@ function Player({
   refFn,
   onPlayer,
   fallbackStartMs,
+  overlay,
+  predictions,
 }: {
   clip: Clip;
   big?: boolean;
   refFn?: (v: HTMLVideoElement | null) => void;
   onPlayer?: (cameraId: string, p: ClipPlayer | null) => void;
   fallbackStartMs: number;
+  overlay?: LiveOverlay;
+  predictions?: Prediction[];
 }) {
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const gaveUp = failed && attempt >= MAX_RETRIES;
   const [video, setVideo] = useState<HTMLVideoElement | null>(null);
+  const [startMs, setStartMs] = useState<number | null>(null);
+  const samples = useMemo(() => samplesFor(predictions ?? [], clip.cameraId), [predictions, clip.cameraId]);
+  const anyOverlay = overlay && Object.values(overlay).some(Boolean);
 
   // stream-hub saves when each clip starts (<clip>.mp4.json); older clips get an estimate.
   useEffect(() => {
-    if (!video || !onPlayer) return;
+    if (!video) return;
     let live = true;
     const estimate = { video, startMs: fallbackStartMs, approximate: true };
+    const found = (p: ClipPlayer) => {
+      if (!live) return;
+      setStartMs(p.startMs);
+      onPlayer?.(clip.cameraId, p);
+    };
     fetch(clipUrl(clip.key) + ".json", { credentials: "same-origin" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((m: { start_ms?: number } | null) => {
-        if (live) onPlayer(clip.cameraId, m?.start_ms ? { video, startMs: m.start_ms, approximate: false } : estimate);
-      })
-      .catch(() => {
-        if (live) onPlayer(clip.cameraId, estimate);
-      });
+      .then((m: { start_ms?: number } | null) => found(m?.start_ms ? { video, startMs: m.start_ms, approximate: false } : estimate))
+      .catch(() => found(estimate));
     return () => {
       live = false;
-      onPlayer(clip.cameraId, null);
+      onPlayer?.(clip.cameraId, null);
     };
   }, [video, clip.key, clip.cameraId, fallbackStartMs, onPlayer]);
 
@@ -125,6 +135,7 @@ function Player({
   const src = clipUrl(clip.key) + (attempt ? `?try=${attempt}` : "");
   return (
     <figure className={className}>
+      <div className="ev-video__stage">
       <video
         ref={(v) => {
           refFn?.(v);
@@ -139,6 +150,10 @@ function Player({
         aria-label={`Video of the fall from ${clip.name}`}
         onError={() => setFailed(true)}
       />
+      {video && startMs !== null && anyOverlay && samples.length > 0 && (
+        <OverlayCanvas video={video} startMs={startMs} samples={samples} overlay={overlay} />
+      )}
+      </div>
       <figcaption className="muted">
         {clip.name} ·{" "}
         <a href={clipUrl(clip.key)} download>
@@ -151,7 +166,12 @@ function Player({
 
 /** The incident's video: one camera full size; several side by side or one at a time.
  *  onPlayer reports each playing clip (or null when it goes), so the detector timeline can jump in it. */
-export function IncidentVideos({ inc, onPlayer }: { inc: Incident; onPlayer?: (cameraId: string, p: ClipPlayer | null) => void }) {
+export function IncidentVideos({ inc, onPlayer, overlay, predictions }: {
+  inc: Incident;
+  onPlayer?: (cameraId: string, p: ClipPlayer | null) => void;
+  overlay?: LiveOverlay; // the incident's person drawn over the video (see IncidentOverlay)
+  predictions?: Prediction[];
+}) {
   const clips = clipsOf(inc);
   const fallbackStartMs = Date.parse(inc.started_at) - ESTIMATED_LEAD_MS;
   const [mode, setMode] = useState<"all" | "one">("all");
@@ -202,7 +222,8 @@ export function IncidentVideos({ inc, onPlayer }: { inc: Incident; onPlayer?: (c
     );
   }
 
-  if (clips.length === 1) return <Player clip={clips[0]} big onPlayer={onPlayer} fallbackStartMs={fallbackStartMs} />;
+  const extra = { onPlayer, fallbackStartMs, overlay, predictions };
+  if (clips.length === 1) return <Player clip={clips[0]} big {...extra} />;
 
   const playAll = () =>
     players.current.forEach((v) => {
@@ -259,13 +280,12 @@ export function IncidentVideos({ inc, onPlayer }: { inc: Incident; onPlayer?: (c
               refFn={(v) => {
                 players.current[i] = v;
               }}
-              onPlayer={onPlayer}
-              fallbackStartMs={fallbackStartMs}
+              {...extra}
             />
           ))}
         </div>
       ) : (
-        <Player key={shown.cameraId} clip={shown} big onPlayer={onPlayer} fallbackStartMs={fallbackStartMs} />
+        <Player key={shown.cameraId} clip={shown} big {...extra} />
       )}
     </>
   );
