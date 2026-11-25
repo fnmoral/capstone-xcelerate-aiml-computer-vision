@@ -45,6 +45,7 @@ CREATE TABLE tenants (
     timezone      TEXT,                        -- IANA zone for the app (Settings); NULL = each browser's own
     profile       JSONB NOT NULL DEFAULT '{}', -- address, phone, WSIB firm number... (incident report headers)
     role_permissions JSONB,                    -- what members / viewers may do; NULL = defaults (backend auth package)
+    incident_overlay JSONB,                    -- default overlays on incident videos (box, status...); NULL = built-in
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

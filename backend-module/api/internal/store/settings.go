@@ -36,13 +36,21 @@ var migrations = []string{
 type Settings struct {
 	Timezone *string `json:"timezone"` // IANA zone, e.g. America/Toronto; null = each browser's own
 	Theme    *string `json:"theme"`    // organization default: light | dark | system; null = light
+
+	// IncidentOverlay is the default overlays on incident videos (name -> on); null = built-in.
+	// Read only: saved with PUT /settings/incident-overlay.
+	IncidentOverlay json.RawMessage `json:"incident_overlay"`
 }
 
 // Settings returns the facility's settings.
 func (s *Store) Settings(ctx context.Context) (Settings, error) {
 	var out Settings
 	err := s.tx(ctx, func(tx pgx.Tx, tid string) error {
-		return tx.QueryRow(ctx, `SELECT timezone, default_theme FROM tenants WHERE id::text = $1`, tid).Scan(&out.Timezone, &out.Theme)
+		var overlay []byte
+		err := tx.QueryRow(ctx, `SELECT timezone, default_theme, incident_overlay FROM tenants WHERE id::text = $1`, tid).
+			Scan(&out.Timezone, &out.Theme, &overlay)
+		out.IncidentOverlay = nullIfEmpty(overlay)
+		return err
 	})
 	return out, err
 }

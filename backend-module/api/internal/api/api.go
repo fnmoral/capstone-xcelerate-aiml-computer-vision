@@ -214,6 +214,7 @@ func (s *Server) Register(r *gin.Engine) {
 	u.GET("/settings", s.settings)
 	u.PUT("/settings", s.can(auth.ManageSettings), s.saveSettings)
 	u.PUT("/settings/theme", s.can(auth.ManageSettings), s.saveDefaultTheme)
+	u.PUT("/settings/incident-overlay", s.can(auth.ManageSettings), s.saveIncidentOverlay)
 	u.GET("/gateway/config", s.can(auth.ManageSettings), s.homeOrgOnly, s.gatewayConfig)
 	u.PUT("/gateway/config", s.can(auth.ManageSettings), s.homeOrgOnly, s.gatewayConfig)
 
