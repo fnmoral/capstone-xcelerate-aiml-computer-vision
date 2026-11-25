@@ -271,7 +271,8 @@ func (s *Server) systemEmail(ctx context.Context, tenantID, kind string, m notif
 		}
 	}
 	res, err := notify.SendEmail(ctx, p, m)
-	rec := store.AccountEmail{Kind: kind, Recipient: m.To, Subject: m.Subject, FromEmail: p.FromEmail, Via: via, Status: string(res)}
+	rec := store.AccountEmail{Kind: kind, Recipient: m.To, Subject: m.Subject, FromEmail: p.FromEmail, Via: via, Status: string(res),
+		Preview: m.Preview}
 	if err != nil {
 		log.Printf("account email to %s failed: %v", m.To, err)
 		msg := err.Error()
@@ -281,6 +282,17 @@ func (s *Server) systemEmail(ctx context.Context, tenantID, kind string, m notif
 		log.Printf("recording account email: %v", lerr)
 	}
 	return res, err
+}
+
+// accountEmailPreview: GET /api/org/emails/:id/preview, the kept copy of an account email
+// (its personal link taken out); html is "" for emails sent before copies were kept.
+func (s *Server) accountEmailPreview(c *gin.Context) {
+	html, err := s.db.AccountEmailPreview(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"html": html})
 }
 
 // accountEmails lists the organization's account emails: GET /api/org/emails.

@@ -508,7 +508,8 @@ CREATE TABLE account_emails (
     via        TEXT NOT NULL,
     status     TEXT NOT NULL,
     error      TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    preview_html TEXT                          -- the email without its personal link (Emails sent preview)
 );
 CREATE INDEX idx_account_emails_tenant ON account_emails (tenant_id, created_at DESC);
 

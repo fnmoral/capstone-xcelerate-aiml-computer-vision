@@ -145,6 +145,7 @@ func (s *Server) Register(r *gin.Engine) {
 	u.DELETE("/org/members/:id", s.can(auth.ManageMembers), s.removeMember)
 	u.GET("/org/permissions", s.can(auth.ViewMembers), s.rolePermissions)
 	u.GET("/org/emails", s.can(auth.ViewEmails), s.accountEmails)
+	u.GET("/org/emails/:id/preview", s.can(auth.ViewEmails), s.accountEmailPreview)
 	u.PUT("/org/permissions", s.can(auth.ManageRoles), s.saveRolePermissions)
 
 	// ---- cameras ----
@@ -206,6 +207,7 @@ func (s *Server) Register(r *gin.Engine) {
 	u.POST("/notification-settings/test-sms", notif, strict, s.testSMS)
 	u.POST("/notification-settings/preview", notif, s.previewTemplate)
 	u.GET("/notification-settings/deliveries", notif, s.notificationDeliveries)
+	u.GET("/notification-settings/deliveries/:id/preview", notif, s.deliveryPreview)
 
 	// ---- settings ----
 	u.GET("/stats", s.stats)

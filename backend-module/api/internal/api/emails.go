@@ -42,7 +42,7 @@ var accountMailHTML = template.Must(template.New("mail").Parse(`<!doctype html>
 </td></tr>
 <tr><td style="padding:16px 32px 24px 32px;font-family:Segoe UI,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.5;color:#495057;">
 <p style="margin:0 0 10px 0;">{{.Note}}</p>
-<p style="margin:0;">Button not working? Copy this link into your browser:<br><a href="{{.Link}}" style="color:#1971c2;word-break:break-all;">{{.Link}}</a></p>
+<p style="margin:0;">Button not working? Copy this link into your browser:<br><a href="{{.Link}}" style="color:#1971c2;word-break:break-all;">{{.LinkText}}</a></p>
 </td></tr>
 <tr><td style="padding:16px 32px 24px 32px;border-top:1px solid #e9ecef;font-family:Segoe UI,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.5;color:#868e96;">
 FallGuard Vision · fall detection for care homes, clinics and workplaces<br>
@@ -63,13 +63,20 @@ func (s *Server) accountEmail(c *gin.Context, to, subject string, m accountMail)
 	}
 	text.WriteString(m.Button + ":\n" + m.Link + "\n\n" + m.Note + "\n\n— FallGuard Vision\n" + app + "\n")
 
-	var html bytes.Buffer
 	host := strings.TrimPrefix(strings.TrimPrefix(app, "https://"), "http://")
-	_ = accountMailHTML.Execute(&html, map[string]any{
-		"Subject": subject, "AppURL": app, "Host": host, "Greeting": m.Greeting, "Lines": m.Lines,
-		"Button": m.Button, "Link": template.URL(m.Link), "Note": m.Note,
-	})
-	return notify.Email{To: to, Subject: subject, Text: text.String(), HTML: html.String()}
+	render := func(link, linkText string) string {
+		var out bytes.Buffer
+		_ = accountMailHTML.Execute(&out, map[string]any{
+			"Subject": subject, "AppURL": app, "Host": host, "Greeting": m.Greeting, "Lines": m.Lines,
+			"Button": m.Button, "Link": template.URL(link), "LinkText": linkText, "Note": m.Note,
+		})
+		return out.String()
+	}
+	return notify.Email{
+		To: to, Subject: subject, Text: text.String(), HTML: render(m.Link, m.Link),
+		// The copy kept for Emails sent: the personal link opens the account, so it is not kept.
+		Preview: render("#", "(their personal link: not kept, for security)"),
+	}
 }
 
 var urlInText = regexp.MustCompile(`https?://[^\s<>"]+`)

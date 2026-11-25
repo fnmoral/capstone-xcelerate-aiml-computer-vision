@@ -2,13 +2,15 @@ package store
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 )
 
 // AccountEmail is one account email the API tried to send (invitation, email verification,
-// password reset), for Settings > Emails sent. The body isn't kept: it holds sign-in links.
+// password reset), for Settings > Emails sent. The email itself isn't kept (it holds a sign-in
+// link), only Preview: a copy with that link taken out.
 type AccountEmail struct {
 	ID        string    `json:"id"`
 	Kind      string    `json:"kind"` // invitation | verification | password_reset
@@ -19,6 +21,7 @@ type AccountEmail struct {
 	Status    string    `json:"status"` // sent | logged (not sent: no email server) | failed
 	Error     *string   `json:"error"`
 	CreatedAt time.Time `json:"created_at"`
+	Preview   string    `json:"-"` // HTML without the personal link; "" for emails sent before it was kept
 }
 
 // accountEmailDays is how long account emails stay in the list.
@@ -31,13 +34,37 @@ func (s *Store) LogAccountEmail(ctx context.Context, tenantID string, e AccountE
 	if tenantID != "" {
 		tid = &tenantID
 	}
-	_, err := s.pool.Exec(ctx, `INSERT INTO account_emails (tenant_id, kind, recipient, subject, from_email, via, status, error)
-		VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8)`, tid, e.Kind, e.Recipient, e.Subject, e.FromEmail, e.Via, e.Status, e.Error)
+	var preview *string
+	if e.Preview != "" {
+		preview = &e.Preview
+	}
+	_, err := s.pool.Exec(ctx, `INSERT INTO account_emails (tenant_id, kind, recipient, subject, from_email, via, status, error, preview_html)
+		VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9)`, tid, e.Kind, e.Recipient, e.Subject, e.FromEmail, e.Via, e.Status, e.Error, preview)
 	if err != nil {
 		return err
 	}
 	_, err = s.pool.Exec(ctx, `DELETE FROM account_emails WHERE created_at < now() - make_interval(days => $1)`, accountEmailDays)
 	return err
+}
+
+// AccountEmailPreview returns the kept copy of one of the organization's account emails
+// ("" when it was sent before copies were kept). ErrNotFound when it isn't the organization's.
+func (s *Store) AccountEmailPreview(ctx context.Context, id string) (string, error) {
+	var preview *string
+	err := s.tx(ctx, func(tx pgx.Tx, tid string) error {
+		return tx.QueryRow(ctx, `SELECT e.preview_html FROM account_emails e
+			WHERE e.id::text = $2 AND (e.tenant_id = $1
+			   OR (e.tenant_id IS NULL AND lower(e.recipient) IN (
+			         SELECT lower(u.email::text) FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.tenant_id = $1)))`,
+			tid, id).Scan(&preview)
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil || preview == nil {
+		return "", err
+	}
+	return *preview, nil
 }
 
 // AccountEmails lists the organization's account emails, newest first: the ones sent for it

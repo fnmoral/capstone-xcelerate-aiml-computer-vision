@@ -75,6 +75,8 @@ may do (`tenants.role_permissions`); managing members and roles stays admin-only
 | `POST /api/org/invitations` · `…/:id/resend` · `DELETE …/:id` | Invite by email with a role (7 days); the answer also has the link (`url`) so the admin can share it directly (copy / QR code) |
 | `GET` · `PUT /api/org/permissions` | Permission catalog and what members / viewers may do |
 | `GET /api/org/emails` | `emails.view` (admins by default; grantable): account emails (invitation, verification, password reset) for the organization and its members, with status `sent` / `logged` / `failed` and the error. Kept 90 days (`account_emails`) |
+| `GET /api/org/emails/:id/preview` | `emails.view`: `{html}`, the copy of an account email kept for the preview, its personal link replaced (`account_emails.preview_html`); `""` for emails sent before copies were kept |
+| `GET /api/notification-settings/deliveries/:id/preview` | Notifications permission: one sent message, `{channel, subject, body, html}` (email: the branded HTML as sent) |
 
 Organizations other than the home one have no gateway yet: adding, pausing or removing
 cameras answers 409 `no_gateway` (ml-service still serves the home tenant only).

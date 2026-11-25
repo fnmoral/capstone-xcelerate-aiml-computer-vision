@@ -118,6 +118,9 @@ func (p *SMSProvider) Unlock(b *Box) error {
 type Email struct {
 	To, Subject, Text string
 	HTML              string // optional: sent as an HTML alternative to Text
+	// Preview is the HTML with personal links taken out, kept for Settings > Emails sent.
+	// Never sent.
+	Preview string
 }
 
 // Result says what happened to a message: "sent" or "logged" (no provider).

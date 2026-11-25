@@ -371,6 +371,28 @@ func (s *Server) notificationDeliveries(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"deliveries": list})
 }
 
+// deliveryPreview shows one sent message as the recipient got it: the email in its branded
+// layout (html), or the text of an SMS.
+func (s *Server) deliveryPreview(c *gin.Context) {
+	list, err := s.db.Deliveries(c.Request.Context(), 200)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	for _, d := range list {
+		if d.ID != c.Param("id") {
+			continue
+		}
+		out := gin.H{"channel": d.Channel, "subject": d.Subject, "body": d.Body}
+		if d.Channel == "email" {
+			out["html"] = alertEmail(s.appURL(c), d.Recipient, orDefault(d.Subject, "FallGuard"), d.Body, nil, true).HTML
+		}
+		c.JSON(http.StatusOK, out)
+		return
+	}
+	c.JSON(http.StatusNotFound, gin.H{"error": "message not found"})
+}
+
 // ---------- dispatcher ----------
 
 // RunNotifier turns new alerts and their changes into email / SMS messages and sends them.
