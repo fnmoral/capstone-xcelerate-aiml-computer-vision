@@ -306,8 +306,11 @@ in the server log, for testing).
 1. The alarm sounds, the bell shows the alert, and "1 person down" appears at the top. The
    people you chose get an email or text.
 2. Open the alert (from the bell or **Fall Events**). You see the photo, the video, which cameras
-   saw it and how long the person has been down. Under the video, **What the detector saw**
-   colors each moment (upright, falling, lying): click a color to play the video from there.
+   saw it and how long the person has been down. **Overlays** (above the video) draw this
+   incident's person: box, status, person number, confidence, skeleton... each on or off, so you
+   can tell who the event is about when several people are in the picture (admins set the
+   organization's default there). Under the video, **What the detector saw** colors each moment
+   (upright, falling, lying): click a color to play the video from there.
    One fall = one event per person: if the camera
    loses sight of someone on the floor (for example behind another person), the event stays open
    and its severity keeps rising until they are seen getting up.
@@ -368,7 +371,7 @@ Then:
 | Locked out after wrong passwords | Wait 15 minutes, or use "Forgot your password?". |
 | Text messages or emails don't arrive | Notifications → check the provider with **Send test**, then check **Recent messages** for the error. |
 | No sound when a fall happens | Click the bell and **Turn on alarm sound**: browsers need one click before a page may play sound. |
-| Is the server running out of space or memory? | **Settings → System status → Server** (Azure or on-premises) shows its memory and its storage, split into the database, videos & photos, and the rest (amber from 75%, red from 90%). If storage fills up, keep videos for fewer days or add disk space; if memory stays high, use a larger server. |
+| Is the server running out of space or memory? | **Settings → System status** shows memory, storage and incident videos as bars (amber from 75%, red from 90%). If storage fills up, keep videos for fewer days or add disk space; if memory stays high, use a larger server. |
 
 ---
 
