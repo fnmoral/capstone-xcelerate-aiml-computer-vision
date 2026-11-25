@@ -198,10 +198,14 @@ For a demo you can let people in **without an account**:
    how long it works: 12 hours, 1, 3, 7, 14 or 30 days.
 2. Copy the link, or let people **scan the QR code** with their phone camera (Download QR saves it
    for a slide or a printout). For safety it is shown only once; if you lose it, make a new one.
-3. Anyone who opens it goes straight in, **view-only**: they can watch the cameras and look at fall
-   events, analytics, reports and logs. They can't change anything, can't respond to alerts and
-   can't see the members list.
-4. When the time is up, everyone using the link is out. **End now** stops it early. The list shows
+3. Anyone who opens it goes straight in: they can watch the cameras and look at fall events,
+   analytics, reports and logs. If **viewers** may respond to alerts (Members & Roles), visitors can
+   too. Visitors never change settings, cameras or notifications, write incident reports or see the
+   members list.
+4. The first time, visitors are asked for their name (optional). What they do shows in the activity
+   log under that name, for example "Sam (visitor)", or as "Demo visitor Demo day" without one.
+   They can change it from the account menu.
+5. When the time is up, everyone using the link is out. **End now** stops it early. The list shows
    how many times each link was opened.
 
 Only admins can create temporary access links.
@@ -459,7 +463,10 @@ flowchart TD
   member, `.invalid` email, no password, excluded from members, sign-in and resets). Opening
   `/demo/<token>` creates a session capped at the link's end; `SessionByToken` re-checks the link
   on every request, so expiry or "End now" cuts access immediately. Visitors' permissions are the
-  viewer grants intersected with the read-only set (`auth.GuestGrants`); account self-service is
+  viewer grants intersected with the look-and-respond set (`auth.GuestGrants`: view pages plus
+  `alerts.manage`). Their optional name is per browser (`sessions.visitor_name`, NULL = not asked,
+  '' = skipped; `PUT /api/auth/visitor-name`) and becomes their display name, so the audit log
+  shows "Sam (visitor)". Account self-service is
   refused (`notGuest`). Visitor users of links ended over 30 days ago are purged hourly.
 - **CSRF**: SameSite=Lax plus a same-origin check on non-GET requests (`Origin` must match
   `Host` / `X-Forwarded-Host` or `ALLOWED_ORIGINS`). Per-IP rate limits on auth routes.
