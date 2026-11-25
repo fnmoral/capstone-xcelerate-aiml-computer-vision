@@ -97,7 +97,8 @@ CREATE TABLE sessions (                        -- signed-in browsers (the cookie
     last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     ip          TEXT,
     user_agent  TEXT,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    visitor_name TEXT                           -- demo visitor's optional name (NULL = not asked, '' = skipped)
 );
 CREATE UNIQUE INDEX idx_sessions_token ON sessions (token_hash);
 CREATE INDEX idx_sessions_user ON sessions (user_id);

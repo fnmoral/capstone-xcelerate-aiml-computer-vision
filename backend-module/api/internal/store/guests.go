@@ -31,7 +31,19 @@ func init() {
 		`CREATE INDEX IF NOT EXISTS idx_guest_links_tenant ON guest_links (tenant_id, created_at DESC)`,
 		`ALTER TABLE users ADD COLUMN IF NOT EXISTS guest_link_id UUID`,
 		`CREATE INDEX IF NOT EXISTS idx_users_guest ON users (guest_link_id) WHERE guest_link_id IS NOT NULL`,
+		// The name a visitor gave (optional, per browser): NULL = not asked yet, '' = skipped.
+		`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS visitor_name TEXT`,
 	)
+}
+
+// VisitorNameMax is the longest name a visitor may give.
+const VisitorNameMax = 40
+
+// SetVisitorName records the name a demo visitor gave for this browser (empty = skipped).
+// Their actions are then logged as "<name> (visitor)".
+func (s *Store) SetVisitorName(ctx context.Context, sessionID, name string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE sessions SET visitor_name = $2 WHERE id::text = $1`, sessionID, name)
+	return err
 }
 
 // GuestLink is a demo access link as the Members page shows it.

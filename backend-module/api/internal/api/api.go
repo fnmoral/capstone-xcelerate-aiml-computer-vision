@@ -130,6 +130,7 @@ func (s *Server) Register(r *gin.Engine) {
 	u := a.Group("", s.requireAuth)
 	u.GET("/auth/me", s.me)
 	u.PATCH("/auth/me", s.notGuest, s.updateMe)
+	u.PUT("/auth/visitor-name", s.setVisitorName)
 	u.POST("/auth/change-password", s.notGuest, strict, s.changePassword)
 	u.POST("/auth/logout-all", s.logoutAll)
 	u.POST("/auth/switch-org", s.notGuest, s.switchOrg)

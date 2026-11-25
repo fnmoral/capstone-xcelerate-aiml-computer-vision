@@ -151,9 +151,11 @@ func Allowed(role string, grants map[string][]string) []string {
 	return Normalize(grants)[role]
 }
 
-// GuestPermissions are all a demo visitor may ever do: look, never change (and not see
-// the members list, which has people's emails).
-var GuestPermissions = []string{ViewLive, ViewEvents, ViewAnalytics, ViewReports, ViewLogs}
+// GuestPermissions are all a demo visitor may ever do: look, and respond to alerts when
+// viewers may (acknowledge, resolve, false alarm, notes: logged under the visitor's name).
+// Never settings, cameras, notifications, incident reports or share links, nor the members
+// list and emails sent, which show people's addresses.
+var GuestPermissions = []string{ViewLive, ViewEvents, ViewAnalytics, ViewReports, ViewLogs, ManageAlerts}
 
 // GuestGrants limits the viewer permissions to GuestPermissions, for demo visitors.
 func GuestGrants(grants map[string][]string) map[string][]string {

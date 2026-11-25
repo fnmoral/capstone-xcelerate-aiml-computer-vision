@@ -68,7 +68,8 @@ may do (`tenants.role_permissions`); managing members and roles stays admin-only
 | `POST /api/auth/change-password` · `/switch-org` · `/api/org/leave` | Changing the password signs out the other sessions |
 | `GET /api/auth/check` | 204 / 401: nginx `auth_request` for `/stream-hub` (live video, clips, snapshots) |
 | `GET /api/auth/config` | `{email_verification}`: whether sign-in needs a verified email (`REQUIRE_EMAIL_VERIFICATION`; false = signed in right after sign-up) |
-| `GET` · `POST /api/auth/demo/:token` | Demo access link: info (organization, label, end time) / sign in as the link's view-only visitor until it ends. 404 once expired or ended |
+| `GET` · `POST /api/auth/demo/:token` | Demo access link: info (organization, label, end time) / sign in as the link's visitor until it ends. 404 once expired or ended. Visitors get the viewer grants limited to the view pages and `alerts.manage` |
+| `PUT /api/auth/visitor-name` | Visitors only: `{name}` (optional, at most 40 characters; `""` = skipped). Their actions are logged as "<name> (visitor)". `/api/auth/me` returns it as `user.visitor_name` (absent = not asked yet) |
 | `GET` · `POST /api/org/guest-links` · `DELETE …/:id` | Admins: list / create (`{label, hours}` 1–720; the URL with its token is returned only now) / end a demo link (its visitors are signed out) |
 | `GET` · `PUT /api/org` | Organization name and profile (address, WSIB firm number…; used by incident reports) |
 | `GET /api/org/members` · `PATCH` · `DELETE /api/org/members/:id` | Members; change role / remove (signs them out). The last admin can't be demoted or removed (409) |
