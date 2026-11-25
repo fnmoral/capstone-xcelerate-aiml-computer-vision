@@ -48,6 +48,13 @@ func (s *Store) Close() { s.pool.Close() }
 // Ping checks the database is reachable.
 func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
 
+// DatabaseSize is the database's size on disk, in bytes.
+func (s *Store) DatabaseSize(ctx context.Context) (int64, error) {
+	var n int64
+	err := s.pool.QueryRow(ctx, `SELECT pg_database_size(current_database())`).Scan(&n)
+	return n, err
+}
+
 type tenantKey struct{}
 
 // WithTenant returns a context whose queries run for the given tenant UUID.

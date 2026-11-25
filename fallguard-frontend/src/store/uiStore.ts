@@ -30,12 +30,19 @@ export const DEFAULT_OVERLAY: LiveOverlay = {
   center: false, skeleton: false, keypoints: false, grid: false,
 };
 
+/** Incident videos: the box, status and person number of the incident's person. */
+export const DEFAULT_INCIDENT_OVERLAY: LiveOverlay = {
+  boxes: true, label: true, track: true, confidence: false,
+  center: false, skeleton: false, keypoints: false, grid: false,
+};
+
 interface UiState {
   navOpen: boolean; // mobile drawer
   navCollapsed: boolean; // desktop rail
   navPinned: boolean; // tablet-width windows: keep the menu open beside the page instead of a pop-out
   theme: Theme | null; // this browser's choice; null = follow the organization's default
   orgTheme: Theme | null; // the organization's default theme (Settings), remembered here
+  orgIncidentOverlay: LiveOverlay; // the organization's default overlays on incident videos
   liveLayout: LiveLayout; // Live View's default layout
   overlayDefault: LiveOverlay; // Live View's overlays when the app opens (saved in this browser)
   liveOverlay: LiveOverlay; // the overlays shown now (not saved)
@@ -49,6 +56,7 @@ interface UiState {
   togglePinned: () => void;
   setTheme: (t: Theme | null) => void;
   setOrgTheme: (t: Theme | null) => void;
+  setOrgIncidentOverlay: (o: Partial<LiveOverlay> | null) => void;
   setLiveLayout: (l: LiveLayout) => void;
   setLiveOverlay: (o: LiveOverlay) => void;
   setOverlayDefault: (o: LiveOverlay) => void;
@@ -66,6 +74,7 @@ export const useUiStore = create<UiState>()(
       navPinned: false,
       theme: null,
       orgTheme: null,
+      orgIncidentOverlay: DEFAULT_INCIDENT_OVERLAY, // from the API (AppLayout), not saved here
       liveLayout: 'auto',
       overlayDefault: DEFAULT_OVERLAY,
       liveOverlay: DEFAULT_OVERLAY,
@@ -79,6 +88,7 @@ export const useUiStore = create<UiState>()(
       togglePinned: () => set((s) => ({ navPinned: !s.navPinned, navOpen: false })),
       setTheme: (theme) => set({ theme }),
       setOrgTheme: (orgTheme) => set({ orgTheme }),
+      setOrgIncidentOverlay: (o) => set({ orgIncidentOverlay: { ...DEFAULT_INCIDENT_OVERLAY, ...o } }),
       setLiveLayout: (liveLayout) => set({ liveLayout }),
       setLiveOverlay: (liveOverlay) => set({ liveOverlay }),
       setOverlayDefault: (overlayDefault) => set({ overlayDefault }),

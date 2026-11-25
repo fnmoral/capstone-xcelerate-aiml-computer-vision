@@ -615,12 +615,17 @@ Each tracked person has a small state machine. Being *down* means the label is `
 | `incident_started` | The person has been down for `confirm_seconds` (3 s), **at least `confirm_ratio` (80%) of their frames in those 3 s were down**, and the current label is `lying` | A new incident opens with severity `medium`. Its start time is backdated to when the fall began (the first frame of the mostly-down run, so a stray frame earlier is skipped). The current frame is saved as a snapshot |
 | `incident_updated` | The incident has lasted `high_after_seconds` (60 s), then `critical_after_seconds` (300 s) | Severity goes up to `high`, then `critical`. Highest confidence seen so far is kept as `peak_confidence` |
 | `incident_recovered` | The person has been `upright` for `recover_seconds` (3 s) | The incident closes with status `recovered`. `recovered_at` is set to the first upright frame, so the database can work out how long they were down |
-| `incident_unresolved` | The person hasn't been seen for `lost_track_seconds` (10 s) while an incident is open | The incident closes with status `unresolved`. This needs a human check, because the person may still be on the floor out of view |
+| `incident_unresolved` | The person was last seen at the **edge of the picture** and hasn't been seen for `lost_track_seconds` (10 s), or the camera stopped, while an incident is open | The incident closes with status `unresolved`. This needs a human check, because the person may still be on the floor out of view |
 
 **Renumbered people.** Trackers often give someone a new ID as they fall, because their box
 suddenly changes shape. A new ID that appears near where a person was lost within
-`handoff_seconds` (2 s) takes over that person's state, so the 3-second timer doesn't restart
-and an open incident stays with them.
+`handoff_seconds` (5 s) takes over that person's state, so the 3-second timer doesn't restart
+and an open incident stays with them. All new IDs of a frame are matched together, closest first.
+
+**Hidden people.** A fallen person the model stops finding *inside* the picture (e.g. behind
+someone) didn't leave: their incident stays open and its severity keeps rising. A new ID that
+appears on the spot where they lay takes over: still lying = same incident, standing up =
+recovered.
 
 What this filters out:
 

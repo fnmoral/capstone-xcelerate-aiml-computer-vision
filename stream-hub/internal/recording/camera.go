@@ -1,6 +1,10 @@
 package recording
 
 import (
+	"bufio"
+	"bytes"
+	"os"
+	"path/filepath"
 	"sort"
 
 	"stream-hub/internal/hub"
@@ -14,13 +18,18 @@ type entry struct {
 	picture bool // carries picture data (a slice)
 }
 
-// clip is a recording in progress.
+// clip is a recording in progress. Its video goes straight to a file on disk (<clip>.mp4.rec,
+// Annex B), so a long fall costs no memory: the whole event is kept, however long it lasts.
 type clip struct {
 	tenantID   string
 	cameraID   string
 	incidentID string
 	codec      hub.Codec
-	nalus      [][]byte
+	rawPath    string // the video so far, turned into the MP4 when the clip ends
+	file       *os.File
+	w          *bufio.Writer
+	err        error // the first write error; the clip is then dropped
+	bytes      int64
 	firstPTS   int64
 	lastPTS    int64
 	pictures   int
@@ -29,8 +38,55 @@ type clip struct {
 	hardEnd    int64 // PTS at which to finish no matter what (max_s)
 }
 
+// openClip creates the clip's file under dir.
+func openClip(dir string, c *clip) {
+	c.rawPath = filepath.Join(dir, clipFileName(c.incidentID, c.cameraID)+".rec")
+	if c.file, c.err = os.Create(c.rawPath); c.err == nil {
+		c.w = bufio.NewWriterSize(c.file, 1<<20)
+	}
+}
+
+// write appends one NALU in Annex B form.
+func (c *clip) write(n []byte) {
+	if c.err != nil {
+		return
+	}
+	if !bytes.HasPrefix(n, startCode) && !bytes.HasPrefix(n, startCode[1:]) {
+		if _, c.err = c.w.Write(startCode); c.err != nil {
+			return
+		}
+		c.bytes += int64(len(startCode))
+	}
+	if _, c.err = c.w.Write(n); c.err == nil {
+		c.bytes += int64(len(n))
+	}
+}
+
+// close flushes and closes the clip's file. Safe to call more than once.
+func (c *clip) close() error {
+	if c.file == nil {
+		return c.err
+	}
+	if c.err == nil {
+		c.err = c.w.Flush()
+	}
+	if err := c.file.Close(); c.err == nil {
+		c.err = err
+	}
+	c.file = nil
+	return c.err
+}
+
+// discard closes the clip and deletes its file.
+func (c *clip) discard() {
+	c.close()
+	if c.rawPath != "" {
+		os.Remove(c.rawPath)
+	}
+}
+
 func (c *clip) add(e entry) {
-	c.nalus = append(c.nalus, e.data)
+	c.write(e.data)
 	c.lastPTS = e.pts
 	if e.picture && (c.pictures == 0 || e.pts != c.lastPicPTS) {
 		c.pictures++
@@ -50,13 +106,15 @@ type cameraLoop struct {
 	bufBytes  int
 	keyStarts []int64 // PTS of each keyframe in buf, oldest first
 	active    map[string]*clip
+	clipsDir  string // where running clips write their video
 }
 
-func newCameraLoop(tenantID, cameraID string, cfg Config) *cameraLoop {
+func newCameraLoop(tenantID, cameraID string, cfg Config, clipsDir string) *cameraLoop {
 	return &cameraLoop{
 		tenantID: tenantID,
 		cameraID: cameraID,
 		cfg:      cfg,
+		clipsDir: clipsDir,
 		params:   make(map[int][]byte),
 		active:   make(map[string]*clip),
 	}
@@ -142,8 +200,11 @@ func (l *cameraLoop) start(incidentID string) {
 		cameraID:   l.cameraID,
 		incidentID: incidentID,
 		codec:      l.codec,
-		nalus:      l.orderedParams(),
 		firstPTS:   items[0].pts,
+	}
+	openClip(l.clipsDir, c)
+	for _, p := range l.orderedParams() {
+		c.write(p)
 	}
 	for _, e := range items {
 		c.add(e)

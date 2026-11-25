@@ -7,6 +7,7 @@ import { usePolling } from '../../services/api/usePolling';
 import { formatDate, formatTime } from '../../lib/format';
 import { PERM, useAuth } from '../auth/AuthContext';
 import { DemoLinks } from './DemoLinks';
+import { EmailsSentSettings } from '../settings/EmailsSentSettings';
 import { ShareLink } from '../../components/ui/ShareLink';
 import './members.css';
 
@@ -306,7 +307,7 @@ export default function MembersPage() {
             Members ({data?.members.length ?? 0}){manage && (data?.invitations.length ?? 0) > 0 && <span className="muted"> · {data!.invitations.length} invited</span>}
           </h2>
           <div className="table-wrap">
-            <table className="table">
+            <table className="table table--stack">
               <thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Last sign-in</th><th>Joined</th><th /></tr></thead>
               <tbody>
                 {(data?.members ?? []).map((m) => (
@@ -329,6 +330,8 @@ export default function MembersPage() {
             <DemoLinks />
           </div>
         )}
+
+        {can(PERM.viewEmails) && <EmailsSentSettings />}
 
         <section className="card members-section">
           <h2 className="section-title">What each role can do</h2>

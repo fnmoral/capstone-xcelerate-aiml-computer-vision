@@ -42,12 +42,13 @@ var accountMailHTML = template.Must(template.New("mail").Parse(`<!doctype html>
 </td></tr>
 <tr><td style="padding:16px 32px 24px 32px;font-family:Segoe UI,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.5;color:#495057;">
 <p style="margin:0 0 10px 0;">{{.Note}}</p>
-<p style="margin:0;">Button not working? Copy this link into your browser:<br><a href="{{.Link}}" style="color:#1971c2;word-break:break-all;">{{.Link}}</a></p>
+<p style="margin:0;">Button not working? Copy this link into your browser:<br><a href="{{.Link}}" style="color:#1971c2;word-break:break-all;">{{.LinkText}}</a></p>
 </td></tr>
 <tr><td style="padding:16px 32px 24px 32px;border-top:1px solid #e9ecef;font-family:Segoe UI,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.5;color:#868e96;">
-FallGuard Vision · fall detection for care homes, clinics and workplaces<br>
+FallGuard Vision · Fall Detection for Workplaces<br>
 Powered by Xcelerate Industries · <a href="{{.AppURL}}" style="color:#868e96;">{{.Host}}</a><br>
-You received this because someone used this address on FallGuard Vision.
+You received this because someone used this address on FallGuard Vision.<br>
+This is an automated message from a no-reply address: replies are not read.
 </td></tr>
 </table>
 </td></tr></table>
@@ -61,18 +62,50 @@ func (s *Server) accountEmail(c *gin.Context, to, subject string, m accountMail)
 	for _, l := range m.Lines {
 		text.WriteString(l + "\n\n")
 	}
-	text.WriteString(m.Button + ":\n" + m.Link + "\n\n" + m.Note + "\n\n— FallGuard Vision\n" + app + "\n")
+	text.WriteString(m.Button + ":\n" + m.Link + "\n\n" + m.Note + "\n\n— FallGuard Vision\n" + app + "\n" + noReply + "\n")
 
-	var html bytes.Buffer
 	host := strings.TrimPrefix(strings.TrimPrefix(app, "https://"), "http://")
-	_ = accountMailHTML.Execute(&html, map[string]any{
-		"Subject": subject, "AppURL": app, "Host": host, "Greeting": m.Greeting, "Lines": m.Lines,
-		"Button": m.Button, "Link": template.URL(m.Link), "Note": m.Note,
-	})
-	return notify.Email{To: to, Subject: subject, Text: text.String(), HTML: html.String()}
+	render := func(link, linkText string) string {
+		var out bytes.Buffer
+		_ = accountMailHTML.Execute(&out, map[string]any{
+			"Subject": subject, "AppURL": app, "Host": host, "Greeting": m.Greeting, "Lines": m.Lines,
+			"Button": m.Button, "Link": template.URL(link), "LinkText": linkText, "Note": m.Note,
+		})
+		return out.String()
+	}
+	return notify.Email{
+		To: to, Subject: subject, Text: text.String(), HTML: render(m.Link, m.Link),
+		// The copy kept for Emails sent: the personal link opens the account, so it is not kept.
+		Preview: render("#", "(their personal link: not kept, for security)"),
+	}
 }
 
 var urlInText = regexp.MustCompile(`https?://[^\s<>"]+`)
+
+// noReply ends every email: the sending address is not watched.
+const noReply = "This is an automated message from a no-reply address: replies are not read."
+
+// withoutLinkLine drops the line that holds the message's first link when it is just a short
+// label and the link ("Open the incident: https://..."): in the HTML email the button takes its
+// place, and the link itself is repeated in small print at the bottom. Other text is kept.
+func withoutLinkLine(body string) string {
+	lines := strings.Split(body, "\n")
+	for i, l := range lines {
+		u := urlInText.FindString(l)
+		if u == "" {
+			continue
+		}
+		if label := strings.TrimSpace(strings.Replace(l, u, "", 1)); len(label) <= 40 {
+			lines = append(lines[:i], lines[i+1:]...)
+			// no double blank line where it was
+			if i > 0 && i < len(lines) && strings.TrimSpace(lines[i-1]) == "" && strings.TrimSpace(lines[i]) == "" {
+				lines = append(lines[:i], lines[i+1:]...)
+			}
+		}
+		break
+	}
+	return strings.Join(lines, "\n")
+}
 
 var alertMailHTML = template.Must(template.New("alert").Parse(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -90,12 +123,14 @@ var alertMailHTML = template.Must(template.New("alert").Parse(`<!doctype html>
 <tr><td style="padding:16px 32px 8px 32px;font-family:Segoe UI,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.55;color:#16191d;">
 <div style="white-space:pre-wrap;">{{.Body}}</div>
 </td></tr>
-{{if .Link}}<tr><td style="padding:8px 32px 24px 32px;">
+{{if .Link}}<tr><td style="padding:8px 32px 20px 32px;">
 <a href="{{.Link}}" style="display:inline-block;background:#1971c2;color:#ffffff;text-decoration:none;font-family:Segoe UI,Helvetica,Arial,sans-serif;font-size:15px;font-weight:600;padding:11px 20px;border-radius:8px;">Open in FallGuard</a>
 </td></tr>{{end}}
 <tr><td style="padding:16px 32px 24px 32px;border-top:1px solid #e9ecef;font-family:Segoe UI,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.5;color:#868e96;">
-FallGuard Vision · fall detection for care homes, clinics and workplaces<br>
-Powered by Xcelerate Industries · You get this because you're on your organization's alert list.
+FallGuard Vision · Fall Detection for Workplaces<br>
+Powered by Xcelerate Industries · You get this because you're on your organization's alert list.<br>
+This is an automated message from a no-reply address: replies are not read.
+{{if .Link}}<p style="margin:10px 0 0 0;font-size:11px;color:#adb5bd;">Button not working? Open this link: <a href="{{.Link}}" style="color:#adb5bd;word-break:break-all;">{{.LinkText}}</a></p>{{end}}
 </td></tr>
 </table>
 </td></tr></table>
@@ -105,9 +140,16 @@ Powered by Xcelerate Industries · You get this because you're on your organizat
 // branded HTML layout: logo, an optional banner (e.g. "this is a test"), the body with its links
 // clickable, and a button to the first link. appURL must be public for the logo to show.
 func alertEmail(appURL, to, subject, body string, banner []string, button bool) notify.Email {
+	shown := body
+	if button {
+		shown = withoutLinkLine(body)
+	}
 	var b strings.Builder
-	esc := template.HTMLEscapeString(body)
+	esc := template.HTMLEscapeString(shown)
 	last, link := 0, ""
+	if button { // the button opens the message's first link, even when its line moved away
+		link = urlInText.FindString(body)
+	}
 	for _, m := range urlInText.FindAllStringIndex(esc, -1) {
 		u := esc[m[0]:m[1]]
 		if link == "" {
@@ -127,11 +169,12 @@ func alertEmail(appURL, to, subject, body string, banner []string, button bool) 
 	}
 	var out bytes.Buffer
 	_ = alertMailHTML.Execute(&out, map[string]any{
-		"Subject": subject, "Logo": logo, "Banner": banner, "Body": template.HTML(b.String()), "Link": template.URL(link),
+		"Subject": subject, "Logo": logo, "Banner": banner, "Body": template.HTML(b.String()),
+		"Link": template.URL(link), "LinkText": link,
 	})
-	text := body
+	text := body + "\n\n" + noReply
 	if len(banner) > 0 {
-		text = strings.Join(banner, "\n") + "\n\n" + body
+		text = strings.Join(banner, "\n") + "\n\n" + text
 	}
 	return notify.Email{To: to, Subject: subject, Text: text, HTML: out.String()}
 }

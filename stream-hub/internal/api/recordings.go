@@ -24,6 +24,8 @@ func (r *RecordingsHandler) RegisterRoutes(router *gin.Engine) {
 	g := router.Group("/stream-hub/recordings")
 	g.GET("/snapshots/:name", r.Snapshot)
 	g.GET("/clips/:name", r.Clip)
+	// Disk used by clips, for the API's system status (not under /stream-hub: nginx doesn't serve it).
+	router.GET("/recordings-usage", func(c *gin.Context) { c.JSON(http.StatusOK, r.recordings.Usage()) })
 }
 
 // Snapshot serves an incident image.

@@ -197,6 +197,10 @@ def _resolve_sources(raw: dict, base: Path, default_tenant: str) -> list[SourceC
 def _parse_inference(raw: dict, base: Path) -> InferenceConfig:
     inference = InferenceConfig(**raw.get("inference", {}))
     inference.weights = str(base / inference.weights)
+    # A tracker file next to config.yaml (e.g. trackers/bytetrack_fallguard.yaml); otherwise a
+    # name Ultralytics knows (bytetrack.yaml, botsort.yaml).
+    if (base / inference.tracker).is_file():
+        inference.tracker = str(base / inference.tracker)
     return inference
 
 

@@ -39,6 +39,10 @@ func main() {
 		// stream-hub's HTTP address (its config.json http_addr), not its TCP ingest port.
 		StreamHubURL: env("STREAM_HUB_URL", "http://localhost:9000"),
 
+		ServerHosting: strings.TrimSpace(os.Getenv("SERVER_HOSTING")), // shown in System status
+
+		DefaultTimezone: env("DEFAULT_TIMEZONE", "America/Toronto"), // alert times when the organization has none
+
 		// Accounts and notifications (see the root .env.example).
 		AppURL:          os.Getenv("APP_URL"),
 		AppSecret:       os.Getenv("APP_SECRET"),

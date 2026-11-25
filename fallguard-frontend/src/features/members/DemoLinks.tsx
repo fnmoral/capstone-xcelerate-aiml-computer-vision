@@ -52,7 +52,8 @@ export function DemoLinks() {
       <h2 className="section-title">Temporary access links</h2>
       <p className="muted" style={{ marginTop: -6 }}>
         Let visitors look around without an account. Anyone with the link can watch the cameras and see fall events,
-        reports and logs (view-only, they can't change anything or see the members list) until the time runs out.
+        reports and logs until the time runs out. If viewers may respond to alerts, visitors can too; they never change
+        settings or see the members list. Visitors may give their name, shown in the activity log next to what they do.
       </p>
       {(msg || error) && <p className="notice notice--error">{msg ?? error}</p>}
       <form onSubmit={create} className="invite-form">
@@ -75,7 +76,7 @@ export function DemoLinks() {
       )}
       {links.length > 0 && (
         <div className="table-wrap" style={{ marginTop: 12 }}>
-          <table className="table">
+          <table className="table table--stack">
             <thead><tr><th>Link</th><th>Status</th><th className="num">Visits</th><th /></tr></thead>
             <tbody>
               {links.map((l) => (

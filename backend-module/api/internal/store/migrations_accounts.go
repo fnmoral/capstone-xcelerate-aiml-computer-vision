@@ -160,5 +160,7 @@ func init() {
 			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_account_emails_tenant ON account_emails (tenant_id, created_at DESC)`,
+		// A copy of the email without its personal link, for the preview in Emails sent.
+		`ALTER TABLE account_emails ADD COLUMN IF NOT EXISTS preview_html TEXT`,
 	)
 }

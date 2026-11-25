@@ -74,6 +74,7 @@ services:
       # Accounts and notifications (see the root .env.example). Empty = defaults.
       APP_URL: ${APP_URL:-}                    # web app address used in email links
       APP_SECRET: ${APP_SECRET:-}              # encrypts SMTP / Twilio secrets saved in the app
+      DEFAULT_TIMEZONE: ${DEFAULT_TIMEZONE:-America/Toronto}  # alert times when the organization set none
       COOKIE_SECURE: ${COOKIE_SECURE:-false}   # true when the app is served over HTTPS
       EMAIL_LINKS_IN_RESPONSE: ${EMAIL_LINKS_IN_RESPONSE:-false}
       REQUIRE_EMAIL_VERIFICATION: ${REQUIRE_EMAIL_VERIFICATION:-true}  # false = sign in right after sign-up (demos)

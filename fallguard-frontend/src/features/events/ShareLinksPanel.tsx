@@ -59,7 +59,7 @@ function LinkCard({ l, onRevoke }: { l: ShareLink; onRevoke: () => void }) {
           {error && <p className="notice notice--error">{error}</p>}
           {!views && !error && <p className="muted">Loading…</p>}
           {views && (
-            <table className="table share-views__table">
+            <table className="table table--stack share-views__table">
               <thead><tr><th>Opened</th><th>IP address</th><th>Browser</th></tr></thead>
               <tbody>
                 {views.map((v, i) => (

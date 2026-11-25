@@ -45,6 +45,7 @@ CREATE TABLE tenants (
     timezone      TEXT,                        -- IANA zone for the app (Settings); NULL = each browser's own
     profile       JSONB NOT NULL DEFAULT '{}', -- address, phone, WSIB firm number... (incident report headers)
     role_permissions JSONB,                    -- what members / viewers may do; NULL = defaults (backend auth package)
+    incident_overlay JSONB,                    -- default overlays on incident videos (box, status...); NULL = built-in
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -96,7 +97,8 @@ CREATE TABLE sessions (                        -- signed-in browsers (the cookie
     last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     ip          TEXT,
     user_agent  TEXT,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    visitor_name TEXT                           -- demo visitor's optional name (NULL = not asked, '' = skipped)
 );
 CREATE UNIQUE INDEX idx_sessions_token ON sessions (token_hash);
 CREATE INDEX idx_sessions_user ON sessions (user_id);
@@ -507,7 +509,8 @@ CREATE TABLE account_emails (
     via        TEXT NOT NULL,
     status     TEXT NOT NULL,
     error      TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    preview_html TEXT                          -- the email without its personal link (Emails sent preview)
 );
 CREATE INDEX idx_account_emails_tenant ON account_emails (tenant_id, created_at DESC);
 

@@ -3,8 +3,9 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { useUiStore, type LiveLayout, type Theme } from '../../store/uiStore';
 import { TimeZoneSettings } from './TimeZoneSettings';
+import { ModelTrainingSettings } from './ModelTrainingSettings';
+import { ServerRows } from './ServerStatus';
 import { OrgProfileSettings } from './OrgProfileSettings';
-import { EmailsSentSettings } from './EmailsSentSettings';
 import { GatewaysSettings } from './GatewaysSettings';
 import { PERM, useAuth } from '../auth/AuthContext';
 import { api } from '../../services/api/fallguard';
@@ -77,7 +78,7 @@ export default function SettingsPage() {
           <h2 className="section-title">System status</h2>
           {error && <p className="notice notice--error">{error}</p>}
           {health && (
-            <table className="table">
+            <table className="table table--status">
               <tbody>
                 {Object.entries(SERVICES).map(([key, label]) => {
                   const s = health.services[key];
@@ -89,6 +90,7 @@ export default function SettingsPage() {
                     </tr>
                   );
                 })}
+                <ServerRows r={health.resources} />
               </tbody>
             </table>
           )}
@@ -96,13 +98,14 @@ export default function SettingsPage() {
 
         <OrgProfileSettings editable={manage} />
 
+        <ModelTrainingSettings manage={manage} />
+
         <fieldset disabled={!manage} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
           <TimeZoneSettings />
         </fieldset>
 
         {manage && me?.org.has_gateway && <GatewaysSettings />}
 
-        {can(PERM.viewEmails) && <EmailsSentSettings />}
 
         <section className="card" style={{ padding: 20 }}>
           <h2 className="section-title">Appearance</h2>

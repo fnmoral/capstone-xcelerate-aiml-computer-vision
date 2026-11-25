@@ -55,6 +55,9 @@
   .rep-print dt { font-size: 8.5pt; color: #444; }
   .rep-print dd { margin: 0; white-space: pre-wrap; border-bottom: 1px solid #ccc; min-height: 1.3em; }
   .rep-print__snap { max-width: 60%; max-height: 70mm; }
+  /* Several reports printed from Reports & Export: only them, each on its own pages. */
+  body.printing-batch > :not(.rep-print-batch) { display: none !important; }
+  .rep-print-batch .rep-print + .rep-print { break-before: page; }
   .rep-print__foot { margin-top: 14px; font-size: 9pt; border-top: 1px solid #000; padding-top: 6px; }
 }
 

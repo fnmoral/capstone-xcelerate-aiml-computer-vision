@@ -1,4 +1,5 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { MessagePreview } from '../../components/ui/MessagePreview';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Icon } from '../../components/ui/Icon';
@@ -107,10 +108,13 @@ function Recipients({ kind, list, set, members, matrix }: {
                     {r.user_id && <div className="muted" style={{ fontSize: 12 }}>Member</div>}</td>
                   {SEVERITIES.map((s) => (
                     <td key={s} className="notif-matrix__cell">
-                      <input type="checkbox" checked={r.severities.includes(s)} disabled={!matrix[s]}
-                        title={matrix[s] ? undefined : `${isEmail ? 'Email' : 'SMS'} is off for ${SEV_LABEL[s]} (table above)`}
-                        aria-label={`${r.name || r.address}: ${SEV_LABEL[s]}`}
-                        onChange={(e) => update(i, { severities: e.target.checked ? [...r.severities, s] : r.severities.filter((x) => x !== s) })} />
+                      {/* Off for this severity: a tip (1 s, or tap) says where to switch it on. */}
+                      <span className="tip" tabIndex={matrix[s] ? undefined : 0}
+                        data-tip={matrix[s] ? undefined : `${isEmail ? 'Email' : 'SMS'} is off for ${SEV_LABEL[s]}: turn it on in "When to notify" above`}>
+                        <input type="checkbox" checked={r.severities.includes(s)} disabled={!matrix[s]}
+                          aria-label={`${r.name || r.address}: ${SEV_LABEL[s]}${matrix[s] ? '' : ` (off: turn on ${isEmail ? 'email' : 'SMS'} for ${SEV_LABEL[s]} in When to notify)`}`}
+                          onChange={(e) => update(i, { severities: e.target.checked ? [...r.severities, s] : r.severities.filter((x) => x !== s) })} />
+                      </span>
                     </td>
                   ))}
                   <td><label className="switch"><input type="checkbox" checked={r.enabled} onChange={(e) => update(i, { enabled: e.target.checked })}
@@ -390,19 +394,27 @@ const DELIVERY_TONE: Record<Delivery['status'], string> = { sent: 'resolved', lo
 function DeliveryHistory() {
   const { data, error } = usePolling(() => notifications.deliveries(), 15000);
   const list = data?.deliveries ?? [];
+  const [open, setOpen] = useState<Delivery | null>(null);
+  const load = useCallback(async () => {
+    const r = await notifications.deliveryPreview(open!.id);
+    return r.html ? { html: r.html } : { text: r.body };
+  }, [open]);
+  const about = (d: Delivery) => (d.event.startsWith('alert:') ? `Alert (${d.event.slice(6)})` : d.event.replace('_', ' '));
   return (
     <section className="card notif-section">
       <h2 className="section-title">Recent messages</h2>
       {error && <p className="notice notice--error">{error}</p>}
       {list.length === 0 ? <p className="muted">No email or SMS sent yet.</p> : (
         <div className="table-wrap">
-          <table className="table">
+          <table className="table table--stack">
             <thead><tr><th>When</th><th>About</th><th>Channel</th><th>To</th><th>Status</th></tr></thead>
             <tbody>
               {list.map((d) => (
-                <tr key={d.id}>
+                <tr key={d.id} className="is-link" tabIndex={0} onClick={() => setOpen(d)}
+                  onKeyDown={(k) => (k.key === 'Enter' || k.key === ' ') && (k.preventDefault(), setOpen(d))}
+                  aria-label={`Preview the ${d.channel === 'email' ? 'email' : 'text message'} to ${d.recipient}`}>
                   <td className="muted">{formatTime(d.created_at)}</td>
-                  <td>{d.event.startsWith('alert:') ? `Alert (${d.event.slice(6)})` : d.event.replace('_', ' ')}
+                  <td>{about(d)}
                     {d.subject && <div className="muted" style={{ fontSize: 12 }}>{d.subject}</div>}</td>
                   <td>{d.channel === 'email' ? 'Email' : 'SMS'}</td>
                   <td className="mono">{d.recipient}</td>
@@ -413,6 +425,17 @@ function DeliveryHistory() {
             </tbody>
           </table>
         </div>
+      )}
+      {open && (
+        <MessagePreview title={open.subject || (open.channel === 'sms' ? 'Text message' : 'Email')} sms={open.channel === 'sms'}
+          load={load} onClose={() => setOpen(null)}
+          meta={[
+            { label: 'To', value: open.recipient },
+            { label: 'About', value: about(open) },
+            { label: 'Channel', value: open.channel === 'email' ? 'Email' : 'SMS' },
+            { label: 'Sent', value: formatTime(open.sent_at ?? open.created_at) },
+            { label: 'Status', value: <StatusBadge value={DELIVERY_TONE[open.status]} label={open.status === 'logged' ? 'Not sent (off)' : open.status[0].toUpperCase() + open.status.slice(1)} /> },
+          ]} />
       )}
     </section>
   );

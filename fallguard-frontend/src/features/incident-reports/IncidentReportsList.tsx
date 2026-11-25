@@ -7,6 +7,7 @@ import { usePolling } from '../../services/api/usePolling';
 import { formatTime } from '../../lib/format';
 import { PERM, useAuth } from '../auth/AuthContext';
 import { formById } from './forms';
+import { useReportPrinter } from './PrintView';
 
 const csvCell = (s: string) => {
   const v = /^[=+\-@\t\r]/.test(s) ? "'" + s : s; // keep spreadsheets from running text as a formula
@@ -60,7 +61,7 @@ function RecentlyDeleted({ onRestored }: { onRestored: () => unknown }) {
       {msg && <p className={`notice${msg.ok ? '' : ' notice--error'}`} role="status">{msg.text}</p>}
       {reports.length > 0 && (
         <div className="table-wrap">
-          <table className="table">
+          <table className="table table--stack">
             <thead><tr><th>Report</th><th>Incident</th><th>Deleted</th><th>Removed for good</th><th /></tr></thead>
             <tbody>
               {reports.map((r) => (
@@ -82,29 +83,49 @@ function RecentlyDeleted({ onRestored }: { onRestored: () => unknown }) {
   );
 }
 
-/** Every incident report of the organization (Reports & Export page). */
-export function IncidentReportsList() {
+/**
+ * The organization's incident reports (Reports & Export page). With incidentIds, only the
+ * reports of those fall events: the page's filters pick events by when the fall happened,
+ * not by when the report was written. null = the events are still loading.
+ */
+export function IncidentReportsList({ incidentIds }: { incidentIds?: Set<string> | null }) {
   const { can } = useAuth();
   const { data, error, reload } = usePolling(() => incidentReports.list(), 30000);
-  const reports = data?.reports ?? [];
+  const printer = useReportPrinter(can(PERM.incidentReports));
+  const all = data?.reports ?? [];
+  const reports = incidentIds ? all.filter((r) => incidentIds.has(r.incident_id)) : all;
   const osha = reports.filter((r) => r.form === 'osha_301').length;
+  const hidden = all.length - reports.length;
 
   return (
     <section className="card rp-section">
       <div className="rp-head">
         <h2 className="section-title">Incident report forms</h2>
-        {osha > 0 && (
-          <button className="btn" onClick={() => downloadOsha300(reports)}>
-            <Icon name="download" size={16} /> OSHA 300 Log (CSV)
-          </button>
-        )}
+        <div className="row">
+          {osha > 0 && (
+            <button className="btn" onClick={() => downloadOsha300(reports)}>
+              <Icon name="download" size={16} /> OSHA 300 Log (CSV)
+            </button>
+          )}
+          {reports.length > 0 && (
+            <button className="btn btn--primary" disabled={printer.loading} onClick={() => void printer.print(reports)}
+              title="Opens the print dialog with every report listed below, each on its own pages. Choose Save as PDF to download them.">
+              <Icon name="download" size={16} /> {printer.loading ? 'Preparing…' : `Print / PDF all (${reports.length})`}
+            </button>
+          )}
+        </div>
       </div>
-      <p className="muted rp-note">WSIB Form 7, OHSA notices, OSHA 301 and internal reports. Start one from a fall event's page; FallGuard fills in what it recorded.</p>
+      <p className="muted rp-note">
+        WSIB Form 7, OHSA notices, OSHA 301 and internal reports. Start one from a fall event's page; FallGuard fills in what it recorded.
+        {incidentIds !== undefined && ' Shows the reports of the fall events that match the filters above (by when the fall happened).'}
+      </p>
       {error && <p className="notice notice--error">{error}</p>}
-      {reports.length === 0 ? <p className="muted">No incident reports yet.</p> : (
+      {(!data && !error) || incidentIds === null ? <p className="muted">Loading…</p> : reports.length === 0 ? (
+        <p className="muted">{hidden > 0 ? `No reports for these fall events (${hidden} for other events: widen the time window or clear a filter).` : 'No incident reports yet.'}</p>
+      ) : (
         <div className="table-wrap">
-          <table className="table">
-            <thead><tr><th>Report</th><th>Incident</th><th>Status</th><th>Started by</th><th>Updated</th></tr></thead>
+          <table className="table table--stack">
+            <thead><tr><th>Report</th><th>Fall event</th><th>Status</th><th>Started by</th><th>Updated</th><th /></tr></thead>
             <tbody>
               {reports.map((r) => (
                 <tr key={r.id}>
@@ -115,13 +136,21 @@ export function IncidentReportsList() {
                   <td><StatusBadge value={r.status === 'final' ? 'resolved' : 'acknowledged'} label={r.status === 'final' ? 'Final' : 'Draft'} /></td>
                   <td className="muted">{r.created_by ?? '—'}</td>
                   <td className="muted">{formatTime(r.updated_at)}</td>
+                  <td>
+                    <button className="btn btn--sm" disabled={printer.loading} onClick={() => void printer.print([r])}
+                      aria-label={`Print or save as PDF: ${formById(r.form)?.short ?? r.form}, ${r.title}`}>
+                      Print / PDF
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          {hidden > 0 && <p className="muted rp-sub">{hidden} other report(s) belong to fall events outside these filters.</p>}
         </div>
       )}
       {can(PERM.incidentReports) && <RecentlyDeleted onRestored={reload} />}
+      {printer.sheets}
     </section>
   );
 }

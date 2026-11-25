@@ -159,3 +159,17 @@ def test_sink_validation_and_env_url(tmp_path, monkeypatch):
     monkeypatch.setenv("ML_DATABASE_URL", "postgresql://env/db")
     assert write(tmp_path, "output: {sinks: [postgres]}\ndatabase: {url: postgresql://file/db}\n").database_url \
         == "postgresql://env/db"  # the environment wins: it's where the password should live
+
+
+def test_tracker_file_next_to_config_is_found(tmp_path):
+    (tmp_path / "trackers").mkdir()
+    (tmp_path / "trackers" / "mine.yaml").write_text("tracker_type: bytetrack\n", encoding="utf-8")
+    cfg = write(tmp_path, "inference: {tracker: trackers/mine.yaml}\n")
+    assert Path(cfg.inference.tracker) == tmp_path / "trackers" / "mine.yaml"
+    assert write(tmp_path, "inference: {tracker: botsort.yaml}\n").inference.tracker == "botsort.yaml"  # built-in name
+
+
+def test_shipped_tracker_remembers_lost_people_about_9_s():
+    cfg = config.load(Path(__file__).resolve().parents[2] / "config.yaml")
+    assert Path(cfg.inference.tracker).is_file()
+    assert "track_buffer: 90" in Path(cfg.inference.tracker).read_text(encoding="utf-8")

@@ -60,6 +60,35 @@ def parse_device(value: str | int) -> str | int:
     return int(value) if str(value).isdigit() else value
 
 
+DUPLICATE_OVERLAP = 0.8  # a box this much inside a stronger one is the same person
+
+
+def drop_duplicates(xyxy: np.ndarray, confs: np.ndarray, indexes: list[int]) -> list[int]:
+    """The indexes without duplicate boxes of one person: a box lying at least
+    DUPLICATE_OVERLAP inside a stronger box (or a stronger box inside it) is dropped.
+
+    The pose model sometimes adds a partial box (upper body only) or a box spanning two people
+    lying close together; each would get its own track and open a second incident for the same
+    person. Two different people overlap far less than this (e.g. someone standing over a person
+    on the floor).
+    """
+    kept: list[int] = []
+    for i in sorted(indexes, key=lambda k: -float(confs[k])):
+        x1, y1, x2, y2 = xyxy[i]
+        area = max(x2 - x1, 0.0) * max(y2 - y1, 0.0)
+        duplicate = False
+        for j in kept:
+            a1, b1, a2, b2 = xyxy[j]
+            inter = max(min(x2, a2) - max(x1, a1), 0.0) * max(min(y2, b2) - max(y1, b1), 0.0)
+            smaller = min(area, max(a2 - a1, 0.0) * max(b2 - b1, 0.0))
+            if smaller > 0 and inter / smaller >= DUPLICATE_OVERLAP:
+                duplicate = True
+                break
+        if not duplicate:
+            kept.append(i)
+    return sorted(kept)
+
+
 @dataclass(slots=True)
 class Person:
     track_id: int
@@ -124,8 +153,8 @@ class PoseTracker:
         xyxy = boxes.xyxy.cpu().numpy()
         confs = boxes.conf.cpu().numpy()
         kpts = result.keypoints.data.cpu().numpy()
-        return [Person(int(ids[i]), xyxy[i], float(confs[i]), kpts[i])
-                for i in self._keep(ids, confs)]
+        keep = drop_duplicates(xyxy, confs, self._keep(ids, confs))
+        return [Person(int(ids[i]), xyxy[i], float(confs[i]), kpts[i]) for i in keep]
 
     def _keep(self, ids: np.ndarray, confs: np.ndarray) -> list[int]:
         """Indexes of the people to report: those whose track has reached `conf` at least once."""

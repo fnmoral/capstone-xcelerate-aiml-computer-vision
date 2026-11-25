@@ -21,6 +21,10 @@
 .cams-order__handle { color: var(--text-muted); font-size: 16px; }
 .cams-order__num { width: 18px; color: var(--text-muted); font-variant-numeric: tabular-nums; font-size: 13px; }
 .cams-order__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+@media (max-width: 640px) {
+  .cams-order__item { flex-wrap: wrap; row-gap: 6px; }
+  .cams-order__name { flex-basis: calc(100% - 60px); }
+}
 .cams-order__arrows { display: flex; gap: 4px; }
 
 /* Switch a paused camera in when every streaming slot is used */
@@ -49,3 +53,30 @@
 
 /* Which gateway the cameras go through (Settings -> Gateways) */
 .cams-gateway { margin: -8px 0 16px; font-size: 14px; }
+
+/* Zone dropdown (ZonePicker.tsx): looks like the other selects, opens a floating list */
+.zone-field__anchor { position: relative; }
+.zone-field__btn { display: flex; align-items: center; width: 100%; min-height: 38px; padding: 8px 32px 8px 10px; text-align: left;
+  font: inherit; font-weight: 400; color: var(--text); background: var(--bg) var(--chevron) no-repeat right 10px center / 12px 12px;
+  border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+.zone-field__btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zone-field__btn--empty { color: var(--text-muted); }
+.zone-field__btn:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.zone-field__btn:focus-visible, .zone-field__btn[aria-expanded="true"] { outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.zone-field__panel { position: absolute; z-index: 30; left: 0; right: 0; top: 100%; margin-top: 4px; padding: 5px;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: 0 12px 28px rgb(0 0 0 / .16);
+  animation: zone-in .12s ease-out; }
+@keyframes zone-in { from { opacity: 0; transform: translateY(-3px); } }
+.zone-field__list { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow-y: auto; }
+.zone-field__option { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-radius: 8px;
+  font-size: 14px; font-weight: 400; color: var(--text); cursor: pointer; }
+.zone-field__option.is-active { background: var(--surface-2); }
+.zone-field__option[aria-selected="true"] { font-weight: 600; color: var(--accent); }
+.zone-field__option--none { color: var(--text-muted); }
+.zone-field__option--new { margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0 0 8px 8px; color: var(--accent); font-weight: 500; }
+.zone-field__new { display: flex; gap: 6px; padding: 4px; }
+.zone-field__new input { flex: 1; min-width: 0; font: inherit; font-weight: 400; color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; }
+.zone-field__new input:focus-visible { outline: none; border-color: var(--accent); }
+@media (prefers-reduced-motion: reduce) { .zone-field__panel { animation: none; } .zone-field__btn { transition: none; } }

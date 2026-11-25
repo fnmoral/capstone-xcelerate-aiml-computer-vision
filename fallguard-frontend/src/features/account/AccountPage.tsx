@@ -4,6 +4,7 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { accounts } from '../../services/api/accounts';
 import { formatTime } from '../../lib/format';
 import { useAuth } from '../auth/AuthContext';
+import { VisitorNameDialog } from '../auth/VisitorName';
 import { ROLE_INFO } from '../members/MembersPage';
 
 type Msg = { ok: boolean; text: string } | null;
@@ -87,21 +88,40 @@ function Password() {
   );
 }
 
+/** Temporary access visitors: until when, their optional name, and Leave. */
+function VisitorAccount() {
+  const { me, signOut, refresh } = useAuth();
+  const navigate = useNavigate();
+  const [editing, setEditing] = useState(false);
+  if (!me) return null;
+  const respond = me.permissions.includes('alerts.manage');
+  return (
+    <>
+      <PageHeader title="Temporary access" description={`${respond ? 'Access' : 'View-only access'} to ${me.org.name}`} />
+      <div className="stack" style={{ maxWidth: 720 }}>
+        <p className="notice" style={{ margin: 0 }}>You're looking around with a temporary access link, without an account. It works until{' '}
+          {me.user.access_until ? new Date(me.user.access_until).toLocaleString() : 'it is turned off'}.</p>
+        <section className="card" style={{ padding: 20 }}>
+          <h2 className="section-title">Your name</h2>
+          <p style={{ margin: 0 }}>{me.user.visitor_name ? <strong>{me.user.visitor_name}</strong> : <span className="muted">Not given: you appear as a demo visitor.</span>}</p>
+          <p className="muted" style={{ margin: '4px 0 12px' }}>
+            {respond ? 'Shown in the activity log when you respond to an alert or add a note.' : 'Shown in the activity log next to what you do.'}
+          </p>
+          <button className="btn btn--sm" onClick={() => setEditing(true)}>{me.user.visitor_name ? 'Change' : 'Add my name'}</button>
+        </section>
+        <div><button className="btn" onClick={async () => { await signOut(); navigate('/login', { replace: true }); }}>Leave</button></div>
+      </div>
+      {editing && <VisitorNameDialog current={me.user.visitor_name || ''} onDone={() => { setEditing(false); void refresh(); }} />}
+    </>
+  );
+}
+
 export default function AccountPage() {
   const { me, signOut } = useAuth();
   const navigate = useNavigate();
   const [msg, setMsg] = useState<Msg>(null);
   if (!me) return null;
-  if (me.user.is_guest) {
-    return (
-      <>
-        <PageHeader title="Temporary access" description={`View-only access to ${me.org.name}`} />
-        <p className="notice">You're looking around with a temporary access link, without an account. It works until{' '}
-          {me.user.access_until ? new Date(me.user.access_until).toLocaleString() : 'it is turned off'}.</p>
-        <button className="btn" onClick={async () => { await signOut(); navigate('/login', { replace: true }); }}>Leave</button>
-      </>
-    );
-  }
+  if (me.user.is_guest) return <VisitorAccount />;
 
   return (
     <>

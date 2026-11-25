@@ -1,5 +1,5 @@
 import type { LiveOverlay } from "../../../store/uiStore";
-import type { DetectionsMessage } from "./protocol";
+import type { DetectedPerson, DetectionsMessage } from "./protocol";
 
 const LABEL_COLORS: Record<string, string> = {
   upright: "#22c55e",
@@ -18,7 +18,7 @@ const SKELETON: [number, number][] = [
 const MIN_POINT_CONF = 0.3;
 const GRID_DIVISIONS = 8;
 
-interface Rect {
+export interface Rect {
   x: number;
   y: number;
   w: number;
@@ -39,7 +39,7 @@ export function coverRect(
 }
 
 /** Dashed lines dividing the picture into GRID_DIVISIONS x GRID_DIVISIONS cells. */
-function drawGrid(ctx: CanvasRenderingContext2D, area: Rect, pixelRatio: number): void {
+export function drawGrid(ctx: CanvasRenderingContext2D, area: Rect, pixelRatio: number): void {
   ctx.save();
   ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
   ctx.lineWidth = pixelRatio;
@@ -72,7 +72,18 @@ export function drawFrame(
   ctx.drawImage(image, area.x, area.y, area.w, area.h);
   if (overlay.grid) drawGrid(ctx, area, pixelRatio);
   if (!detections) return;
+  drawPeople(ctx, area, detections.people, labelText, pixelRatio, overlay);
+}
 
+/** Draws each person's chosen overlays; boxes and points are 0..1 of the picture in `area`. */
+export function drawPeople(
+  ctx: CanvasRenderingContext2D,
+  area: Rect,
+  people: DetectedPerson[],
+  labelText: (label: string) => string,
+  pixelRatio: number,
+  overlay: LiveOverlay,
+): void {
   const fontPx = Math.round(12 * pixelRatio);
   const line = 2 * pixelRatio;
   ctx.font = `600 ${fontPx}px system-ui, sans-serif`;
@@ -80,7 +91,7 @@ export function drawFrame(
   const px = (x: number) => area.x + x * area.w;
   const py = (y: number) => area.y + y * area.h;
 
-  for (const person of detections.people) {
+  for (const person of people) {
     const [x1, y1, x2, y2] = person.box;
     const x = px(x1);
     const y = py(y1);

@@ -437,7 +437,7 @@ export function DemoPage() {
   }
   return (
     <AuthCard title={info ? info.org_name : 'Opening…'}
-      subtitle={info ? <>View-only access until {new Date(info.expires_at).toLocaleString()}. No account needed.</> : undefined}>
+      subtitle={info ? <>Temporary access until {new Date(info.expires_at).toLocaleString()}. No account needed.</> : undefined}>
       {me && info && !busy ? (
         <>
           <p className="notice">You're signed in as {me.user.email}. Continuing signs you out of your account in this browser.</p>

@@ -82,8 +82,8 @@ inference:
   track_conf: 0.1            # ...and then stays tracked down to this (people lying down score lower)
   imgsz: 640
   target_fps: 10             # frames per second sent to the model, per camera
-  tracker: bytetrack.yaml
- 
+  tracker: trackers/bytetrack_fallguard.yaml   # ByteTrack remembering lost people ~9 s (one incident per person)
+
 fall:
   min_keypoint_conf: 0.3
   classifier: rules          # rules (picture angles) or learned (trained model, see learned_model)
@@ -97,8 +97,10 @@ fall:
   confirm_seconds: 3         # must stay down this long to open an incident
   confirm_ratio: 0.8         # ...with at least this share of those frames showing them down
   recover_seconds: 3         # must stay up this long to close it
-  handoff_seconds: 2         # a new tracker ID where someone was just lost carries on their fall
-  lost_track_seconds: 10
+  handoff_seconds: 5         # a new tracker ID where someone was just lost carries on their fall (and recovery)
+  handoff_radius: 0.75       # ...if it appears this close (x the lost person's longest box side)
+  handoff_incident_radius: 1.25  # ...or this close to a lost person with an open incident (matched first)
+  lost_track_seconds: 10     # not seen this long: forgotten; a fall last seen at the picture's edge = unresolved (out of view)
   high_after_seconds: 60
   critical_after_seconds: 300   # 5min=300 Seconds; if the person is still down after this long, mark the incident as critical
   merge_window_seconds: 10   # zones: falls on different cameras of a zone starting this close together are one incident

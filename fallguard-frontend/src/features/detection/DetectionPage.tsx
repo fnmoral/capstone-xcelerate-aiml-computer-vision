@@ -24,7 +24,7 @@ const TIMINGS: { key: string; label: string; help: string }[] = [
   { key: 'high_after_seconds', label: 'Severity high after', help: 'Still down after this long' },
   { key: 'critical_after_seconds', label: 'Severity critical after', help: 'Still down after this long' },
   { key: 'handoff_seconds', label: 'Same person if renumbered within', help: 'A new tracker ID where someone was just lost carries on their fall' },
-  { key: 'lost_track_seconds', label: 'Out of view for', help: 'Then the incident is "unresolved": someone should check' },
+  { key: 'lost_track_seconds', label: 'Out of view for', help: 'Then they are forgotten. A fall last seen at the edge of the picture becomes "unresolved" (out of view); one hidden inside the picture stays open' },
   { key: 'merge_window_seconds', label: 'Zone merge window', help: 'Falls seen by several cameras of a zone within this time are one alert' },
 ];
 

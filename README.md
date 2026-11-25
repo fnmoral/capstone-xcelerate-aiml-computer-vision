@@ -63,9 +63,9 @@ Sources: [Occupiers' Liability Act](https://www.ontario.ca/laws/statute/90o02) �
 |---|---|
 | **Live View** | See all your cameras at once. Every person in view has a box around them and a label: standing, falling or lying down. |
 | **Fall alerts** | When someone falls and stays down for a few seconds, the app sounds an alarm, shows "1 person down" at the top, and can send email and text messages. |
-| **Fall Events** | A list of every fall: when, where, which cameras saw it, how long the person was down, a photo and a video clip. Staff can acknowledge, resolve or mark a false alarm, and add notes. |
+| **Fall Events** | A list of every fall: when, where, which cameras saw it, which person (the detector's number, e.g. #6, to tell two people apart), how long the person was down, a photo and a video of the whole fall (from 15 seconds before, until 10 seconds after they are back up). Staff can acknowledge, resolve or mark a false alarm, and add notes. |
 | **Analytics** | Charts of falls over time, by camera and by zone. |
-| **Reports & Export** | Download falls and the activity log as spreadsheets, and see every incident report. |
+| **Reports & Export** | Download falls and the activity log as spreadsheets, and print or save incident reports as PDF. |
 | **Incident reports** | Fill in a WSIB Form 7, an Ontario Ministry of Labour notice, an OSHA 301 or an internal report. FallGuard fills in everything it already knows. |
 | **Notifications** | Choose who gets told about falls, by app, email or text message, depending on how serious the fall is. |
 | **Members & Roles** | Invite your team and decide what each person is allowed to do. |
@@ -107,8 +107,9 @@ Do these once, in this order. Each one takes a few minutes.
    WSIB firm number. These appear on incident reports.
 2. **Settings → Time zone**: so every time in the app matches your clock.
    **Settings → Appearance** also sets the organization's default look (light, dark, or the
-   same as each device). Everyone sees it until they pick their own; the sign-in page has a
-   light / dark button in the top right corner too.
+   same as each device). Everyone sees it until they pick their own with the light / dark
+   button at the top of every page (left of the bell; the sign-in page has one in the top right
+   corner too).
 3. **Cameras → Add camera**: the camera's address (it starts with `rtsp://`), plus its
    username and password if it has one. Give each camera a location ("2nd floor hallway")
    and a zone (cameras that look at the same area).
@@ -197,10 +198,14 @@ For a demo you can let people in **without an account**:
    how long it works: 12 hours, 1, 3, 7, 14 or 30 days.
 2. Copy the link, or let people **scan the QR code** with their phone camera (Download QR saves it
    for a slide or a printout). For safety it is shown only once; if you lose it, make a new one.
-3. Anyone who opens it goes straight in, **view-only**: they can watch the cameras and look at fall
-   events, analytics, reports and logs. They can't change anything, can't respond to alerts and
-   can't see the members list.
-4. When the time is up, everyone using the link is out. **End now** stops it early. The list shows
+3. Anyone who opens it goes straight in: they can watch the cameras and look at fall events,
+   analytics, reports and logs. If **viewers** may respond to alerts (Members & Roles), visitors can
+   too. Visitors never change settings, cameras or notifications, write incident reports or see the
+   members list.
+4. The first time, visitors are asked for their name (optional). What they do shows in the activity
+   log under that name, for example "Sam (visitor)", or as "Demo visitor Demo day" without one.
+   They can change it from the account menu.
+5. When the time is up, everyone using the link is out. **End now** stops it early. The list shows
    how many times each link was opened.
 
 Only admins can create temporary access links.
@@ -243,9 +248,10 @@ the phone off. Each phone has its own password.
 
 ## Emails sent
 
-**Settings → Emails sent** lists the invitations, email checks and password resets FallGuard
-sent, and whether the email server accepted them. If someone didn't get an email, check their
-spam folder. Admins see it; they can let members or viewers see it on **Members & Roles**.
+**Members & Roles → Emails sent** lists the invitations, email checks and password resets
+FallGuard sent, and whether the email server accepted them. Click one to see the email as it was
+sent (without its personal sign-in link, which is never kept). If someone didn't get an email,
+check their spam folder. Admins see it; they can let members or viewers see it too.
 
 ## Notifications
 
@@ -299,13 +305,21 @@ in the server log, for testing).
   and phone number. Click **Send test SMS**.
 - Passwords and tokens are stored encrypted and are never shown again.
 - **Recent messages** at the bottom shows every email and text sent, and whether it worked.
+  Click one to see the message as it was sent.
 
 ## When a fall happens
 
 1. The alarm sounds, the bell shows the alert, and "1 person down" appears at the top. The
    people you chose get an email or text.
 2. Open the alert (from the bell or **Fall Events**). You see the photo, the video, which cameras
-   saw it and how long the person has been down.
+   saw it and how long the person has been down. **Overlays** (above the video) draw this
+   incident's person: box, status, person number, confidence, skeleton... each on or off, so you
+   can tell who the event is about when several people are in the picture (admins set the
+   organization's default there). Under the video, **What the detector saw** colors each moment
+   (upright, falling, lying): click a color to play the video from there.
+   One fall = one event per person: if the camera
+   loses sight of someone on the floor (for example behind another person), the event stays open
+   and its severity keeps rising until they are seen getting up.
 3. **Acknowledge** it so your team knows someone is on it.
 4. When it's handled, **Resolve** it, or mark it a **False alarm** if nobody fell. Both can be
    undone if clicked by mistake.
@@ -344,7 +358,9 @@ Then:
 - **Mark as final** when it's complete. It records who finalized it and when. A final report can
   be reopened if it needs changing.
 - **Print / save as PDF** for a clean copy with a signature line.
-- All reports are listed under **Reports & Export**, with a button to download the **OSHA 300 Log**.
+- All reports are listed under **Reports & Export**. The filters at the top (time window, status, place...)
+  pick them by **when the fall happened**. Print or save one report, or **all listed reports at once**
+  (each on its own pages), as PDF; download the **OSHA 300 Log**.
 
 > FallGuard's report is a completed summary to **copy into, or attach to, the official form**
 > (for example WSIB's online eForm 7). Always check every answer before you submit it.
@@ -361,6 +377,7 @@ Then:
 | Locked out after wrong passwords | Wait 15 minutes, or use "Forgot your password?". |
 | Text messages or emails don't arrive | Notifications → check the provider with **Send test**, then check **Recent messages** for the error. |
 | No sound when a fall happens | Click the bell and **Turn on alarm sound**: browsers need one click before a page may play sound. |
+| Is the server running out of space or memory? | **Settings → System status** shows memory, storage and incident videos as bars (amber from 75%, red from 90%). If storage fills up, keep videos for fewer days or add disk space; if memory stays high, use a larger server. |
 
 ---
 
@@ -381,7 +398,7 @@ browser ─► fallguard-frontend (nginx) :3000 ─► api :8000 ─► db · ga
 | `api` | `backend-module/api/` | Go (Gin + pgx) REST API: accounts, roles, incidents, alerts, cameras (via the gateway), notifications, incident reports, exports. Runs the camera monitor and the notifier in the background |
 | `db` | `backend-module/` | PostgreSQL 17 + pgvector. Tenant tables use row-level security; partitioned by month for events, alerts and logs |
 | `ml-service` | `ml-service/` | Python pose model (YOLO) + fall rules; writes incidents, alerts and predictions. See [ml-service/README.md](ml-service/README.md) |
-| `stream-hub` | `stream-hub/` | Go relay: gateway video → ml-service and browsers; records incident clips and snapshots |
+| `stream-hub` | `stream-hub/` | Go relay: gateway video → ml-service and browsers; records incident clips (the whole event, written to disk as it records; `max_s` safety cap, 1 h) and snapshots |
 | `gateway-back` | `gateway-back/` (+ `gateway-ui/`) | Go edge gateway: connects to RTSP cameras, extracts keyframes, registers itself with the API |
 | `test-camera` | root | Dev only: RTSP relay for a webcam or test video |
 
@@ -446,7 +463,10 @@ flowchart TD
   member, `.invalid` email, no password, excluded from members, sign-in and resets). Opening
   `/demo/<token>` creates a session capped at the link's end; `SessionByToken` re-checks the link
   on every request, so expiry or "End now" cuts access immediately. Visitors' permissions are the
-  viewer grants intersected with the read-only set (`auth.GuestGrants`); account self-service is
+  viewer grants intersected with the look-and-respond set (`auth.GuestGrants`: view pages plus
+  `alerts.manage`). Their optional name is per browser (`sessions.visitor_name`, NULL = not asked,
+  '' = skipped; `PUT /api/auth/visitor-name`) and becomes their display name, so the audit log
+  shows "Sam (visitor)". Account self-service is
   refused (`notGuest`). Visitor users of links ended over 30 days ago are purged hourly.
 - **CSRF**: SameSite=Lax plus a same-origin check on non-GET requests (`Origin` must match
   `Host` / `X-Forwarded-Host` or `ALLOWED_ORIGINS`). Per-IP rate limits on auth routes.
@@ -538,6 +558,21 @@ Every route, its permission and its payload: [backend-module/api/README.md](back
   session check; bind it to `127.0.0.1` in production.
 - The API connects to PostgreSQL as the table owner (row-level security is not forced); a
   restricted role is a later step.
+
+## Future improvements
+
+- **Model training opt-in (screen only so far).** Settings → *Help improve fall detection* lets an
+  admin opt in, after a confirmation that lists the main risks (privacy of the people filmed,
+  longer storage, training already done can't be undone). Today the choice is kept in that
+  browser only and nothing is collected. To build:
+  - store the choice per organization (`tenants`: opted in, by whom, when) with an API route
+    and an audit log entry, admins only;
+  - while opted in, keep each incident's clip plus its review outcome (false alarm, resolved,
+    recovered, notes) in a separate training store, outside normal clip retention;
+  - delete it after 2 years at most, or once the training run that used it is finished;
+    opting out deletes what was kept and stops collection;
+  - feed it to `ml-service/model_finetuning/` (false alarms as negatives, confirmed falls as
+    positives).
 
 ## Branding
 

@@ -7,7 +7,8 @@ from ml-service.
 
 | Route | Does |
 |---|---|
-| `GET /api/health` | Reachability and latency of database, gateway-back, stream-hub, ml-service |
+| `PUT /api/settings/incident-overlay` | Organization default overlays on incident videos, `{boxes, label, track, confidence, center, skeleton, keypoints, grid}` (true/false); `settings.manage`. Returned as `incident_overlay` by `GET /api/settings` |
+| `GET /api/health` | Reachability and latency of database, gateway-back, stream-hub, ml-service; `resources`: where the server runs (`SERVER_HOSTING`, "" = on-premises), its memory and disk (bytes used / total), the database size, and stream-hub's videos and photos (size, count, retention) for Settings → System status |
 | `GET /api/cameras` | Gateway cameras (status) + database details (name, location, zone) + live ML state (video arriving, people, active incidents) + `health` (online / paused / not_working / connecting / not_connected), `health_since`, `alert_offline`. Cameras added directly in the gateway UI are registered in the database here |
 | `POST /api/cameras` | `{name, rtsp_url, username?, password?, location?, zone?}` → added on the gateway, registered in the database with the same UUID. Credentials stay on the gateway only |
 | `PATCH /api/cameras/:id` | `{name?, location?, zone?, alert_offline?}` (database only; an empty zone clears it). `alert_offline`: notify when the camera stops working (default on) |
@@ -67,13 +68,16 @@ may do (`tenants.role_permissions`); managing members and roles stays admin-only
 | `POST /api/auth/change-password` · `/switch-org` · `/api/org/leave` | Changing the password signs out the other sessions |
 | `GET /api/auth/check` | 204 / 401: nginx `auth_request` for `/stream-hub` (live video, clips, snapshots) |
 | `GET /api/auth/config` | `{email_verification}`: whether sign-in needs a verified email (`REQUIRE_EMAIL_VERIFICATION`; false = signed in right after sign-up) |
-| `GET` · `POST /api/auth/demo/:token` | Demo access link: info (organization, label, end time) / sign in as the link's view-only visitor until it ends. 404 once expired or ended |
+| `GET` · `POST /api/auth/demo/:token` | Demo access link: info (organization, label, end time) / sign in as the link's visitor until it ends. 404 once expired or ended. Visitors get the viewer grants limited to the view pages and `alerts.manage` |
+| `PUT /api/auth/visitor-name` | Visitors only: `{name}` (optional, at most 40 characters; `""` = skipped). Their actions are logged as "<name> (visitor)". `/api/auth/me` returns it as `user.visitor_name` (absent = not asked yet) |
 | `GET` · `POST /api/org/guest-links` · `DELETE …/:id` | Admins: list / create (`{label, hours}` 1–720; the URL with its token is returned only now) / end a demo link (its visitors are signed out) |
 | `GET` · `PUT /api/org` | Organization name and profile (address, WSIB firm number…; used by incident reports) |
 | `GET /api/org/members` · `PATCH` · `DELETE /api/org/members/:id` | Members; change role / remove (signs them out). The last admin can't be demoted or removed (409) |
 | `POST /api/org/invitations` · `…/:id/resend` · `DELETE …/:id` | Invite by email with a role (7 days); the answer also has the link (`url`) so the admin can share it directly (copy / QR code) |
 | `GET` · `PUT /api/org/permissions` | Permission catalog and what members / viewers may do |
 | `GET /api/org/emails` | `emails.view` (admins by default; grantable): account emails (invitation, verification, password reset) for the organization and its members, with status `sent` / `logged` / `failed` and the error. Kept 90 days (`account_emails`) |
+| `GET /api/org/emails/:id/preview` | `emails.view`: `{html}`, the copy of an account email kept for the preview, its personal link replaced (`account_emails.preview_html`); `""` for emails sent before copies were kept |
+| `GET /api/notification-settings/deliveries/:id/preview` | Notifications permission: one sent message, `{channel, subject, body, html}` (email: the branded HTML as sent) |
 
 Organizations other than the home one have no gateway yet: adding, pausing or removing
 cameras answers 409 `no_gateway` (ml-service still serves the home tenant only).

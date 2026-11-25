@@ -129,19 +129,24 @@ func TestCleanName(t *testing.T) {
 	}
 }
 
-func TestGuestGrantsAreReadOnly(t *testing.T) {
-	// Even if an admin gave viewers write access, a demo visitor only gets to look.
-	grants := map[string][]string{RoleViewer: {ViewLive, ViewEvents, ViewMembers, ManageAlerts, ManageCameras}}
+func TestGuestGrantsAreLimited(t *testing.T) {
+	// Even if an admin gave viewers more, a demo visitor only looks and responds to alerts.
+	grants := map[string][]string{RoleViewer: {ViewLive, ViewEvents, ViewMembers, ManageAlerts, ManageCameras,
+		CreateReports, ManageNotifications, ViewEmails}}
 	g := GuestGrants(grants)
-	for _, p := range []string{ManageAlerts, ManageCameras, ViewMembers, ManageMembers} {
+	for _, p := range []string{ManageCameras, CreateReports, ManageNotifications, ViewEmails, ViewMembers, ManageMembers} {
 		if Can(RoleViewer, p, g) {
 			t.Errorf("demo visitor must not have %s", p)
 		}
 	}
-	if !Can(RoleViewer, ViewLive, g) || !Can(RoleViewer, ViewEvents, g) {
-		t.Error("demo visitor should keep the view permissions viewers have")
+	if !Can(RoleViewer, ViewLive, g) || !Can(RoleViewer, ViewEvents, g) || !Can(RoleViewer, ManageAlerts, g) {
+		t.Error("demo visitor should keep the view and respond permissions viewers have")
 	}
-	if !slices.Equal(Normalize(grants)[RoleViewer], []string{ViewLive, ViewEvents, ViewMembers, ManageAlerts, ManageCameras}) {
+	if Can(RoleViewer, ManageAlerts, GuestGrants(map[string][]string{RoleViewer: {ViewEvents}})) {
+		t.Error("demo visitor responds to alerts only when viewers may")
+	}
+	if !slices.Equal(Normalize(grants)[RoleViewer], []string{ViewLive, ViewEvents, ViewMembers, ManageAlerts, ManageCameras,
+		CreateReports, ManageNotifications, ViewEmails}) {
 		t.Error("GuestGrants must not change the organization's grants")
 	}
 }

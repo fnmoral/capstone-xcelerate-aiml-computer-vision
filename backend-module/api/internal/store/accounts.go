@@ -54,6 +54,10 @@ type User struct {
 	// Demo visitor (signed in through a demo access link): view-only until AccessUntil.
 	IsGuest     bool       `json:"is_guest,omitempty"`
 	AccessUntil *time.Time `json:"access_until,omitempty"`
+
+	// VisitorName: the name a demo visitor gave in this browser; absent = not asked yet,
+	// "" = skipped (then they appear as "Demo visitor <link label>").
+	VisitorName *string `json:"visitor_name,omitempty"`
 }
 
 // DisplayName is "First Last", or the email if the name is empty.
@@ -300,9 +304,10 @@ func (s *Store) SessionByToken(ctx context.Context, tokenHash string, ttl time.D
 	var se Session
 	var grants []byte
 	var lastSeen time.Time
+	var visitorName *string
 	err := s.pool.QueryRow(ctx, `
 		SELECT se.id::text, `+userColumns+`, se.tenant_id::text, t.name, m.role, t.role_permissions, se.expires_at, se.last_seen_at,
-		       g.expires_at
+		       g.expires_at, se.visitor_name
 		FROM sessions se
 		JOIN users u ON u.id = se.user_id AND u.is_active
 		JOIN memberships m ON m.user_id = se.user_id AND m.tenant_id = se.tenant_id
@@ -312,7 +317,7 @@ func (s *Store) SessionByToken(ctx context.Context, tokenHash string, ttl time.D
 		  AND (u.guest_link_id IS NULL OR (g.revoked_at IS NULL AND g.expires_at > now()))`, tokenHash).
 		Scan(&se.ID, &se.User.ID, &se.User.Email, &se.User.FirstName, &se.User.LastName, &se.User.Phone,
 			&se.User.EmailVerified, &se.User.LastLoginAt, &se.User.CreatedAt, &se.TenantID, &se.OrgName, &se.Role,
-			&grants, &se.ExpiresAt, &lastSeen, &se.User.AccessUntil)
+			&grants, &se.ExpiresAt, &lastSeen, &se.User.AccessUntil, &visitorName)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -323,6 +328,10 @@ func (s *Store) SessionByToken(ctx context.Context, tokenHash string, ttl time.D
 	if se.User.AccessUntil != nil { // demo visitor: read-only, whatever viewers were granted
 		se.User.IsGuest = true
 		se.Grants = auth.GuestGrants(se.Grants)
+		se.User.VisitorName = visitorName
+		if visitorName != nil && *visitorName != "" { // logged as "Sam (visitor)"
+			se.User.FirstName, se.User.LastName = *visitorName, "(visitor)"
+		}
 	}
 	if time.Until(se.ExpiresAt) < ttl/2 || time.Since(lastSeen) > time.Minute {
 		newExp := se.ExpiresAt

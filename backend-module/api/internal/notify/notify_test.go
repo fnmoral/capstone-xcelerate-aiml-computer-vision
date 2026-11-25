@@ -148,3 +148,34 @@ func TestSendTwilio(t *testing.T) {
 		t.Errorf("Twilio error should be passed on, got %v", err)
 	}
 }
+
+// A trial Twilio account refuses custom text (error 572006): the message goes out once more as
+// Twilio's predefined event notification, so the test and fall alerts still reach the phone.
+func TestTwilioTrialSendsTheTemplate(t *testing.T) {
+	var bodies []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		form, _ := url.ParseQuery(string(b))
+		bodies = append(bodies, form.Get("Body"))
+		if form.Get("Body") != TrialTemplate {
+			w.WriteHeader(400)
+			_, _ = w.Write([]byte(`{"code":572006,"message":"Invalid template name. Trial accounts can only use predefined SMS templates."}`))
+			return
+		}
+		w.WriteHeader(201)
+		_, _ = w.Write([]byte(`{"sid":"SM2"}`))
+	}))
+	defer srv.Close()
+	old := twilioBase
+	twilioBase = srv.URL
+	defer func() { twilioBase = old }()
+
+	p := SMSProvider{Type: "twilio", AccountSID: "AC123", FromNumber: "+15005550006", authToken: "tok"}
+	res, trial, err := SendSMSInfo(context.Background(), p, "+14165550123", "FallGuard: person down")
+	if err != nil || res != Sent || !trial {
+		t.Fatalf("want sent with the trial template, got %v %v %v", res, trial, err)
+	}
+	if len(bodies) != 2 || bodies[1] != TrialTemplate {
+		t.Errorf("requests: %q", bodies)
+	}
+}

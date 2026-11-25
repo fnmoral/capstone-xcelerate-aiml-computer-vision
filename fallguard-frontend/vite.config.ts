@@ -12,9 +12,12 @@ const ROOT_DIR = fileURLToPath(new URL("..", import.meta.url));
  * App version MAJOR.MINOR.PATCH, shown in the footer:
  *   MAJOR  set by the developers: the first number of "version" in package.json
  *   MINOR  number of merges (pull requests) into main
- *   PATCH  commits since the last merge into main (back to 0 after the next merge)
- * MINOR and PATCH are counted from git at build time. VITE_APP_VERSION overrides it all;
- * without git (e.g. a source zip) it is MAJOR.0.0.
+ *   PATCH  commits made after the last merge into main, on main itself or on the branch
+ *          being built (0 right after a merge; merges of main into a branch don't count)
+ * Example: v1.4.0 just after the 4th pull request is merged; one more commit on main or on
+ * the branch gives v1.4.1. Counted from git at build time against main (origin/main, else
+ * main): without either, or without git (e.g. a source zip), it is MAJOR.0.0.
+ * VITE_APP_VERSION overrides it all.
  */
 function appVersion(): string {
   if (process.env.VITE_APP_VERSION) return process.env.VITE_APP_VERSION;
@@ -28,15 +31,16 @@ function appVersion(): string {
       stdio: ["ignore", "pipe", "ignore"],
     }).trim();
   try {
-    const main =
-      ["origin/main", "main"].find((ref) => {
-        try {
-          git("rev-parse", "--verify", "--quiet", ref);
-          return true;
-        } catch {
-          return false;
-        }
-      }) ?? "HEAD";
+    // Not the branch's own history: merges of main into a branch would count as pull requests.
+    const main = ["origin/main", "main"].find((ref) => {
+      try {
+        git("rev-parse", "--verify", "--quiet", ref);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    if (!main) return `${major}.0.0`;
     const merges = git(
       "rev-list",
       "--count",
@@ -52,9 +56,11 @@ function appVersion(): string {
       "--merges",
       main,
     );
+    // Commits the last merge doesn't already contain: work done since the version changed.
     const since = git(
       "rev-list",
       "--count",
+      "--no-merges",
       lastMerge ? `${lastMerge}..HEAD` : "HEAD",
     );
     return `${major}.${merges}.${since}`;

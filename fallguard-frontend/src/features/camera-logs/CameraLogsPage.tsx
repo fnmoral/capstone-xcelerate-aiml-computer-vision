@@ -63,7 +63,7 @@ export default function CameraLogsPage() {
         <h2 className="section-title">Right now</h2>
         {cams.error && <p className="notice notice--error">{cams.error}</p>}
         <div className="table-wrap">
-          <table className="table">
+          <table className="table cl-table cl-table--now">
             <thead>
               <tr><th>Camera</th><th>Status</th><th>Since</th><th className="num">For</th><th>Alert if not working</th><th /></tr>
             </thead>
@@ -104,7 +104,7 @@ export default function CameraLogsPage() {
             body="Camera changes appear here: added, paused, resumed, stopped working, back online, removed." />
         ) : (
           <div className="table-wrap">
-            <table className="table">
+            <table className="table cl-table cl-table--log">
               <thead><tr><th>Time</th><th>Camera</th><th>Status</th><th>What happened</th><th>By</th></tr></thead>
               <tbody>{entries.map((e, i) => <LogRow key={e.at + i} e={e} />)}</tbody>
             </table>

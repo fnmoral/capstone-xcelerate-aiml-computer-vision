@@ -233,11 +233,15 @@ func (s *Server) saveSMSProvider(c *gin.Context) {
 // sampleValues fills templates for previews and tests.
 func (s *Server) sampleValues(c *gin.Context) map[string]string {
 	se := session(c)
-	now := time.Now()
+	zone := ""
+	if st, err := s.db.Settings(c.Request.Context()); err == nil && st.Timezone != nil {
+		zone = *st.Timezone
+	}
+	now := time.Now().In(s.messageZone(zone))
 	return map[string]string{
 		"org": se.OrgName, "severity": "high", "severity_upper": "HIGH", "camera": "CAM-01 Hallway",
-		"location": "2nd floor hallway", "zone": "East wing", "time": now.Format("Mon Jan 2 2006, 15:04 MST"),
-		"time_short": now.Format("15:04"), "status": "open", "summary": "Person lying on the floor (confidence 0.91)",
+		"location": "2nd floor hallway", "zone": "East wing", "time": now.Format(messageTime),
+		"time_short": now.Format(messageTimeShort), "status": "open", "summary": "Person lying on the floor (confidence 0.91)",
 		"duration": "1 min 20 s", "actor": se.User.DisplayName(), "link": s.appURL(c) + "/events/sample", "incident_id": "sample",
 	}
 }
@@ -318,11 +322,17 @@ func (s *Server) testSMS(c *gin.Context) {
 		to = *session(c).User.Phone
 	}
 	body := "FallGuard test SMS for " + session(c).OrgName + ". SMS notifications work."
-	res, sendErr := notify.SendSMS(ctx, p, to, body)
-	s.logTest(c, "sms", to, "", body, res, sendErr)
+	res, trial, sendErr := notify.SendSMSInfo(ctx, p, to, body)
+	note := ""
+	if trial {
+		body = notify.TrialTemplate
+		note = " This is a Twilio trial account, which can't send FallGuard's own text: Twilio sent its " +
+			"predefined event notification instead. Fall alerts go out the same way until the Twilio account is upgraded."
+	}
+	s.logTest(c, "sms", to, "", body, res, sendErr, note)
 }
 
-func (s *Server) logTest(c *gin.Context, channel, to, subject, body string, res notify.Result, sendErr error) {
+func (s *Server) logTest(c *gin.Context, channel, to, subject, body string, res notify.Result, sendErr error, extra ...string) {
 	status, msg := string(res), ""
 	var errText *string
 	if sendErr != nil {
@@ -340,7 +350,7 @@ func (s *Server) logTest(c *gin.Context, channel, to, subject, body string, res 
 	if res == notify.Logged {
 		note = "No provider is set up, so the message was written to the server log instead of being sent (to " + to + ")."
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true, "result": res, "message": note})
+	c.JSON(http.StatusOK, gin.H{"ok": true, "result": res, "message": note + strings.Join(extra, "")})
 }
 
 func (s *Server) previewTemplate(c *gin.Context) {
@@ -369,6 +379,28 @@ func (s *Server) notificationDeliveries(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"deliveries": list})
+}
+
+// deliveryPreview shows one sent message as the recipient got it: the email in its branded
+// layout (html), or the text of an SMS.
+func (s *Server) deliveryPreview(c *gin.Context) {
+	list, err := s.db.Deliveries(c.Request.Context(), 200)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	for _, d := range list {
+		if d.ID != c.Param("id") {
+			continue
+		}
+		out := gin.H{"channel": d.Channel, "subject": d.Subject, "body": d.Body}
+		if d.Channel == "email" {
+			out["html"] = alertEmail(s.appURL(c), d.Recipient, orDefault(d.Subject, "FallGuard"), d.Body, nil, true).HTML
+		}
+		c.JSON(http.StatusOK, out)
+		return
+	}
+	c.JSON(http.StatusNotFound, gin.H{"error": "message not found"})
 }
 
 // ---------- dispatcher ----------
@@ -411,12 +443,30 @@ func orDefault(p *string, fallback string) string {
 	return *p
 }
 
+// Times in messages, like the app shows them: "Tue Nov 24 2026, 7:35 PM EST" and "7:35 PM".
+const (
+	messageTime      = "Mon Jan 2 2006, 3:04 PM MST"
+	messageTimeShort = "3:04 PM"
+)
+
+// messageZone is the time zone for times in messages: the organization's (Settings -> Time
+// zone), else the server's DEFAULT_TIMEZONE, else UTC. (time.LoadLocation("") is UTC, which is
+// how a fall at 7:30 PM in Toronto used to be emailed as 00:30 UTC.)
+func (s *Server) messageZone(orgZone string) *time.Location {
+	for _, z := range []string{orgZone, s.cfg.DefaultTimezone} {
+		if z == "" {
+			continue
+		}
+		if loc, err := time.LoadLocation(z); err == nil {
+			return loc
+		}
+	}
+	return time.UTC
+}
+
 // alertValues fills templates for an alert.
 func (s *Server) alertValues(a store.AlertForNotify, cfg notify.Config, severity string) map[string]string {
-	loc, err := time.LoadLocation(a.Timezone)
-	if err != nil {
-		loc = time.UTC
-	}
+	loc := s.messageZone(a.Timezone)
 	base := cfg.AppURL
 	if base == "" {
 		base = s.appURL(nil)
@@ -432,7 +482,7 @@ func (s *Server) alertValues(a store.AlertForNotify, cfg notify.Config, severity
 	return map[string]string{
 		"org": a.OrgName, "severity": severity, "severity_upper": strings.ToUpper(severity),
 		"camera": orDefault(a.CameraName, "Unknown camera"), "location": orDefault(a.Location, "—"), "zone": orDefault(a.Zone, "—"),
-		"time": a.TriggeredAt.In(loc).Format("Mon Jan 2 2006, 15:04 MST"), "time_short": a.TriggeredAt.In(loc).Format("15:04"),
+		"time": a.TriggeredAt.In(loc).Format(messageTime), "time_short": a.TriggeredAt.In(loc).Format(messageTimeShort),
 		"status": strings.ReplaceAll(a.Status, "_", " "), "summary": orDefault(a.Summary, ""), "duration": duration,
 		"actor": orDefault(a.ClosedBy, "an operator"), "link": link, "incident_id": orDefault(a.IncidentID, ""),
 	}

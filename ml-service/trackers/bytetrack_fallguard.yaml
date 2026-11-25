@@ -1,0 +1,12 @@
+# ByteTrack for FallGuard: Ultralytics' bytetrack.yaml with lost people remembered longer.
+# The tracker counts frames it is given (inference.target_fps, about 10 per second), so
+# track_buffer 90 keeps a lost person's number for about 9 s: someone hidden for a moment, or
+# overlapping another person, keeps their number instead of being renumbered (which used to
+# open a second incident for the same fall). Keep it under fall.lost_track_seconds x target_fps.
+tracker_type: bytetrack
+track_high_thresh: 0.25
+track_low_thresh: 0.1
+new_track_thresh: 0.25
+track_buffer: 90
+match_thresh: 0.8
+fuse_score: True

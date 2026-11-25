@@ -2,10 +2,14 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 
@@ -112,6 +116,44 @@ func (s *Server) guestEnter(c *gin.Context) {
 	}
 	s.setSessionCookie(c, token, int(ttl.Seconds()))
 	c.JSON(http.StatusOK, gin.H{"ok": true, "expires_at": e.ExpiresAt})
+}
+
+// setVisitorName (demo visitors only): {name}, optional; "" = skip. Their actions are then
+// logged under that name, e.g. "Sam (visitor)".
+func (s *Server) setVisitorName(c *gin.Context) {
+	se := session(c)
+	if !se.User.IsGuest {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only for temporary access visitors", "code": "forbidden"})
+		return
+	}
+	var in struct {
+		Name string `json:"name"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		badRequest(c, "invalid JSON")
+		return
+	}
+	name := cleanVisitorName(in.Name)
+	if utf8.RuneCountInString(name) > store.VisitorNameMax {
+		badRequest(c, fmt.Sprintf("name must be at most %d characters", store.VisitorNameMax))
+		return
+	}
+	if err := s.db.SetVisitorName(c.Request.Context(), se.ID, name); err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true, "visitor_name": name})
+}
+
+// cleanVisitorName drops control characters and runs of spaces.
+func cleanVisitorName(s string) string {
+	s = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, s)
+	return strings.Join(strings.Fields(s), " ")
 }
 
 // notGuest refuses account self-service (profile, password, organizations) to demo visitors.

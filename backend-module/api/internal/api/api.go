@@ -43,6 +43,14 @@ type Config struct {
 	// PhoneRTMPURL is the relay's plain RTMP address (e.g. rtmp://host:1935) for phone apps
 	// without RTMPS, such as Streamza ("" = not offered).
 	PhoneRTMPURL string
+
+	// ServerHosting says where the server runs, shown in Settings -> System status
+	// (SERVER_HOSTING, e.g. "Azure"; "" = on-premises).
+	ServerHosting string
+
+	// DefaultTimezone is used for times in alert messages when the organization has not set its
+	// own (Settings -> Time zone): DEFAULT_TIMEZONE, default America/Toronto.
+	DefaultTimezone string
 }
 
 // Server holds the dependencies of the routes.
@@ -122,6 +130,7 @@ func (s *Server) Register(r *gin.Engine) {
 	u := a.Group("", s.requireAuth)
 	u.GET("/auth/me", s.me)
 	u.PATCH("/auth/me", s.notGuest, s.updateMe)
+	u.PUT("/auth/visitor-name", s.setVisitorName)
 	u.POST("/auth/change-password", s.notGuest, strict, s.changePassword)
 	u.POST("/auth/logout-all", s.logoutAll)
 	u.POST("/auth/switch-org", s.notGuest, s.switchOrg)
@@ -141,6 +150,7 @@ func (s *Server) Register(r *gin.Engine) {
 	u.DELETE("/org/members/:id", s.can(auth.ManageMembers), s.removeMember)
 	u.GET("/org/permissions", s.can(auth.ViewMembers), s.rolePermissions)
 	u.GET("/org/emails", s.can(auth.ViewEmails), s.accountEmails)
+	u.GET("/org/emails/:id/preview", s.can(auth.ViewEmails), s.accountEmailPreview)
 	u.PUT("/org/permissions", s.can(auth.ManageRoles), s.saveRolePermissions)
 
 	// ---- cameras ----
@@ -202,6 +212,7 @@ func (s *Server) Register(r *gin.Engine) {
 	u.POST("/notification-settings/test-sms", notif, strict, s.testSMS)
 	u.POST("/notification-settings/preview", notif, s.previewTemplate)
 	u.GET("/notification-settings/deliveries", notif, s.notificationDeliveries)
+	u.GET("/notification-settings/deliveries/:id/preview", notif, s.deliveryPreview)
 
 	// ---- settings ----
 	u.GET("/stats", s.stats)
@@ -210,6 +221,7 @@ func (s *Server) Register(r *gin.Engine) {
 	u.GET("/settings", s.settings)
 	u.PUT("/settings", s.can(auth.ManageSettings), s.saveSettings)
 	u.PUT("/settings/theme", s.can(auth.ManageSettings), s.saveDefaultTheme)
+	u.PUT("/settings/incident-overlay", s.can(auth.ManageSettings), s.saveIncidentOverlay)
 	u.GET("/gateway/config", s.can(auth.ManageSettings), s.homeOrgOnly, s.gatewayConfig)
 	u.PUT("/gateway/config", s.can(auth.ManageSettings), s.homeOrgOnly, s.gatewayConfig)
 
@@ -311,7 +323,7 @@ func (s *Server) health(c *gin.Context) {
 	for _, r := range out {
 		all = all && r.OK
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": all, "services": out, "tenant": s.cfg.Tenant})
+	c.JSON(http.StatusOK, gin.H{"ok": all, "services": out, "tenant": s.cfg.Tenant, "resources": s.resources(ctx)})
 }
 
 // ---------- cameras ----------

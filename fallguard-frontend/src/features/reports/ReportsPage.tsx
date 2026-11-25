@@ -138,7 +138,7 @@ export default function ReportsPage() {
           <EmptyState icon="alert" title="No incidents match" body="Widen the time window or clear a filter." />
         ) : (
           <div className="table-wrap">
-            <table className="table">
+            <table className="table table--stack">
               <thead>
                 <tr><th>Started</th><th>Where</th><th>Status</th><th>Severity</th><th className="num">Down for</th><th>Alert</th><th>Handled by</th><th className="num">Notes</th></tr>
               </thead>
@@ -185,7 +185,9 @@ export default function ReportsPage() {
         </div>
       </section>
 
-      {(can(PERM.viewReports) || can(PERM.incidentReports)) && <IncidentReportsList />}
+      {(can(PERM.viewReports) || can(PERM.incidentReports)) && (
+        <IncidentReportsList incidentIds={list.data ? new Set(incidents.map((i) => i.id)) : null} />
+      )}
     </>
   );
 }

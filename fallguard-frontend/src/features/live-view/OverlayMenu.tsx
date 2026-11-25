@@ -7,9 +7,9 @@ const OPTIONS: { key: keyof LiveOverlay; label: string; hint: string }[] = [
   { key: "label", label: "Status", hint: "Upright, Falling, Lying or Unclear" },
   { key: "track", label: "Person number", hint: "The tracker's number for each person (#3)" },
   { key: "confidence", label: "Confidence score", hint: "How sure the model is that it is a person" },
-  { key: "center", label: "Center point", hint: "The middle of each person's box" },
   { key: "skeleton", label: "Skeleton lines", hint: "Lines joining the body points the fall rules use" },
   { key: "keypoints", label: "Body points", hint: "The 17 points: eyes, shoulders, hips, knees, ankles..." },
+  { key: "center", label: "Center point", hint: "The middle of each person's box" },
   { key: "grid", label: "Grid lines", hint: "An 8 × 8 grid over the picture, to judge positions and camera angle" },
 ];
 
@@ -40,38 +40,34 @@ export function OverlayMenu() {
   const isDefault = same(liveOverlay, overlayDefault);
 
   return (
-    <div className="overlay-menu" ref={ref}>
-      <button className="btn btn--sm" aria-expanded={open} aria-haspopup="true" onClick={() => setOpen(!open)}
+    <div className="ovp" ref={ref}>
+      <button type="button" className="ovp__btn" aria-expanded={open} aria-haspopup="true" onClick={() => setOpen(!open)}
         title="Choose what is drawn over the video">
-        <Icon name="layers" size={14} /> Overlays <span className="muted">({shown})</span>
+        <Icon name="layers" size={15} />
+        <span>Overlays</span>
+        <span className="ovp__count">{shown}</span>
       </button>
       {open && (
-        <div className="overlay-menu__panel card" role="group" aria-label="Video overlays">
-          {OPTIONS.map((o) => (
-            <label key={o.key} className="overlay-menu__option" title={o.hint}>
-              <input type="checkbox" checked={liveOverlay[o.key]}
-                onChange={(e) => setLiveOverlay({ ...liveOverlay, [o.key]: e.target.checked })} />
-              <span>{o.label}<small>{o.hint}</small></span>
-            </label>
-          ))}
-          <label className="overlay-menu__option overlay-menu__option--off"
-            title="Needs a segmentation model; the pose model finds boxes and body points, not outlines">
-            <input type="checkbox" disabled />
-            <span>Segmentation mask<small>Not available: the pose model finds boxes and body points, not outlines</small></span>
-          </label>
-          <div className="overlay-menu__actions">
-            {isDefault ? (
-              <span className="muted">These are your defaults</span>
-            ) : (
-              <>
-                <button className="btn btn--sm btn--primary" onClick={() => setOverlayDefault(liveOverlay)}>
-                  Set as default
-                </button>
-                <button className="btn btn--sm" onClick={() => setLiveOverlay(overlayDefault)}>Back to default</button>
-              </>
-            )}
-          </div>
-          <p className="muted overlay-menu__note">Defaults are saved in this browser and used every time Live View opens.</p>
+        <div className="ovp__panel" role="group" aria-label="Video overlays">
+          <div className="ovp__head">Show on video</div>
+          <ul className="ovp__list">
+            {OPTIONS.map((o) => (
+              <li key={o.key}>
+                <label className="ovp__item" title={o.hint}>
+                  <span>{o.label}</span>
+                  <input type="checkbox" role="switch" className="ovp__switch" checked={liveOverlay[o.key]}
+                    onChange={(e) => setLiveOverlay({ ...liveOverlay, [o.key]: e.target.checked })} />
+                </label>
+              </li>
+            ))}
+          </ul>
+          {!isDefault && (
+            <div className="ovp__foot">
+              <button type="button" className="ovp__link" onClick={() => setLiveOverlay(overlayDefault)}>Reset</button>
+              <button type="button" className="ovp__link ovp__link--primary" onClick={() => setOverlayDefault(liveOverlay)}
+                title="Used every time Live View opens in this browser">Make my default</button>
+            </div>
+          )}
         </div>
       )}
     </div>

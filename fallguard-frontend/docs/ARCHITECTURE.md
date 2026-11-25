@@ -305,7 +305,7 @@ Incident detail (alert actions, history, notes, incident reports, share video):
 |---|---|---|
 | ![Forms](screenshots/06-report-forms.png) | ![WSIB](screenshots/07-report-wsib.png) | ![Auto-filled](screenshots/08-report-wsib-autofilled.png) |
 
-Reports & Export (incident log, report forms, activity log):
+Reports & Export (incident log, activity log, and the incident reports of the filtered falls, printable one by one or all at once):
 
 ![Reports](screenshots/10-reports.png)
 

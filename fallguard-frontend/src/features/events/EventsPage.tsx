@@ -6,7 +6,14 @@ import { api } from '../../services/api/fallguard';
 import { Snapshot } from './Snapshot';
 import { usePolling } from '../../services/api/usePolling';
 import { alertBy, formatDuration, formatTime, secondsSince } from '../../lib/format';
+import type { Incident } from '../../types/domain';
 import './events.css';
+
+/** The detector's number for the person ("#6"), per camera when several saw them. */
+function personLabel(i: Incident) {
+  const ids = [...new Set(i.cameras.filter((c) => c.track_id > 0).map((c) => `#${c.track_id}`))];
+  return ids.length ? ids.join(', ') : <span className="muted">—</span>;
+}
 
 const FILTERS = [
   { value: '', label: 'All' },
@@ -50,11 +57,11 @@ export default function EventsPage() {
         <EmptyState icon="alert" title="No fall events" body={status ? 'Nothing with this status.' : 'Confirmed falls appear here within seconds.'} />
       ) : (
         <div className="card table-wrap">
-          <table className="table">
+          <table className="table table--stack">
             <thead>
               <tr>
                 <th>Photo</th><th>Status</th><th>Severity</th><th>Started</th><th className="num">Down for</th>
-                <th>Where</th><th>Alert</th><th>Notes</th>
+                <th>Where</th><th title="The detector's number for the person on that camera">Person</th><th>Alert</th><th>Notes</th>
               </tr>
             </thead>
             <tbody>
@@ -79,6 +86,7 @@ export default function EventsPage() {
                     <div>{i.location_label || i.camera_name || 'Unknown camera'}</div>
                     <div className="muted ev-sub">{[i.zone && `Zone: ${i.zone}`, i.cameras.length > 1 && `${i.cameras.length} cameras`].filter(Boolean).join(' · ')}</div>
                   </td>
+                  <td>{personLabel(i)}</td>
                   <td>
                     {i.alert ? <StatusBadge value={i.alert.status} /> : <span className="muted">—</span>}
                     {(i.alert?.closed_at || i.alert?.acknowledged_at) && (

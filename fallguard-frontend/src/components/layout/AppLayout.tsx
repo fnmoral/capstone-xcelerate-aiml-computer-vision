@@ -7,19 +7,23 @@ import { Header } from './Header';
 import { Navigation } from './Navigation';
 import { MainContainer } from './MainContainer';
 import { Footer } from './Footer';
+import { useStackedTableLabels } from '../../lib/stackTables';
+import { VisitorNamePrompt } from '../../features/auth/VisitorName';
 import './AppLayout.css';
 
 /** App shell: Header + Navigation + MainContainer(page, Footer). */
 export function AppLayout() {
-  const { navCollapsed, navPinned, closeNav, setTimeZone, setOrgTheme } = useUiStore();
+  const { navCollapsed, navPinned, closeNav, setTimeZone, setOrgTheme, setOrgIncidentOverlay } = useUiStore();
   // Facility settings (time zone): picked up by every page, re-checked every minute.
   const { data: settings } = usePolling(() => api.settings(), 60000);
   useEffect(() => {
     if (!settings) return;
     setTimeZone(settings.timezone);
     setOrgTheme(settings.theme ?? null);
-  }, [settings, setTimeZone, setOrgTheme]);
+    setOrgIncidentOverlay(settings.incident_overlay ?? null);
+  }, [settings, setTimeZone, setOrgTheme, setOrgIncidentOverlay]);
   const { pathname } = useLocation();
+  useStackedTableLabels(); // tables become one card per row on phones (table--stack)
 
   useEffect(() => closeNav(), [pathname, closeNav]);
   useEffect(() => {
@@ -41,6 +45,7 @@ export function AppLayout() {
         </MainContainer>
       </div>
       <Footer />
+      <VisitorNamePrompt />
     </div>
   );
 }

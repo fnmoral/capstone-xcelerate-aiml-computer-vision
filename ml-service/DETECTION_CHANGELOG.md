@@ -61,6 +61,21 @@ a fall or adds a false alarm fails the tests.
 
 ---
 
+## One incident per person (2026-11-25, no change to the labels)
+
+Tested on the Nov 24 classroom recording (two people fall; one lies partly hidden behind the
+other, then gets up): **6 incidents became 2**, and none closed as "out of view" while the person
+was still on the floor.
+
+| Change | Why |
+|---|---|
+| A new tracker ID takes over a lost person with an open incident first, from further away (`handoff_incident_radius`), within `handoff_seconds` (now 5 s) | The incident follows the person; getting up under a new ID counts as recovered |
+| ByteTrack keeps lost people ~9 s (`trackers/bytetrack_fallguard.yaml`) | Fewer renumbered people when two overlap |
+| Duplicate boxes dropped (`drop_duplicates` in `pose_model.py`): a box 80% inside a stronger one | The model sometimes adds an upper-body-only box, or one spanning two people, which opened a second incident |
+| **A fallen person lost inside the picture stays open** (severity keeps rising). Only someone last seen at the picture's edge becomes `unresolved` ("went out of view"), or every open incident when the camera stops | The model loses someone hidden behind another person; they hadn't left |
+| A hidden fallen person is taken over by a new ID **on the spot** where they lay (still lying = same incident, standing up = recovered) | Someone walking up already has an ID, so they never take over the fall |
+| New IDs of one frame are matched together, closest first | Two people renumbered at once no longer swap incidents |
+
 ## Smarter "on their feet" rule, and kneeling (rules 0.3.0, 2026-11-11)
 
 Found in a live test with two webcams: a fall seen by a **low camera** raised its alert about

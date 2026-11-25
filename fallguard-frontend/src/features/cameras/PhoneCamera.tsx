@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { ZoneField } from './ZonePicker';
 import QRCode from 'qrcode';
 import { api, type PhoneLinks } from '../../services/api/fallguard';
 
@@ -104,7 +105,7 @@ export function PhoneSetup({ links, onClose }: { links: PhoneLinks; onClose: () 
 }
 
 /** Add a phone that streams to FallGuard from any network (no camera address needed). */
-export function AddPhoneCameraForm({ onDone }: { onDone: (links?: PhoneLinks) => void }) {
+export function AddPhoneCameraForm({ onDone, zones }: { onDone: (links?: PhoneLinks) => void; zones: string[] }) {
   const [name, setName] = useState('');
   const [location, setLocation] = useState('');
   const [zone, setZone] = useState('');
@@ -133,8 +134,8 @@ export function AddPhoneCameraForm({ onDone }: { onDone: (links?: PhoneLinks) =>
         <label className="field">Name<input required value={name} onChange={(e) => setName(e.target.value)} placeholder="iPhone" /></label>
         <label className="field">Location<input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Lobby" />
           <small>Shown on alerts</small></label>
-        <label className="field">Zone<input value={zone} onChange={(e) => setZone(e.target.value)} list="zone-options" placeholder="Optional" />
-          <small>Cameras in one zone see the same area: a fall seen by several is one alert</small></label>
+        <ZoneField value={zone} onChange={setZone} zones={zones}
+          hint="Cameras in one zone see the same area: a fall seen by several is one alert" />
       </div>
       <div className="row cams-form__actions">
         <button className="btn btn--primary" disabled={saving}>{saving ? 'Adding…' : 'Add and show QR code'}</button>

@@ -39,8 +39,12 @@ az vm deallocate -g fallguard-rg -n fallguard-vm   # end of session
 background, about 2-5 minutes):
 
 ```bash
-git push azure US_ml_module      # 'azure' = the VM; log on the VM: ~/capstone/deploy.log
+git fetch origin main
+git push azure origin/main:refs/heads/main US_ml_module   # 'azure' = the VM; log: ~/capstone/deploy.log
 ```
+
+`main` goes along for the version number in the footer (`Prototype v1.5.0` = 5 pull requests merged
+into main, then +1 for each commit after the last merge).
 
 **How long a deploy takes** (B2ps_v2):
 

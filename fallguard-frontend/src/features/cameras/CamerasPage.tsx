@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { ZoneField } from './ZonePicker';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { EmptyState } from '../../components/ui/EmptyState';
@@ -15,7 +16,7 @@ import './cameras.css';
 
 const EMPTY: CameraInput = { name: '', rtsp_url: '', username: '', password: '', location: '', zone: '', alert_offline: true };
 
-function AddCameraForm({ onDone, standby }: { onDone: (status?: string) => void; standby: string | null }) {
+function AddCameraForm({ onDone, standby, zones }: { onDone: (status?: string) => void; standby: string | null; zones: string[] }) {
   const [form, setForm] = useState<CameraInput>(EMPTY);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,8 +51,8 @@ function AddCameraForm({ onDone, standby }: { onDone: (status?: string) => void;
           <small>Stored only on the gateway</small></label>
         <label className="field">Location<input value={form.location} onChange={set('location')} placeholder="2nd floor hallway" />
           <small>Shown on alerts</small></label>
-        <label className="field">Zone<input value={form.zone} onChange={set('zone')} list="zone-options" placeholder="Optional" />
-          <small>Cameras in one zone see the same area: a fall seen by several is one alert</small></label>
+        <ZoneField value={form.zone ?? ''} onChange={(zone) => setForm({ ...form, zone })} zones={zones}
+          hint="Cameras in one zone see the same area: a fall seen by several is one alert" />
       </div>
       <label className="switch cams-form__switch">
         <input type="checkbox" checked={form.alert_offline}
@@ -95,8 +96,8 @@ function SwitchTo({ cam, streaming, busy, run }: {
   );
 }
 
-function CameraRow({ cam, onChange, full, streaming, manage }: {
-  cam: Camera; onChange: () => void; full: boolean; streaming: Camera[]; manage: boolean;
+function CameraRow({ cam, onChange, full, streaming, manage, zones }: {
+  cam: Camera; onChange: () => void; full: boolean; streaming: Camera[]; manage: boolean; zones: string[];
 }) {
   const [editing, setEditing] = useState(false);
   const [location, setLocation] = useState(cam.location ?? '');
@@ -132,7 +133,7 @@ function CameraRow({ cam, onChange, full, streaming, manage }: {
         {editing ? (
           <div className="form-grid cams-row__edit">
             <label className="field">Location<input value={location} onChange={(e) => setLocation(e.target.value)} /></label>
-            <label className="field">Zone<input value={zone} onChange={(e) => setZone(e.target.value)} list="zone-options" /></label>
+            <ZoneField value={zone} onChange={setZone} zones={zones} />
           </div>
         ) : (
           <p className="muted cams-row__info">
@@ -242,7 +243,7 @@ export default function CamerasPage() {
       {data?.gateway_error && <p className="notice notice--error">Gateway unavailable: {data.gateway_error}</p>}
       {notice && <p className="notice" role="status">{notice}</p>}
       {adding === 'phone' && (
-        <AddPhoneCameraForm onDone={(links) => {
+        <AddPhoneCameraForm zones={zones} onDone={(links) => {
           setAdding(null);
           setPhoneLinks(links ?? null);
           setNotice(links?.status === 'paused' ? 'Phone camera saved on standby (paused): every streaming slot is in use. Use "Switch to this" on it to stream it.' : null);
@@ -252,6 +253,7 @@ export default function CamerasPage() {
       {phoneLinks && <PhoneSetup links={phoneLinks} onClose={() => setPhoneLinks(null)} />}
       {adding === 'ip' && (
         <AddCameraForm
+          zones={zones}
           standby={full ? `${streaming.length} cameras are already streaming, the most at once: this one will be saved paused (standby). Use "Switch to this" to stream it instead of another.` : null}
           onDone={(status) => {
             setAdding(null);
@@ -265,12 +267,11 @@ export default function CamerasPage() {
       ) : (
         <ul className="cams-list">
           {cameras.map((c) => (
-            <CameraRow key={c.id} cam={c} onChange={() => void reload()} full={full} streaming={streaming} manage={manage} />
+            <CameraRow key={c.id} cam={c} onChange={() => void reload()} full={full} streaming={streaming} manage={manage} zones={zones} />
           ))}
         </ul>
       )}
       {/* Zone suggestions for every zone field on the page */}
-      <datalist id="zone-options">{zones.map((z) => <option key={z} value={z} />)}</datalist>
     </>
   );
 }
