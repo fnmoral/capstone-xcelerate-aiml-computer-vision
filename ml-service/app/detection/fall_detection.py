@@ -448,6 +448,11 @@ class DetectorConfig:
     # A new track ID that appears where a person was lost this recently carries on that
     # person's state (e.g. the tracker renumbered them as they fell). 0 = off.
     handoff_seconds: float = 2.0
+    # How near (in the lost person's longest box side) a new ID must appear to take them over;
+    # a lost person with an open incident is matched first and from further away, so one
+    # person keeps one incident (and their getting up counts as recovered).
+    handoff_radius: float = 0.75
+    handoff_incident_radius: float = 1.25
     # "rules" (app/detection/fall_detection.py, picture angles) or "learned" (app/detection/fall_detection.py, trained model).
     classifier: str = "rules"
     learned_model: str = "models/stage_b.npz"
@@ -523,22 +528,29 @@ class FallDetector:
     def _hand_over(self, person: TrackedPose, t: float, present: set[int]) -> None:
         """Give a new track ID the state of a person lost nearby within handoff_seconds.
 
-        Trackers often renumber someone as they fall, because the box suddenly changes shape.
-        Without this the new ID starts from scratch and the confirmation timer restarts.
+        Trackers often renumber someone as they fall or get up, because the box suddenly changes
+        shape, or when two people overlap. Without this the new ID starts from scratch: a second
+        incident for the same person, and the first one ends "unresolved" instead of recovered.
+        A lost person with an open incident is matched first (and from further away), so the
+        incident follows them. Only new IDs take over, never someone already in view.
         """
         if self.cfg.handoff_seconds <= 0:
             return
         x1, y1, x2, y2 = person.box
         centre = np.array([(x1 + x2) / 2, (y1 + y2) / 2])
-        best, best_dist = None, None
+        best, best_key = None, None
         for track_id, track in self._tracks.items():
             if track_id in present or track.box is None or t - track.last_seen > self.cfg.handoff_seconds:
                 continue
             ox1, oy1, ox2, oy2 = track.box
             dist = float(np.linalg.norm(centre - [(ox1 + ox2) / 2, (oy1 + oy2) / 2]))
-            # Near where they were: within 3/4 of their old box's longest side.
-            if dist <= 0.75 * max(ox2 - ox1, oy2 - oy1) and (best_dist is None or dist < best_dist):
-                best, best_dist = track_id, dist
+            has_incident = self.monitor.incident_of(track_id) is not None
+            radius = self.cfg.handoff_incident_radius if has_incident else self.cfg.handoff_radius
+            if dist > radius * max(ox2 - ox1, oy2 - oy1):
+                continue
+            key = (not has_incident, dist)  # an open incident first, then the nearest
+            if best_key is None or key < best_key:
+                best, best_key = track_id, key
         if best is not None:
             self._tracks[person.track_id] = self._tracks.pop(best)
             self.monitor.rename(best, person.track_id)

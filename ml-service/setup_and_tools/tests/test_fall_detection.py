@@ -211,6 +211,65 @@ def test_new_track_id_takes_over_a_fallen_person():
     assert det.incident_of(2) is not None
 
 
+def moved(kpts, box, dx, dy):
+    k = kpts.copy()
+    k[:, 0] += dx
+    k[:, 1] += dy
+    return k, box + [dx, dy, dx, dy]
+
+
+def test_incident_follows_the_fallen_person_not_the_nearest_lost_one():
+    # Two people close together; the tracker loses both and a new ID appears between them,
+    # nearer the one standing. It carries on the fallen person's incident (one incident per
+    # person), instead of taking the bystander's state and opening a second incident.
+    det = detector()
+    other_k, other_box = moved(STANDING, STANDING_BOX, 320, 130)  # centre (420, 300)
+    t, events = 0.0, []
+    for _ in range(15):
+        events += det.process(t, [P(1, LYING_BOX, LYING_DOWN), P(2, other_box, other_k)], FRAME)[1]
+        t += 0.1
+    assert [e.kind for e in events] == [STARTED]
+    incident = det.incident_of(1)
+    new_k, new_box = moved(LYING_DOWN, LYING_BOX, 147.5, -40)  # centre (330, 360): nearer person 2
+    for _ in range(10):
+        events += det.process(t, [P(3, new_box, new_k)], FRAME)[1]
+        t += 0.1
+    assert [e.kind for e in events] == [STARTED]  # no second incident
+    assert det.incident_of(3) is incident
+
+
+def test_getting_up_under_a_new_id_is_recovered_not_unresolved():
+    # Standing up changes the box completely, so the tracker often renumbers the person.
+    det = detector(lost_track_seconds=2)
+    t, events = 0.0, []
+    for _ in range(15):
+        events += det.process(t, [P(1, LYING_BOX, LYING_DOWN)], FRAME)[1]
+        t += 0.1
+    up_k, up_box = moved(STANDING, STANDING_BOX, 82, -20)  # 250 px from where they lay
+    for _ in range(35):
+        events += det.process(t, [P(2, up_box, up_k)], FRAME)[1]
+        t += 0.1
+    events += det.expire(t + 5)
+    assert [e.kind for e in events] == [STARTED, RECOVERED]
+
+
+def test_someone_already_in_view_never_takes_over_a_fall():
+    # A caregiver standing next to the fallen person when that person's track is lost keeps
+    # their own state: the fall can't be "recovered" by someone else standing nearby.
+    det = detector(lost_track_seconds=2)
+    helper_k, helper_box = moved(STANDING, STANDING_BOX, 82, -20)
+    t, events = 0.0, []
+    for _ in range(15):
+        events += det.process(t, [P(1, LYING_BOX, LYING_DOWN), P(2, helper_box, helper_k)], FRAME)[1]
+        t += 0.1
+    for _ in range(35):  # person 1 hidden; the helper stays standing there
+        events += det.process(t, [P(2, helper_box, helper_k)], FRAME)[1]
+        t += 0.1
+    events += det.expire(t)
+    assert [e.kind for e in events] == [STARTED, UNRESOLVED]
+    assert det.incident_of(2) is None
+
+
 def test_track_id_far_away_is_a_different_person():
     det = detector()
     det.process(0.0, [P(1, LYING_BOX, LYING_DOWN)], FRAME)
