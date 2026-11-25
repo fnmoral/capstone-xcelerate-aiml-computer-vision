@@ -210,9 +210,11 @@ export interface Health {
 
 export interface ResourceUsage { total: number; used: number }
 export interface Resources {
+  hosting: string; // where the server runs, e.g. "Azure"; "" = on-premises
   memory?: ResourceUsage;
   disk?: ResourceUsage;
-  videos?: { clip_bytes: number; clips: number; max_total_gb: number; retention_days: number };
+  database_bytes?: number;
+  videos?: { clip_bytes: number; clips: number; snapshot_bytes: number; snapshots: number; max_total_gb: number; retention_days: number };
 }
 
 /** Detection settings changed in this app. A missing value = config.yaml's. */

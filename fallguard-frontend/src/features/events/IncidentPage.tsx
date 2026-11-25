@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StatusBadge } from '../../components/ui/StatusBadge';
@@ -7,24 +7,84 @@ import { api } from '../../services/api/fallguard';
 import { usePolling } from '../../services/api/usePolling';
 import { alertBy, byWhen, formatDuration, formatTime, LABEL_TEXT, secondsSince, shortId } from '../../lib/format';
 import type { Incident, LogEntry, Prediction } from '../../types/domain';
-import { IncidentVideos } from './IncidentVideos';
+import { IncidentVideos, type ClipPlayer } from './IncidentVideos';
 import { Notes } from './Notes';
 import { IncidentReportsPanel } from '../incident-reports/IncidentReportsPanel';
 import { ShareLinksPanel } from './ShareLinksPanel';
 import { PERM, useAuth } from '../auth/AuthContext';
 import './events.css';
 
-/** What the detector saw, second by second: one colored step per prediction. */
-function Timeline({ predictions }: { predictions: Prediction[] }) {
+/** Consecutive predictions with the same label: one stretch of the timeline. */
+interface Run { label: string; from: string; to: string; count: number; camera: string }
+
+function runsOf(predictions: Prediction[]): Run[] {
+  const runs: Run[] = [];
+  for (const p of predictions) {
+    const last = runs[runs.length - 1];
+    if (last && last.label === p.label) {
+      last.to = p.at;
+      last.count++;
+    } else {
+      runs.push({ label: p.label, from: p.at, to: p.at, count: 1, camera: p.camera_id });
+    }
+  }
+  return runs;
+}
+
+const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+
+/**
+ * What the detector saw: one colored stretch per run of the same label. With the incident's
+ * video loaded, clicking a stretch plays the video from that moment, and a line follows the video.
+ */
+function Timeline({ predictions, players, playheadMs }: {
+  predictions: Prediction[]; players: Map<string, ClipPlayer>; playheadMs: number | null;
+}) {
   if (predictions.length === 0) return <p className="muted">No per-second data stored for this incident.</p>;
+  const runs = runsOf(predictions);
+  const first = players.values().next().value as ClipPlayer | undefined;
+  const approximate = [...players.values()].some((p) => p.approximate);
+
+  const seek = (run: Run) => {
+    const player = players.get(run.camera) ?? first;
+    if (!player) return;
+    const v = player.video;
+    let t = (Date.parse(run.from) - player.startMs) / 1000;
+    if (Number.isFinite(v.duration)) t = Math.min(t, Math.max(0, v.duration - 0.5));
+    v.currentTime = Math.max(0, t);
+    void v.play().catch(() => undefined);
+    const r = v.getBoundingClientRect();
+    if (r.top < 0 || r.bottom > window.innerHeight) v.scrollIntoView({ block: 'center', behavior: reduceMotion() ? 'auto' : 'smooth' });
+  };
+
+  // The line that follows the video: how far through the predictions its current time is.
+  let playhead: number | null = null;
+  if (playheadMs !== null) {
+    const firstMs = Date.parse(predictions[0].at);
+    const lastMs = Date.parse(predictions[predictions.length - 1].at);
+    if (playheadMs >= firstMs && playheadMs <= lastMs + 2000) {
+      const seen = predictions.filter((p) => Date.parse(p.at) <= playheadMs).length;
+      playhead = (seen / predictions.length) * 100;
+    }
+  }
+
   return (
     <>
-      <ol className={`timeline${predictions.length > 120 ? ' timeline--dense' : ''}`} aria-label="Detector labels over time">
-        {predictions.map((p, i) => (
-          <li key={i} className={`timeline__step timeline__step--${p.label}`}
-            title={`${formatTime(p.at)} · ${LABEL_TEXT[p.label] ?? p.label} (${p.confidence.toFixed(2)})`} />
-        ))}
-      </ol>
+      <div className={`timeline${runs.length > 120 ? ' timeline--dense' : ''}${first ? ' timeline--seek' : ''}`}
+        role="group" aria-label="Detector labels over time">
+        {runs.map((r, i) => {
+          const what = `${LABEL_TEXT[r.label] ?? r.label} from ${formatTime(r.from)}` +
+            (r.count > 1 ? ` for ${formatDuration((Date.parse(r.to) - Date.parse(r.from)) / 1000 + 1)}` : '');
+          return first ? (
+            <button key={i} type="button" className={`timeline__step timeline__step--${r.label}`} style={{ flexGrow: r.count }}
+              title={`${what}. Click to play the video from here.`} aria-label={`${what}: play the video from here`}
+              onClick={() => seek(r)} />
+          ) : (
+            <span key={i} className={`timeline__step timeline__step--${r.label}`} style={{ flexGrow: r.count }} title={what} />
+          );
+        })}
+        {playhead !== null && <span className="timeline__playhead" style={{ left: `${playhead}%` }} aria-hidden="true" />}
+      </div>
       <div className="row muted ev-sub">
         <span>{formatTime(predictions[0].at)}</span>
         <span style={{ flex: 1 }} />
@@ -33,6 +93,11 @@ function Timeline({ predictions }: { predictions: Prediction[] }) {
       <div className="row ev-legend">
         <StatusBadge value="upright" /> <StatusBadge value="falling" /> <StatusBadge value="lying" /> <StatusBadge value="unclear" />
       </div>
+      {first && (
+        <p className="muted ev-sub ev-seek-hint">
+          Click a color to play the video from that moment{approximate ? ' (approximately: this older video has no exact start time)' : ''}.
+        </p>
+      )}
     </>
   );
 }
@@ -60,6 +125,28 @@ export default function IncidentPage() {
   const { data, error, reload } = usePolling(() => api.incident(id), 3000, [id]);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  // The incident's videos (per camera) and where the one playing is, for the detector timeline.
+  const [players, setPlayers] = useState<Map<string, ClipPlayer>>(new Map());
+  const [playheadMs, setPlayheadMs] = useState<number | null>(null);
+  const unlisten = useRef(new Map<string, () => void>());
+  const onPlayer = useCallback((cameraId: string, p: ClipPlayer | null) => {
+    unlisten.current.get(cameraId)?.();
+    unlisten.current.delete(cameraId);
+    if (p) {
+      const update = () => setPlayheadMs(p.startMs + p.video.currentTime * 1000);
+      p.video.addEventListener('timeupdate', update);
+      p.video.addEventListener('seeked', update);
+      unlisten.current.set(cameraId, () => {
+        p.video.removeEventListener('timeupdate', update);
+        p.video.removeEventListener('seeked', update);
+      });
+    }
+    setPlayers((prev) => {
+      const next = new Map(prev);
+      if (p) next.set(cameraId, p); else next.delete(cameraId);
+      return next;
+    });
+  }, []);
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -106,11 +193,11 @@ export default function IncidentPage() {
         <div className="stack">
           <section className="card ev-section">
             <h2 className="section-title">Video</h2>
-            <IncidentVideos inc={inc} />
+            <IncidentVideos inc={inc} onPlayer={onPlayer} />
           </section>
           <section className="card ev-section">
             <h2 className="section-title">What the detector saw</h2>
-            <Timeline predictions={predictions} />
+            <Timeline predictions={predictions} players={players} playheadMs={playheadMs} />
           </section>
         </div>
 

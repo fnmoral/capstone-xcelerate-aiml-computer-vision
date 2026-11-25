@@ -15,8 +15,15 @@
 .ev-legend { margin-top: 8px; }
 
 /* Label timeline: one step per prediction, 2px surface gap between steps. */
-.timeline { list-style: none; margin: 0 0 6px; padding: 0; display: flex; gap: 2px; height: 28px; overflow: hidden; }
-.timeline__step { flex: 1 1 0; min-width: 0; border-radius: 4px; background: var(--surface-2); }
+.timeline { position: relative; list-style: none; margin: 0 0 6px; padding: 0; display: flex; gap: 2px; height: 28px; overflow: hidden; }
+.timeline__step { flex: 1 1 0; min-width: 0; border: 0; padding: 0; border-radius: 4px; background: var(--surface-2); }
+/* With the video loaded: each stretch is a button that plays the video from there. */
+.timeline--seek .timeline__step { cursor: pointer; transition: filter .15s; }
+.timeline--seek .timeline__step:hover { filter: brightness(1.15); }
+.timeline--seek .timeline__step:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.timeline__playhead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--text); box-shadow: 0 0 0 1px var(--surface); pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .timeline--seek .timeline__step { transition: none; } }
+.ev-seek-hint { margin: 6px 0 0; }
 /* Long incidents: steps touch, so hundreds of seconds still fit the column. */
 .timeline--dense { gap: 0; }
 .timeline--dense .timeline__step { border-radius: 0; }

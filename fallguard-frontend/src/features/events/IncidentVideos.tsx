@@ -46,18 +46,52 @@ function clipsOf(inc: Incident): Clip[] {
   return out;
 }
 
+/** A clip's video element and when its first frame was recorded (for jumping to a moment). */
+export interface ClipPlayer {
+  video: HTMLVideoElement;
+  startMs: number; // wall-clock time of the clip's first frame
+  approximate: boolean; // older clips have no saved start time: estimated from the incident
+}
+
+/** Clips start about pre_roll (15 s) before the fall was confirmed, ~3 s after it began. */
+const ESTIMATED_LEAD_MS = 12000;
+
 function Player({
   clip,
   big,
   refFn,
+  onPlayer,
+  fallbackStartMs,
 }: {
   clip: Clip;
   big?: boolean;
   refFn?: (v: HTMLVideoElement | null) => void;
+  onPlayer?: (cameraId: string, p: ClipPlayer | null) => void;
+  fallbackStartMs: number;
 }) {
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const gaveUp = failed && attempt >= MAX_RETRIES;
+  const [video, setVideo] = useState<HTMLVideoElement | null>(null);
+
+  // stream-hub saves when each clip starts (<clip>.mp4.json); older clips get an estimate.
+  useEffect(() => {
+    if (!video || !onPlayer) return;
+    let live = true;
+    const estimate = { video, startMs: fallbackStartMs, approximate: true };
+    fetch(clipUrl(clip.key) + ".json", { credentials: "same-origin" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((m: { start_ms?: number } | null) => {
+        if (live) onPlayer(clip.cameraId, m?.start_ms ? { video, startMs: m.start_ms, approximate: false } : estimate);
+      })
+      .catch(() => {
+        if (live) onPlayer(clip.cameraId, estimate);
+      });
+    return () => {
+      live = false;
+      onPlayer(clip.cameraId, null);
+    };
+  }, [video, clip.key, clip.cameraId, fallbackStartMs, onPlayer]);
 
   // Try again while the clip may still be being saved.
   useEffect(() => {
@@ -92,7 +126,10 @@ function Player({
   return (
     <figure className={className}>
       <video
-        ref={refFn}
+        ref={(v) => {
+          refFn?.(v);
+          setVideo(v);
+        }}
         src={src}
         poster={clip.poster ? snapshotUrl(clip.poster) : undefined}
         controls
@@ -112,9 +149,11 @@ function Player({
   );
 }
 
-/** The incident's video: one camera full size; several side by side or one at a time. */
-export function IncidentVideos({ inc }: { inc: Incident }) {
+/** The incident's video: one camera full size; several side by side or one at a time.
+ *  onPlayer reports each playing clip (or null when it goes), so the detector timeline can jump in it. */
+export function IncidentVideos({ inc, onPlayer }: { inc: Incident; onPlayer?: (cameraId: string, p: ClipPlayer | null) => void }) {
   const clips = clipsOf(inc);
+  const fallbackStartMs = Date.parse(inc.started_at) - ESTIMATED_LEAD_MS;
   const [mode, setMode] = useState<"all" | "one">("all");
   const [current, setCurrent] = useState(0);
   const players = useRef<(HTMLVideoElement | null)[]>([]);
@@ -163,7 +202,7 @@ export function IncidentVideos({ inc }: { inc: Incident }) {
     );
   }
 
-  if (clips.length === 1) return <Player clip={clips[0]} big />;
+  if (clips.length === 1) return <Player clip={clips[0]} big onPlayer={onPlayer} fallbackStartMs={fallbackStartMs} />;
 
   const playAll = () =>
     players.current.forEach((v) => {
@@ -220,11 +259,13 @@ export function IncidentVideos({ inc }: { inc: Incident }) {
               refFn={(v) => {
                 players.current[i] = v;
               }}
+              onPlayer={onPlayer}
+              fallbackStartMs={fallbackStartMs}
             />
           ))}
         </div>
       ) : (
-        <Player key={shown.cameraId} clip={shown} big />
+        <Player key={shown.cameraId} clip={shown} big onPlayer={onPlayer} fallbackStartMs={fallbackStartMs} />
       )}
     </>
   );
