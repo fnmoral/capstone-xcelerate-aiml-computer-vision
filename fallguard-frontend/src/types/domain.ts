@@ -204,6 +204,15 @@ export interface Health {
   ok: boolean;
   tenant: string;
   services: Record<string, ServiceCheck>;
+  /** The server's memory and disk, and the incident videos (bytes). Missing where not measured. */
+  resources?: Resources;
+}
+
+export interface ResourceUsage { total: number; used: number }
+export interface Resources {
+  memory?: ResourceUsage;
+  disk?: ResourceUsage;
+  videos?: { clip_bytes: number; clips: number; max_total_gb: number; retention_days: number };
 }
 
 /** Detection settings changed in this app. A missing value = config.yaml's. */

@@ -4,6 +4,7 @@ import { StatusBadge } from '../../components/ui/StatusBadge';
 import { useUiStore, type LiveLayout, type Theme } from '../../store/uiStore';
 import { TimeZoneSettings } from './TimeZoneSettings';
 import { ModelTrainingSettings } from './ModelTrainingSettings';
+import { ResourceBars } from './ResourceBars';
 import { OrgProfileSettings } from './OrgProfileSettings';
 import { EmailsSentSettings } from './EmailsSentSettings';
 import { GatewaysSettings } from './GatewaysSettings';
@@ -93,6 +94,7 @@ export default function SettingsPage() {
               </tbody>
             </table>
           )}
+          <ResourceBars r={health?.resources} />
         </section>
 
         <OrgProfileSettings editable={manage} />

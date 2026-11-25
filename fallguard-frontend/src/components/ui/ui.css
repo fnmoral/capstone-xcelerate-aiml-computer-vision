@@ -114,3 +114,16 @@
 .confirm-dialog__title { margin: 0 0 8px; font-size: 18px; }
 .confirm-dialog__body { margin: 0 0 18px; color: var(--text-muted); line-height: 1.5; }
 .confirm-dialog__actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* Settings -> System status: memory / storage bars */
+.res-list { display: grid; gap: 14px; margin-top: 18px; }
+.res__head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; font-size: 14px; margin-bottom: 6px; }
+.res__track { height: 10px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.res__fill { height: 100%; border-radius: 99px; transition: width .4s ease; }
+.res__fill--ok { background: var(--ok); }
+.res__fill--warn { background: var(--warn); }
+.res__fill--danger { background: var(--danger); }
+.res__pct--warn { color: var(--warn); }
+.res__pct--danger { color: var(--danger); }
+.res__hint { margin: 6px 0 0; font-size: 12px; }
+@media (prefers-reduced-motion: reduce) { .res__fill { transition: none; } }
