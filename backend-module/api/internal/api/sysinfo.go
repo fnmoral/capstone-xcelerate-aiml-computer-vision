@@ -16,10 +16,13 @@ type Usage struct {
 	Used  int64 `json:"used"`
 }
 
-// VideoUsage is what stream-hub's incident clips take on disk, and the limits that prune them.
+// VideoUsage is what stream-hub's incident clips and snapshots take on disk, and the limits
+// that prune the clips.
 type VideoUsage struct {
 	ClipBytes     int64   `json:"clip_bytes"`
 	Clips         int     `json:"clips"`
+	SnapshotBytes int64   `json:"snapshot_bytes"`
+	Snapshots     int     `json:"snapshots"`
 	MaxTotalGB    float64 `json:"max_total_gb"`
 	RetentionDays float64 `json:"retention_days"`
 }
@@ -28,17 +31,22 @@ type VideoUsage struct {
 // /proc/meminfo and the root filesystem are the host's (the VM's RAM; the disk that holds
 // Docker's data, i.e. the database and the recordings).
 type Resources struct {
-	Memory *Usage      `json:"memory,omitempty"`
-	Disk   *Usage      `json:"disk,omitempty"`
-	Videos *VideoUsage `json:"videos,omitempty"`
+	Hosting       string      `json:"hosting"` // where the server runs: SERVER_HOSTING, "" = on-premises
+	Memory        *Usage      `json:"memory,omitempty"`
+	Disk          *Usage      `json:"disk,omitempty"`
+	DatabaseBytes int64       `json:"database_bytes,omitempty"`
+	Videos        *VideoUsage `json:"videos,omitempty"`
 }
 
 func (s *Server) resources(ctx context.Context) Resources {
-	var r Resources
+	r := Resources{Hosting: s.cfg.ServerHosting}
 	r.Memory = memoryUsage()
 	r.Disk = diskUsage("/")
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
+	if n, err := s.db.DatabaseSize(ctx); err == nil {
+		r.DatabaseBytes = n
+	}
 	var v VideoUsage
 	if err := s.hub.do(ctx, http.MethodGet, "/recordings-usage", nil, &v); err == nil {
 		r.Videos = &v

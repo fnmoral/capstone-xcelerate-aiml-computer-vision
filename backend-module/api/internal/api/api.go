@@ -43,6 +43,10 @@ type Config struct {
 	// PhoneRTMPURL is the relay's plain RTMP address (e.g. rtmp://host:1935) for phone apps
 	// without RTMPS, such as Streamza ("" = not offered).
 	PhoneRTMPURL string
+
+	// ServerHosting says where the server runs, shown in Settings -> System status
+	// (SERVER_HOSTING, e.g. "Azure"; "" = on-premises).
+	ServerHosting string
 }
 
 // Server holds the dependencies of the routes.

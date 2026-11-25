@@ -7,7 +7,7 @@ from ml-service.
 
 | Route | Does |
 |---|---|
-| `GET /api/health` | Reachability and latency of database, gateway-back, stream-hub, ml-service; `resources`: the server's memory and disk (bytes used / total) and stream-hub's incident videos (size, count, retention) for Settings → System status |
+| `GET /api/health` | Reachability and latency of database, gateway-back, stream-hub, ml-service; `resources`: where the server runs (`SERVER_HOSTING`, "" = on-premises), its memory and disk (bytes used / total), the database size, and stream-hub's videos and photos (size, count, retention) for Settings → System status |
 | `GET /api/cameras` | Gateway cameras (status) + database details (name, location, zone) + live ML state (video arriving, people, active incidents) + `health` (online / paused / not_working / connecting / not_connected), `health_since`, `alert_offline`. Cameras added directly in the gateway UI are registered in the database here |
 | `POST /api/cameras` | `{name, rtsp_url, username?, password?, location?, zone?}` → added on the gateway, registered in the database with the same UUID. Credentials stay on the gateway only |
 | `PATCH /api/cameras/:id` | `{name?, location?, zone?, alert_offline?}` (database only; an empty zone clears it). `alert_offline`: notify when the camera stops working (default on) |
