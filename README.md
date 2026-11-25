@@ -63,9 +63,9 @@ Sources: [Occupiers' Liability Act](https://www.ontario.ca/laws/statute/90o02) Â
 |---|---|
 | **Live View** | See all your cameras at once. Every person in view has a box around them and a label: standing, falling or lying down. |
 | **Fall alerts** | When someone falls and stays down for a few seconds, the app sounds an alarm, shows "1 person down" at the top, and can send email and text messages. |
-| **Fall Events** | A list of every fall: when, where, which cameras saw it, how long the person was down, a photo and a video clip. Staff can acknowledge, resolve or mark a false alarm, and add notes. |
+| **Fall Events** | A list of every fall: when, where, which cameras saw it, which person (the detector's number, e.g. #6, to tell two people apart), how long the person was down, a photo and a video clip. Staff can acknowledge, resolve or mark a false alarm, and add notes. |
 | **Analytics** | Charts of falls over time, by camera and by zone. |
-| **Reports & Export** | Download falls and the activity log as spreadsheets, and see every incident report. |
+| **Reports & Export** | Download falls and the activity log as spreadsheets, and print or save incident reports as PDF. |
 | **Incident reports** | Fill in a WSIB Form 7, an Ontario Ministry of Labour notice, an OSHA 301 or an internal report. FallGuard fills in everything it already knows. |
 | **Notifications** | Choose who gets told about falls, by app, email or text message, depending on how serious the fall is. |
 | **Members & Roles** | Invite your team and decide what each person is allowed to do. |
@@ -305,7 +305,9 @@ in the server log, for testing).
 1. The alarm sounds, the bell shows the alert, and "1 person down" appears at the top. The
    people you chose get an email or text.
 2. Open the alert (from the bell or **Fall Events**). You see the photo, the video, which cameras
-   saw it and how long the person has been down.
+   saw it and how long the person has been down. One fall = one event per person: if the camera
+   loses sight of someone on the floor (for example behind another person), the event stays open
+   and its severity keeps rising until they are seen getting up.
 3. **Acknowledge** it so your team knows someone is on it.
 4. When it's handled, **Resolve** it, or mark it a **False alarm** if nobody fell. Both can be
    undone if clicked by mistake.
@@ -344,7 +346,9 @@ Then:
 - **Mark as final** when it's complete. It records who finalized it and when. A final report can
   be reopened if it needs changing.
 - **Print / save as PDF** for a clean copy with a signature line.
-- All reports are listed under **Reports & Export**, with a button to download the **OSHA 300 Log**.
+- All reports are listed under **Reports & Export**. The filters at the top (time window, status, place...)
+  pick them by **when the fall happened**. Print or save one report, or **all listed reports at once**
+  (each on its own pages), as PDF; download the **OSHA 300 Log**.
 
 > FallGuard's report is a completed summary to **copy into, or attach to, the official form**
 > (for example WSIB's online eForm 7). Always check every answer before you submit it.
