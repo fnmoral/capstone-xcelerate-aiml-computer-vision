@@ -63,7 +63,7 @@ Sources: [Occupiers' Liability Act](https://www.ontario.ca/laws/statute/90o02) �
 |---|---|
 | **Live View** | See all your cameras at once. Every person in view has a box around them and a label: standing, falling or lying down. |
 | **Fall alerts** | When someone falls and stays down for a few seconds, the app sounds an alarm, shows "1 person down" at the top, and can send email and text messages. |
-| **Fall Events** | A list of every fall: when, where, which cameras saw it, which person (the detector's number, e.g. #6, to tell two people apart), how long the person was down, a photo and a video clip. Staff can acknowledge, resolve or mark a false alarm, and add notes. |
+| **Fall Events** | A list of every fall: when, where, which cameras saw it, which person (the detector's number, e.g. #6, to tell two people apart), how long the person was down, a photo and a video of the whole fall (from 15 seconds before, until 10 seconds after they are back up). Staff can acknowledge, resolve or mark a false alarm, and add notes. |
 | **Analytics** | Charts of falls over time, by camera and by zone. |
 | **Reports & Export** | Download falls and the activity log as spreadsheets, and print or save incident reports as PDF. |
 | **Incident reports** | Fill in a WSIB Form 7, an Ontario Ministry of Labour notice, an OSHA 301 or an internal report. FallGuard fills in everything it already knows. |
@@ -366,6 +366,7 @@ Then:
 | Locked out after wrong passwords | Wait 15 minutes, or use "Forgot your password?". |
 | Text messages or emails don't arrive | Notifications → check the provider with **Send test**, then check **Recent messages** for the error. |
 | No sound when a fall happens | Click the bell and **Turn on alarm sound**: browsers need one click before a page may play sound. |
+| Is the server running out of space or memory? | **Settings → System status** shows memory, storage and incident videos as bars (amber from 75%, red from 90%). If storage fills up, keep videos for fewer days or add disk space; if memory stays high, use a larger server. |
 
 ---
 
@@ -386,7 +387,7 @@ browser ─► fallguard-frontend (nginx) :3000 ─► api :8000 ─► db · ga
 | `api` | `backend-module/api/` | Go (Gin + pgx) REST API: accounts, roles, incidents, alerts, cameras (via the gateway), notifications, incident reports, exports. Runs the camera monitor and the notifier in the background |
 | `db` | `backend-module/` | PostgreSQL 17 + pgvector. Tenant tables use row-level security; partitioned by month for events, alerts and logs |
 | `ml-service` | `ml-service/` | Python pose model (YOLO) + fall rules; writes incidents, alerts and predictions. See [ml-service/README.md](ml-service/README.md) |
-| `stream-hub` | `stream-hub/` | Go relay: gateway video → ml-service and browsers; records incident clips and snapshots |
+| `stream-hub` | `stream-hub/` | Go relay: gateway video → ml-service and browsers; records incident clips (the whole event, written to disk as it records; `max_s` safety cap, 1 h) and snapshots |
 | `gateway-back` | `gateway-back/` (+ `gateway-ui/`) | Go edge gateway: connects to RTSP cameras, extracts keyframes, registers itself with the API |
 | `test-camera` | root | Dev only: RTSP relay for a webcam or test video |
 
