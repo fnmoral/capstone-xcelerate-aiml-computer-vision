@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -102,6 +103,9 @@ func TestWriteClipRemovesTheRecordingFile(t *testing.T) {
 	if err == nil {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("clip not written: %v", err)
+		}
+		if b, err := os.ReadFile(path + ".json"); err != nil || !strings.Contains(string(b), `"start_ms":`) {
+			t.Fatalf("clip start time not saved: %v %s", err, b)
 		}
 	}
 }

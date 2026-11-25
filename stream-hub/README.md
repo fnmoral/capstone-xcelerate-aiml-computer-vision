@@ -32,8 +32,9 @@ stream-hub
 
 When ml-service confirms a fall, the camera's last `pre_roll_s` (15 s) of video and everything
 after it is **written to disk as it arrives** (`<clip>.mp4.rec`), until `post_roll_s` (10 s) after
-the person is back up or out of view. Then ffmpeg remuxes it into the MP4 (no re-encoding) and the
-`.rec` file is deleted. So a clip covers the whole event, and a long fall costs disk, not memory.
+the person is back up or out of view. Then ffmpeg remuxes it into the MP4 (no re-encoding), the
+`.rec` file is deleted, and `<clip>.mp4.json` records when the clip starts (`start_ms`, the
+gateway's Unix ms), so the incident page can jump from the detector timeline to that moment. So a clip covers the whole event, and a long fall costs disk, not memory.
 `max_s` (default 3600 s) is only a safety cap. Clips are deleted after `retention_days`, or the
 oldest first above `max_total_gb`. `GET /recordings-usage` (internal, not served by nginx) reports
 the disk they use, for Settings → System status.

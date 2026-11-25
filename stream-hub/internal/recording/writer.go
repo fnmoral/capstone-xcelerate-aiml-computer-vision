@@ -2,7 +2,9 @@ package recording
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +13,12 @@ import (
 )
 
 var startCode = []byte{0, 0, 0, 1}
+
+// clipMeta is saved next to each clip as <clip>.mp4.json.
+type clipMeta struct {
+	StartMS int64   `json:"start_ms"` // the first frame's time, Unix ms
+	Seconds float64 `json:"seconds"`
+}
 
 // clipFileName is the name the ml-service records in the database:
 // clips/<incident id>_<camera id>.mp4.
@@ -64,6 +72,12 @@ func writeClip(ffmpeg, dir string, c *clip) (string, float64, error) {
 	if err := os.Rename(tmp, path); err != nil {
 		os.Remove(tmp)
 		return "", 0, err
+	}
+	// When the clip starts, in wall-clock time (frame PTS are the gateway's Unix ms), so the
+	// incident page can jump from the detector timeline to the same moment in the video.
+	meta, _ := json.Marshal(clipMeta{StartMS: c.firstPTS, Seconds: seconds})
+	if err := os.WriteFile(path+".json", meta, 0o644); err != nil {
+		log.Printf("[%s] clip info for incident %s not saved: %v", c.cameraID, c.incidentID, err)
 	}
 	return path, seconds, nil
 }
