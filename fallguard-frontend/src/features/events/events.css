@@ -15,8 +15,13 @@
 .ev-legend { margin-top: 8px; }
 
 /* Label timeline: one step per prediction, 2px surface gap between steps. */
-.timeline { list-style: none; margin: 0 0 6px; padding: 0; display: flex; gap: 2px; height: 28px; }
-.timeline__step { flex: 1; min-width: 3px; border-radius: 4px; background: var(--surface-2); }
+.timeline { list-style: none; margin: 0 0 6px; padding: 0; display: flex; gap: 2px; height: 28px; overflow: hidden; }
+.timeline__step { flex: 1 1 0; min-width: 0; border-radius: 4px; background: var(--surface-2); }
+/* Long incidents: steps touch, so hundreds of seconds still fit the column. */
+.timeline--dense { gap: 0; }
+.timeline--dense .timeline__step { border-radius: 0; }
+.timeline--dense .timeline__step:first-child { border-radius: 4px 0 0 4px; }
+.timeline--dense .timeline__step:last-child { border-radius: 0 4px 4px 0; }
 .timeline__step--upright { background: var(--ok); }
 .timeline__step--falling { background: var(--warn); }
 .timeline__step--lying { background: var(--danger); }

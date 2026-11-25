@@ -19,7 +19,7 @@ function Timeline({ predictions }: { predictions: Prediction[] }) {
   if (predictions.length === 0) return <p className="muted">No per-second data stored for this incident.</p>;
   return (
     <>
-      <ol className="timeline" aria-label="Detector labels over time">
+      <ol className={`timeline${predictions.length > 120 ? ' timeline--dense' : ''}`} aria-label="Detector labels over time">
         {predictions.map((p, i) => (
           <li key={i} className={`timeline__step timeline__step--${p.label}`}
             title={`${formatTime(p.at)} · ${LABEL_TEXT[p.label] ?? p.label} (${p.confidence.toFixed(2)})`} />

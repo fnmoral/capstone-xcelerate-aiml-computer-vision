@@ -185,7 +185,9 @@ export default function ReportsPage() {
         </div>
       </section>
 
-      {(can(PERM.viewReports) || can(PERM.incidentReports)) && <IncidentReportsList />}
+      {(can(PERM.viewReports) || can(PERM.incidentReports)) && (
+        <IncidentReportsList incidentIds={list.data ? new Set(incidents.map((i) => i.id)) : null} />
+      )}
     </>
   );
 }

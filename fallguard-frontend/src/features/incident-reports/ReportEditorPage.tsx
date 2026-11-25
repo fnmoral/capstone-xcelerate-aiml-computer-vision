@@ -6,12 +6,12 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Icon } from '../../components/ui/Icon';
 import { incidentReports, shareLinks, type IncidentReport, type ReportFacts } from '../../services/api/accounts';
-import { snapshotUrl } from '../../services/api/fallguard';
 import { formatTime } from '../../lib/format';
 import { PERM, useAuth } from '../auth/AuthContext';
 import {
   autoFill, formById, hasBlanks, missing, REPORT_SHARE_DAYS, SHARE_PLACEHOLDER, shareLinkIn, withShareLink, type Field,
 } from './forms';
+import { PrintView } from './PrintView';
 import './reports.css';
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message.charAt(0).toUpperCase() + e.message.slice(1) : String(e));
@@ -53,53 +53,6 @@ function FieldInput({ f, value, onChange, disabled, auto, from }: {
       {input}
       {f.help && <small>{f.help}</small>}
     </label>
-  );
-}
-
-/** The report as a printable document (shown when printing / saving as PDF). */
-function PrintView({ report, fields, facts }: { report: IncidentReport; fields: Record<string, string>; facts: ReportFacts | null }) {
-  const form = formById(report.form)!;
-  const snap = facts?.cameras.find((c) => c.snapshot_key)?.snapshot_key;
-  return (
-    <article className="rep-print" aria-hidden="true">
-      <header className="rep-print__head">
-        <div>
-          <img src="/brand/logo-horizontal-vision-light.svg" alt="FallGuard Vision" className="rep-print__logo" />
-          <h1>{form.name}</h1>
-          <p>{facts?.org.legal_name || facts?.org.name}</p>
-          <p className="rep-print__for">Prepared for: {form.authority}</p>
-        </div>
-        <div className="rep-print__meta">
-          <div>Status: {report.status === 'final' ? 'Final' : 'Draft'}</div>
-          <div>Incident {report.incident_id.slice(0, 8)}</div>
-          <div>Printed {new Date().toLocaleString()}</div>
-        </div>
-      </header>
-      <p className="rep-print__deadline"><strong>Deadline:</strong> {form.deadline}</p>
-      {form.sections.map((s) => (
-        <section key={s.title} className="rep-print__section">
-          <h2>{s.title}</h2>
-          <dl>
-            {s.fields.map((f) => (
-              <div key={f.key} className={f.wide || f.type === 'textarea' ? 'wide' : ''}>
-                <dt>{f.label}</dt>
-                <dd>{fields[f.key]?.trim() || '—'}</dd>
-              </div>
-            ))}
-          </dl>
-        </section>
-      ))}
-      {snap && (
-        <section className="rep-print__section">
-          <h2>Snapshot</h2>
-          <img src={snapshotUrl(snap)} alt="" className="rep-print__snap" />
-        </section>
-      )}
-      <footer className="rep-print__foot">
-        <p>{form.disclaimer}</p>
-        <p>Signature: ______________________________ Date: ______________</p>
-      </footer>
-    </article>
   );
 }
 
