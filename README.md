@@ -244,9 +244,10 @@ the phone off. Each phone has its own password.
 
 ## Emails sent
 
-**Settings → Emails sent** lists the invitations, email checks and password resets FallGuard
-sent, and whether the email server accepted them. If someone didn't get an email, check their
-spam folder. Admins see it; they can let members or viewers see it on **Members & Roles**.
+**Members & Roles → Emails sent** lists the invitations, email checks and password resets
+FallGuard sent, and whether the email server accepted them. Click one to see the email as it was
+sent (without its personal sign-in link, which is never kept). If someone didn't get an email,
+check their spam folder. Admins see it; they can let members or viewers see it too.
 
 ## Notifications
 
@@ -300,6 +301,7 @@ in the server log, for testing).
   and phone number. Click **Send test SMS**.
 - Passwords and tokens are stored encrypted and are never shown again.
 - **Recent messages** at the bottom shows every email and text sent, and whether it worked.
+  Click one to see the message as it was sent.
 
 ## When a fall happens
 
