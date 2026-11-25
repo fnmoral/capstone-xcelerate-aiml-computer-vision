@@ -169,13 +169,27 @@ def test_unclear_frames_change_nothing():
     assert events == [] and m.incident_of(1) is not None
 
 
-def test_severity_escalates_and_lost_track_is_unresolved():
+def test_severity_escalates_and_lost_at_the_edge_is_unresolved():
     m = FallMonitor(MonitorConfig(confirm_seconds=1, high_after_seconds=5, critical_after_seconds=10,
                                   lost_track_seconds=2))
     events, t = run(m, [LYING] * 30)
     assert [e.kind for e in events] == [STARTED, UPDATED, UPDATED]
     assert events[-1].incident.severity == "critical"
+    m.update(t, 1, LYING, 0.8, at_edge=True)  # last seen at the edge of the picture: went out of view
     assert [e.kind for e in m.expire(t + 5)] == [UNRESOLVED]
+
+
+def test_hidden_fallen_person_stays_open_and_escalates():
+    # Lost in the middle of the picture (e.g. behind someone): still down, not "out of view".
+    m = FallMonitor(MonitorConfig(confirm_seconds=1, high_after_seconds=5, critical_after_seconds=10,
+                                  lost_track_seconds=2))
+    events, t = run(m, [LYING] * 4)
+    assert [e.kind for e in events] == [STARTED]
+    assert m.expire(t + 2.5) == []  # lost, but no change yet
+    escalated = m.expire(t + 11)
+    assert [e.kind for e in escalated] == [UPDATED] and escalated[0].incident.severity == "critical"
+    assert m.incident_of(1) is not None
+    assert [e.kind for e in m.close_all(t + 20)] == [UNRESOLVED]  # the camera stopped
 
 
 class P:
@@ -264,16 +278,56 @@ def test_someone_already_in_view_never_takes_over_a_fall():
         t += 0.1
     for _ in range(35):  # person 1 hidden; the helper stays standing there
         events += det.process(t, [P(2, helper_box, helper_k)], FRAME)[1]
+        events += det.expire(t)
         t += 0.1
-    events += det.expire(t)
-    assert [e.kind for e in events] == [STARTED, UNRESOLVED]
-    assert det.incident_of(2) is None
+    assert [e.kind for e in events] == [STARTED]  # still open: person 1 is hidden, not gone
+    assert det.incident_of(2) is None and det.incident_of(1) is not None
 
 
-def test_track_id_far_away_is_a_different_person():
-    det = detector()
-    det.process(0.0, [P(1, LYING_BOX, LYING_DOWN)], FRAME)
-    far = LYING_DOWN.copy()
-    far[:, 0] += 300
-    det.process(0.1, [P(2, LYING_BOX + [300, 0, 300, 0], far)], FRAME)
-    assert det.monitor.has_track(1) and det.monitor.has_track(2)
+def stay(det, t, people, seconds):
+    events = []
+    for _ in range(int(seconds * 10)):
+        events += det.process(t, people, FRAME)[1]
+        events += det.expire(t)
+        t += 0.1
+    return events, t
+
+
+def test_hidden_person_seen_again_on_the_spot_keeps_one_incident():
+    det = detector(lost_track_seconds=2)
+    events, t = stay(det, 0.0, [P(1, LYING_BOX, LYING_DOWN)], 1.5)
+    events2, t = stay(det, t, [], 30)  # hidden for 30 s
+    events3, t = stay(det, t, [P(7, LYING_BOX + 4, LYING_DOWN)], 2)  # found again, new ID
+    assert [e.kind for e in events + events2 + events3] == [STARTED]
+    assert det.incident_of(7) is events[0].incident
+
+
+def test_hidden_person_getting_up_on_the_spot_is_recovered():
+    det = detector(lost_track_seconds=2)
+    events, t = stay(det, 0.0, [P(1, LYING_BOX, LYING_DOWN)], 1.5)
+    more, t = stay(det, t, [], 30)
+    up_k, up_box = moved(STANDING, STANDING_BOX, 80, 150)  # standing up where they lay
+    more += stay(det, t, [P(8, up_box, up_k)], 4)[0]
+    assert [e.kind for e in events + more] == [STARTED, RECOVERED]
+
+
+def test_someone_new_away_from_the_spot_never_takes_over_a_hidden_fall():
+    det = detector(lost_track_seconds=2)
+    events, t = stay(det, 0.0, [P(1, LYING_BOX, LYING_DOWN)], 1.5)
+    more, t = stay(det, t, [], 30)
+    k, box = moved(STANDING, STANDING_BOX, 400, 0)  # someone walks in elsewhere
+    more += stay(det, t, [P(9, box, k)], 4)[0]
+    assert [e.kind for e in events + more] == [STARTED]
+    assert det.incident_of(9) is None and det.incident_of(1) is not None
+
+
+def test_two_people_renumbered_at_once_each_keep_their_own_state():
+    # Both are new IDs in the same frame and both stand on the hidden person's spot: the nearer
+    # one (still lying there) takes over, whatever order the tracker lists them in.
+    det = detector(lost_track_seconds=2)
+    events, t = stay(det, 0.0, [P(1, LYING_BOX, LYING_DOWN)], 1.5)
+    more, t = stay(det, t, [], 20)
+    helper_k, helper_box = moved(STANDING, STANDING_BOX, 230, 150)  # standing on the spot's edge
+    more += stay(det, t, [P(11, helper_box, helper_k), P(12, LYING_BOX + 2, LYING_DOWN)], 4)[0]
+    assert [e.kind for e in events + more] == [STARTED]
+    assert det.incident_of(12) is events[0].incident and det.incident_of(11) is None

@@ -322,6 +322,7 @@ class _Track:
     down_since: float | None = None
     up_since: float | None = None
     incident: Incident | None = None
+    at_edge: bool = False  # last seen touching the frame edge: they may have left the picture
 
 
 class FallMonitor:
@@ -329,9 +330,11 @@ class FallMonitor:
         self.cfg = cfg
         self._tracks: dict[int, _Track] = {}
 
-    def update(self, t: float, track_id: int, label: str, confidence: float) -> list[IncidentEvent]:
+    def update(self, t: float, track_id: int, label: str, confidence: float,
+               at_edge: bool = False) -> list[IncidentEvent]:
         track = self._tracks.setdefault(track_id, _Track(last_seen=t))
         track.last_seen = t
+        track.at_edge = at_edge
         events: list[IncidentEvent] = []
         if label == UNCLEAR:  # no evidence either way: keep the person, change nothing
             return events
@@ -360,13 +363,18 @@ class FallMonitor:
                     events.append(IncidentEvent(RECOVERED, track.incident, t))
                     track.incident = None
 
-        if track.incident is not None:
-            severity = self._severity(t - track.incident.started_at)
-            if severity != track.incident.severity:
-                track.incident.severity = severity
-                events.append(IncidentEvent(UPDATED, track.incident, t))
-
+        events += self._escalate(track, t)
         return events
+
+    def _escalate(self, track: _Track, t: float) -> list[IncidentEvent]:
+        """Raise an open incident's severity with the time the person has been down."""
+        if track.incident is None:
+            return []
+        severity = self._severity(t - track.incident.started_at)
+        if severity == track.incident.severity:
+            return []
+        track.incident.severity = severity
+        return [IncidentEvent(UPDATED, track.incident, t)]
 
     def _confirmed(self, track: _Track, t: float) -> bool:
         if t - track.down_since < self.cfg.confirm_seconds:
@@ -386,15 +394,31 @@ class FallMonitor:
         return max(start, track.down_since)
 
     def expire(self, t: float) -> list[IncidentEvent]:
-        """Drop tracks not seen recently. An open incident on a lost track becomes unresolved."""
+        """Drop tracks not seen for lost_track_seconds.
+
+        A fallen person last seen inside the picture didn't walk out of it: the model just
+        stopped finding them (hidden behind someone, or too little of them visible). Their
+        incident stays open and its severity keeps rising until they are seen again (see
+        FallDetector._hand_over) or the camera stops. Only someone last seen at the edge of the
+        picture went out of view: their open incident becomes unresolved.
+        """
         events: list[IncidentEvent] = []
         for track_id, track in list(self._tracks.items()):
             if t - track.last_seen < self.cfg.lost_track_seconds:
+                continue
+            if self.may_be_hidden(track_id):
+                events += self._escalate(track, t)
                 continue
             if track.incident is not None:
                 events.append(IncidentEvent(UNRESOLVED, track.incident, t))
             del self._tracks[track_id]
         return events
+
+    def may_be_hidden(self, track_id: int) -> bool:
+        """Has an open incident and was last seen inside the picture: if lost, they are
+        probably still lying there, hidden, rather than gone."""
+        track = self._tracks.get(track_id)
+        return track is not None and track.incident is not None and not track.at_edge
 
     def rename(self, old_id: int, new_id: int) -> None:
         """The tracker renumbered a person: carry their state (and any open incident) over."""
@@ -434,6 +458,7 @@ class FallMonitor:
 
 VELOCITY_WINDOW_S = 0.5   # hip speed is the trend over this long (a fall takes under a second)
 TORSO_WINDOW_S = 5.0      # body size is the median torso length over this long
+HIDDEN_SPOT_MARGIN = 0.25  # "on the spot" of a hidden fallen person: inside their box, grown by this x its longest side
 
 
 class TrackedPose(Protocol):
@@ -500,9 +525,8 @@ class FallDetector:
         results: list[PersonResult] = []
         events: list[IncidentEvent] = []
         present = {p.track_id for p in people}
+        self._hand_over([p for p in people if p.track_id not in self._tracks], t, present)
         for person in people:
-            if person.track_id not in self._tracks:
-                self._hand_over(person, t, present)
             track = self._tracks.setdefault(person.track_id, _PoseTrack())
             track.last_seen, track.box = t, np.asarray(person.box, dtype=float)
             features = extract(person.box, person.keypoints, frame_shape, self.cfg.min_keypoint_conf)
@@ -511,7 +535,7 @@ class FallDetector:
             if self.learned is not None:
                 label, confidence = self._learned_label(person, track, features, frame_shape, label)
             results.append(PersonResult(person.track_id, label, confidence, features, velocity))
-            events += self.monitor.update(t, person.track_id, label, confidence)
+            events += self.monitor.update(t, person.track_id, label, confidence, features.at_edge)
         return results, events
 
     def _learned_label(self, person: TrackedPose, track: _PoseTrack, features: PoseFeatures,
@@ -525,35 +549,56 @@ class FallDetector:
             return LYING, p
         return (FALLING if rules_label == FALLING else UPRIGHT), 1.0 - p
 
-    def _hand_over(self, person: TrackedPose, t: float, present: set[int]) -> None:
-        """Give a new track ID the state of a person lost nearby within handoff_seconds.
+    def _hand_over(self, new: list[TrackedPose], t: float, present: set[int]) -> None:
+        """Give each new track ID the state of a person lost nearby within handoff_seconds.
+
+        All new IDs of a frame are matched together, closest pairs first: when the tracker
+        renumbers two people at once, each takes over the person lost where they now are,
+        not whichever lost person the first new ID in the list happens to be near.
 
         Trackers often renumber someone as they fall or get up, because the box suddenly changes
         shape, or when two people overlap. Without this the new ID starts from scratch: a second
         incident for the same person, and the first one ends "unresolved" instead of recovered.
         A lost person with an open incident is matched first (and from further away), so the
         incident follows them. Only new IDs take over, never someone already in view.
+
+        A fallen person lost for longer than handoff_seconds (e.g. hidden behind someone; see
+        FallMonitor.expire) is taken over only by a new ID appearing on the spot where they lay
+        (its centre inside their last box, grown by HIDDEN_SPOT_MARGIN): still lying there
+        continues the same incident, getting up there recovers it. Someone walking up to them
+        already has an ID before they get there, so they never take over.
         """
-        if self.cfg.handoff_seconds <= 0:
+        if self.cfg.handoff_seconds <= 0 or not new:
             return
-        x1, y1, x2, y2 = person.box
-        centre = np.array([(x1 + x2) / 2, (y1 + y2) / 2])
-        best, best_key = None, None
+        pairs = []
         for track_id, track in self._tracks.items():
-            if track_id in present or track.box is None or t - track.last_seen > self.cfg.handoff_seconds:
+            if track_id in present or track.box is None:
+                continue
+            has_incident = self.monitor.incident_of(track_id) is not None
+            stale = t - track.last_seen > self.cfg.handoff_seconds
+            if stale and not (has_incident and self.monitor.may_be_hidden(track_id)):
                 continue
             ox1, oy1, ox2, oy2 = track.box
-            dist = float(np.linalg.norm(centre - [(ox1 + ox2) / 2, (oy1 + oy2) / 2]))
-            has_incident = self.monitor.incident_of(track_id) is not None
+            size = max(ox2 - ox1, oy2 - oy1)
             radius = self.cfg.handoff_incident_radius if has_incident else self.cfg.handoff_radius
-            if dist > radius * max(ox2 - ox1, oy2 - oy1):
+            for person in new:
+                x1, y1, x2, y2 = person.box
+                cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+                if stale:
+                    m = HIDDEN_SPOT_MARGIN * size
+                    if not (ox1 - m <= cx <= ox2 + m and oy1 - m <= cy <= oy2 + m):
+                        continue
+                dist = float(np.hypot(cx - (ox1 + ox2) / 2, cy - (oy1 + oy2) / 2))
+                if dist <= radius * size:
+                    # an open incident first, then the nearest
+                    pairs.append((not has_incident, dist, track_id, person.track_id))
+        taken: set[int] = set()
+        for _, _, old_id, new_id in sorted(pairs):
+            if old_id in taken or new_id in self._tracks:
                 continue
-            key = (not has_incident, dist)  # an open incident first, then the nearest
-            if best_key is None or key < best_key:
-                best, best_key = track_id, key
-        if best is not None:
-            self._tracks[person.track_id] = self._tracks.pop(best)
-            self.monitor.rename(best, person.track_id)
+            taken.add(old_id)
+            self._tracks[new_id] = self._tracks.pop(old_id)
+            self.monitor.rename(old_id, new_id)
 
     def _hip_velocity(self, person: TrackedPose, t: float) -> float | None:
         """How fast the hips move down, in the person's own torso lengths per second.

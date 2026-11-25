@@ -1,4 +1,4 @@
-"""Tests for app/detection/pose_model.py: choosing the device, and the lap stand-in.
+"""Tests for app/detection/pose_model.py: choosing the device, the lap stand-in, duplicate boxes.
 """
 
 import importlib.util
@@ -8,7 +8,7 @@ from unittest import mock
 
 import numpy as np
 
-from app.detection.pose_model import resolve_device
+from app.detection.pose_model import drop_duplicates, resolve_device
 
 
 # ================================================================================================
@@ -83,3 +83,28 @@ def test_matches_brute_force():
 def test_empty():
     _, x, y = lapjv(np.zeros((0, 3)), extend_cost=True, cost_limit=0.5)
     assert len(x) == 0 and list(y) == [-1, -1, -1]
+
+
+# ================================================================================================
+# Duplicate boxes of one person
+# ================================================================================================
+
+def test_partial_box_inside_a_stronger_one_is_dropped():
+    xyxy = np.array([[100, 300, 400, 380], [100, 300, 230, 370]], dtype=float)  # whole body, upper body
+    assert drop_duplicates(xyxy, np.array([0.9, 0.5]), [0, 1]) == [0]
+
+
+def test_weaker_big_box_around_a_stronger_one_is_dropped():
+    xyxy = np.array([[100, 300, 230, 370], [90, 290, 420, 400]], dtype=float)  # e.g. spanning two people
+    assert drop_duplicates(xyxy, np.array([0.9, 0.5]), [0, 1]) == [0]
+
+
+def test_two_people_overlapping_a_little_are_both_kept():
+    # Someone standing over a person on the floor.
+    xyxy = np.array([[100, 300, 400, 380], [300, 100, 360, 360]], dtype=float)
+    assert drop_duplicates(xyxy, np.array([0.9, 0.8]), [0, 1]) == [0, 1]
+
+
+def test_only_the_given_indexes_are_considered():
+    xyxy = np.array([[100, 300, 400, 380], [100, 300, 230, 370], [500, 100, 560, 300]], dtype=float)
+    assert drop_duplicates(xyxy, np.array([0.9, 0.95, 0.8]), [0, 2]) == [0, 2]

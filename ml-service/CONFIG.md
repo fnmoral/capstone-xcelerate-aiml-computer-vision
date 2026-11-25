@@ -252,7 +252,7 @@ Thresholds for the fall rules and incident timing. See *Detection logic in detai
 | `fall.confirm_ratio` | `0.8` | Share of the frames in those `confirm_seconds` that must show the person down. Stops stray misdetections seconds apart from adding up to an alarm |
 | `fall.recover_seconds` | `3` | How long someone must stay up before the incident closes as recovered |
 | `fall.handoff_seconds` | `2` | A new tracker ID that appears near where a person was lost this recently carries on that person's fall (trackers often renumber someone as they fall). `0` = off |
-| `fall.lost_track_seconds` | `10` | A person not seen for this long is forgotten; an open incident becomes `unresolved` |
+| `fall.lost_track_seconds` | `10` | A person not seen for this long is forgotten. An open incident becomes `unresolved` only if they were last seen at the edge of the picture; otherwise it stays open (hidden, still down) until they're seen again on that spot or the camera stops |
 | `fall.high_after_seconds` | `60` | Incident severity becomes `high` after this long |
 | `fall.critical_after_seconds` | `300` | Incident severity becomes `critical` after this long |
 | `fall.merge_window_seconds` | `10` | See [zones](#zones) |

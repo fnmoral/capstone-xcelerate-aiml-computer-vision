@@ -100,7 +100,7 @@ fall:
   handoff_seconds: 5         # a new tracker ID where someone was just lost carries on their fall (and recovery)
   handoff_radius: 0.75       # ...if it appears this close (x the lost person's longest box side)
   handoff_incident_radius: 1.25  # ...or this close to a lost person with an open incident (matched first)
-  lost_track_seconds: 10
+  lost_track_seconds: 10     # not seen this long: forgotten; a fall last seen at the picture's edge = unresolved (out of view)
   high_after_seconds: 60
   critical_after_seconds: 300   # 5min=300 Seconds; if the person is still down after this long, mark the incident as critical
   merge_window_seconds: 10   # zones: falls on different cameras of a zone starting this close together are one incident
