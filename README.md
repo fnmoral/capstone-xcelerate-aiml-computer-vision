@@ -107,8 +107,9 @@ Do these once, in this order. Each one takes a few minutes.
    WSIB firm number. These appear on incident reports.
 2. **Settings → Time zone**: so every time in the app matches your clock.
    **Settings → Appearance** also sets the organization's default look (light, dark, or the
-   same as each device). Everyone sees it until they pick their own; the sign-in page has a
-   light / dark button in the top right corner too.
+   same as each device). Everyone sees it until they pick their own with the light / dark
+   button at the top of every page (left of the bell; the sign-in page has one in the top right
+   corner too).
 3. **Cameras → Add camera**: the camera's address (it starts with `rtsp://`), plus its
    username and password if it has one. Give each camera a location ("2nd floor hallway")
    and a zone (cameras that look at the same area).
@@ -542,6 +543,21 @@ Every route, its permission and its payload: [backend-module/api/README.md](back
   session check; bind it to `127.0.0.1` in production.
 - The API connects to PostgreSQL as the table owner (row-level security is not forced); a
   restricted role is a later step.
+
+## Future improvements
+
+- **Model training opt-in (screen only so far).** Settings → *Help improve fall detection* lets an
+  admin opt in, after a confirmation that lists the main risks (privacy of the people filmed,
+  longer storage, training already done can't be undone). Today the choice is kept in that
+  browser only and nothing is collected. To build:
+  - store the choice per organization (`tenants`: opted in, by whom, when) with an API route
+    and an audit log entry, admins only;
+  - while opted in, keep each incident's clip plus its review outcome (false alarm, resolved,
+    recovered, notes) in a separate training store, outside normal clip retention;
+  - delete it after 2 years at most, or once the training run that used it is finished;
+    opting out deletes what was kept and stops collection;
+  - feed it to `ml-service/model_finetuning/` (false alarms as negatives, confirmed falls as
+    positives).
 
 ## Branding
 
