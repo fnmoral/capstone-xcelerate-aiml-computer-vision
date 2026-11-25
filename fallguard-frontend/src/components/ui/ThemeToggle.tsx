@@ -10,7 +10,7 @@ function isDark(theme: string): boolean {
 }
 
 /**
- * Light / dark switch for pages without the app menu (sign-in pages, public pages).
+ * Light / dark switch: in the app header, and on sign-in and public pages.
  * Switching saves this browser's own choice; Settings → Appearance can go back to the
  * organization's default.
  */

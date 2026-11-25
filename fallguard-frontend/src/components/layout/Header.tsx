@@ -6,6 +6,7 @@ import { Icon } from "../ui/Icon";
 import { NotificationsMenu } from "./NotificationsMenu";
 import { UserMenu } from "./UserMenu";
 import { BrandLogo, BrandMark } from "../ui/Brand";
+import { ThemeToggle } from "../ui/ThemeToggle";
 import "./Header.css";
 
 export function Header() {
@@ -39,6 +40,7 @@ export function Header() {
         </Link>
       )}
       <div className="header__actions">
+        <ThemeToggle className="header__theme" />
         <NotificationsMenu />
         <UserMenu />
       </div>

@@ -50,6 +50,13 @@
   display: flex;
   gap: 4px;
 }
+/* Light/dark switch: smaller, and kept apart from the bell so neither is pressed by mistake. */
+.header__theme {
+  width: 34px;
+  height: 34px;
+  align-self: center;
+  margin-right: 18px;
+}
 .header__icon-btn {
   display: grid;
   place-items: center;

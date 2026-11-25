@@ -3,6 +3,7 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { useUiStore, type LiveLayout, type Theme } from '../../store/uiStore';
 import { TimeZoneSettings } from './TimeZoneSettings';
+import { ModelTrainingSettings } from './ModelTrainingSettings';
 import { OrgProfileSettings } from './OrgProfileSettings';
 import { EmailsSentSettings } from './EmailsSentSettings';
 import { GatewaysSettings } from './GatewaysSettings';
@@ -95,6 +96,8 @@ export default function SettingsPage() {
         </section>
 
         <OrgProfileSettings editable={manage} />
+
+        <ModelTrainingSettings manage={manage} />
 
         <fieldset disabled={!manage} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
           <TimeZoneSettings />
