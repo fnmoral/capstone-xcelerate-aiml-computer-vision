@@ -46,6 +46,7 @@ export function DetectionRules({ mergeWindow }: { mergeWindow?: number }) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(false); // super admins: the boxes are open
 
   const load = useCallback(async () => {
     const r = await api.detectionRules();
@@ -64,7 +65,7 @@ export function DetectionRules({ mergeWindow }: { mergeWindow?: number }) {
   }
 
   const value = (k: string) => data.saved[k] ?? data.defaults[k];
-  const edit = data.can_edit;
+  const edit = data.can_edit && editing;
   const changed = Object.keys(data.saved).length;
   const dirty = data.fields.some((f) => Number(draft[f.key]) !== value(f.key));
 
@@ -86,6 +87,7 @@ export function DetectionRules({ mergeWindow }: { mergeWindow?: number }) {
     try {
       await api.saveDetectionRules(body);
       await load();
+      setEditing(false);
       setNotice(Object.keys(body).length ? 'Saved. The detector uses the new rules within 15 seconds.' : 'Defaults restored. The detector uses them within 15 seconds.');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -127,12 +129,19 @@ export function DetectionRules({ mergeWindow }: { mergeWindow?: number }) {
     <section className="card rules" style={{ padding: 16 }}>
       <div className="rules__head">
         <h2 className="section-title" style={{ margin: 0 }}>Detection rules</h2>
-        <span className="muted">{changed ? `${changed} changed for ${me?.org.name ?? 'this organization'}` : 'Defaults'}</span>
+        <span className="rules__head-end">
+          <span className="muted">{changed ? `${changed} changed for ${me?.org.name ?? 'this organization'}` : 'Defaults'}</span>
+          {data.can_edit && !editing && (
+            <button className="btn btn--sm" onClick={() => { setNotice(null); setError(null); setEditing(true); }}>Edit rules</button>
+          )}
+        </span>
       </div>
       <p className="muted" style={{ marginTop: 6 }}>
         {edit
           ? `These rules apply to ${me?.org.name ?? 'this organization'} only. People already being watched carry on with the new values.`
-          : 'How the detector decides a fall and when alerts rise. Only a FallGuard super admin can change them.'}
+          : data.can_edit
+            ? `How the detector decides a fall and when alerts rise, for ${me?.org.name ?? 'this organization'}. Use Edit rules to change them.`
+            : 'How the detector decides a fall and when alerts rise. Only a FallGuard super admin can change them.'}
       </p>
       {error && <p className="notice notice--error">{error}</p>}
       {notice && <p className="notice" role="status">{notice}</p>}
@@ -154,7 +163,7 @@ export function DetectionRules({ mergeWindow }: { mergeWindow?: number }) {
       {edit && (
         <div className="row rules__actions">
           <button className="btn btn--primary" disabled={saving || !dirty} onClick={() => void save(null)}>{saving ? 'Saving…' : 'Save rules'}</button>
-          <button className="btn" disabled={saving || !dirty} onClick={() => void load()}>Undo changes</button>
+          <button className="btn" disabled={saving} onClick={() => { setError(null); void load().then(() => setEditing(false)); }}>Cancel</button>
           <button className="btn" disabled={saving || changed === 0}
             onClick={() => confirm('Restore every rule to the default for this organization?') && void save({})}>
             Restore defaults
