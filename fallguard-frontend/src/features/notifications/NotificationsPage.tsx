@@ -114,45 +114,54 @@ function Recipients({ kind, list, set, members, matrix }: {
         <p className="notice">{isEmail ? 'Email' : 'SMS'} is on for {uncovered.map(keyLabel).join(', ')} but nobody below receives it yet.</p>
       )}
       {list.length === 0 ? <p className="muted">No {isEmail ? 'email' : 'SMS'} recipients yet.</p> : (
-        <div className="table-wrap">
-          <table className="table notif-recipients">
-            <thead>
-              <tr>
-                <th>Recipient</th>
-                {KEYS.map((k, i) => <th key={k.key} className={`notif-matrix__sev${i === SEVERITIES.length ? ' notif-matrix__updates' : ''}`}>{k.label}</th>)}
-                <th>On</th><th />
-              </tr>
-            </thead>
-            <tbody>
-              {list.map((r, i) => (
-                <tr key={r.address}>
-                  <td><strong className="notif-recipients__line">{r.name || r.address}</strong>{r.name && <div className="muted mono notif-recipients__line" title={r.address}>{r.address}</div>}
-                    {r.user_id && <div className="muted" style={{ fontSize: 12 }}>Member</div>}</td>
-                  {KEYS.map((k, col) => {
-                    // Greyed out when this recipient is switched off, or the channel is off for
-                    // it (the master switch); a tip (1 s, or tap) says how to turn it on.
-                    const why = !r.enabled
-                      ? `${r.name || r.address} is switched off: turn on "On" to send to them`
-                      : !matrix[k.key] ? `${isEmail ? 'Email' : 'SMS'} is off for ${k.label}: turn it on in "When to notify" above` : undefined;
-                    return (
-                      <td key={k.key} data-label={k.label} className={`notif-matrix__cell${col === SEVERITIES.length ? ' notif-matrix__updates' : ''}`}>
-                        <span className="tip" tabIndex={why ? 0 : undefined} data-tip={why}>
-                          <input type="checkbox" checked={r.severities.includes(k.key)} disabled={!!why}
-                            aria-label={`${r.name || r.address}: ${k.label}${why ? ` (${why})` : ''}`}
-                            onChange={(e) => update(i, { severities: e.target.checked ? [...r.severities, k.key] : r.severities.filter((x) => x !== k.key) })} />
-                        </span>
-                      </td>
-                    );
-                  })}
-                  <td data-label="On"><label className="switch"><input type="checkbox" checked={r.enabled} onChange={(e) => update(i, { enabled: e.target.checked })}
-                    aria-label={`${r.name || r.address} enabled`} /></label></td>
-                  <td className="num"><button className="btn btn--sm btn--danger" onClick={() => set(list.filter((_, j) => j !== i))}
-                    aria-label={`Remove ${r.name || r.address}`}><Icon name="trash" size={14} /></button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ul className="notif-rcpts">
+          {list.map((r, i) => {
+            const who = r.name || r.address;
+            const chips = (update_: boolean) => KEYS.filter((k) => k.update === update_).map((k) => {
+              // Locked when this recipient is switched off, or the channel is off for it (the
+              // master switch); a tip (1 s, or tap) says how to turn it on.
+              const why = !r.enabled
+                ? `${who} is switched off: turn on "On" to send to them`
+                : !matrix[k.key] ? `${isEmail ? 'Email' : 'SMS'} is off for ${k.label}: turn it on in "When to notify" above` : undefined;
+              const on = r.severities.includes(k.key);
+              return (
+                <label key={k.key} className={`notif-chip tip${on ? ' is-on' : ''}${why ? ' is-locked' : ''}`} data-tip={why}
+                  tabIndex={why ? 0 : undefined}>
+                  <input type="checkbox" checked={on} disabled={!!why} aria-label={`${who}: ${k.label}${why ? ` (${why})` : ''}`}
+                    onChange={(e) => update(i, { severities: e.target.checked ? [...r.severities, k.key] : r.severities.filter((x) => x !== k.key) })} />
+                  <span className="notif-chip__mark" aria-hidden="true">{on ? '✓' : ''}</span>
+                  {k.label}
+                </label>
+              );
+            });
+            return (
+              <li key={r.address} className={`notif-rcpt${r.enabled ? '' : ' is-disabled'}`}>
+                <div className="notif-rcpt__who">
+                  <strong className="notif-recipients__line">{who}</strong>
+                  {r.name && <div className="muted mono notif-recipients__line" title={r.address}>{r.address}</div>}
+                  {r.user_id && <div className="muted notif-rcpt__member">Member</div>}
+                </div>
+                <div className="notif-rcpt__end">
+                  <label className="switch" title={r.enabled ? 'Receiving' : 'Switched off: gets nothing'}>
+                    <input type="checkbox" checked={r.enabled} onChange={(e) => update(i, { enabled: e.target.checked })}
+                      aria-label={`${who} enabled`} />
+                    <span className="notif-rcpt__state">{r.enabled ? 'On' : 'Off'}</span>
+                  </label>
+                  <button className="btn btn--sm btn--danger" onClick={() => set(list.filter((_, j) => j !== i))}
+                    aria-label={`Remove ${who}`}><Icon name="trash" size={14} /></button>
+                </div>
+                <div className="notif-rcpt__chips">
+                  <div className="notif-chips" role="group" aria-label={`${who}: fall alerts`}>
+                    <span className="notif-chips__label">Alerts</span>{chips(false)}
+                  </div>
+                  <div className="notif-chips" role="group" aria-label={`${who}: updates`}>
+                    <span className="notif-chips__label">Updates</span>{chips(true)}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       )}
       <div className="notif-add">
         {pickable.length > 0 && (

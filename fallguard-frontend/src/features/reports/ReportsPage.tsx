@@ -112,9 +112,9 @@ export default function ReportsPage() {
       </section>
 
       <div className="tiles">
-        <div className="tile card"><div className="tile__label">Incidents</div>
-          <div className="tile__value">{list.data ? incidents.length : '—'}{incidents.length >= MAX_ROWS ? '+' : ''}</div>
-          <div className="tile__hint">{incidents.length - real.length} false alarm(s)</div></div>
+        <div className="tile card"><div className="tile__label">Falls</div>
+          <div className="tile__value">{list.data ? real.length : '—'}{incidents.length >= MAX_ROWS ? '+' : ''}</div>
+          <div className="tile__hint">{incidents.length - real.length} false alarm(s) not counted</div></div>
         <div className="tile card"><div className="tile__label">Alerts not acknowledged</div>
           <div className="tile__value">{list.data ? unhandled : '—'}</div></div>
         <div className="tile card"><div className="tile__label">Average time down</div>
