@@ -105,6 +105,15 @@ func (g gateway) addCamera(ctx context.Context, name, rtspURL, user, pass string
 	return &out, err
 }
 
+// updateCamera changes a camera's address or login on the gateway (nil = unchanged); the
+// gateway reconnects it and the camera keeps its ID.
+func (g gateway) updateCamera(ctx context.Context, id string, rtspURL, user, pass *string) (*GatewayCamera, error) {
+	var out GatewayCamera
+	err := g.do(ctx, http.MethodPatch, "/gateway/actions/cameras/"+url.PathEscape(id),
+		map[string]*string{"rtsp_url": rtspURL, "username": user, "password": pass}, &out)
+	return &out, err
+}
+
 func (g gateway) camera(ctx context.Context, action, id string) (*GatewayCamera, error) {
 	var out GatewayCamera
 	err := g.do(ctx, http.MethodPost, "/gateway/actions/cameras/"+url.PathEscape(id)+"/"+action, nil, &out)

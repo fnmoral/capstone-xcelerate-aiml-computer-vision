@@ -146,6 +146,18 @@ func (s *Store) UpdateCamera(ctx context.Context, id string, name, location, zon
 	})
 }
 
+// SetCameraURL stores a camera's new stream address (without the login, as UpsertCamera).
+func (s *Store) SetCameraURL(ctx context.Context, id, rtspURL string) error {
+	return s.tx(ctx, func(tx pgx.Tx, tid string) error {
+		tag, err := tx.Exec(ctx, `UPDATE cameras SET rtsp_url_enc = $1 WHERE id = $2 AND tenant_id = $3`,
+			[]byte(SafeURL(rtspURL)), id, tid)
+		if err == nil && tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		return err
+	})
+}
+
 // SetCameraStatus stores the status ('online', 'disabled' while paused, 'error', 'offline')
 // and when it changed. It returns the previous status; changed is false if the camera
 // already had it (or doesn't exist), so callers log only real changes.

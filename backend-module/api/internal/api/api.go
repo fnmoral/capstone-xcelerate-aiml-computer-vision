@@ -340,6 +340,7 @@ type CameraView struct {
 	AlertOffline    bool             `json:"alert_offline"` // notify when it stops working
 	OnGateway       bool             `json:"on_gateway"`
 	RTSPURL         string           `json:"rtsp_url"`
+	Username        string           `json:"username,omitempty"` // the camera's login name (the password stays on the gateway)
 	CreatedAt       time.Time        `json:"created_at"`
 	Live            bool             `json:"live"` // ml-service is receiving its video
 	People          []map[string]any `json:"people"`
@@ -445,7 +446,7 @@ func (s *Server) listCameras(c *gin.Context) {
 	seen := map[string]bool{}
 	for _, g := range gw {
 		v := CameraView{ID: g.ID, Name: g.Name, Status: g.Status, OnGateway: true,
-			RTSPURL: store.SafeURL(g.RTSPURL), CreatedAt: g.CreatedAt, People: []map[string]any{},
+			RTSPURL: store.SafeURL(g.RTSPURL), Username: g.Username, CreatedAt: g.CreatedAt, People: []map[string]any{},
 			TenantID: g.TenantID}
 		d, ok := byID[g.ID]
 		if ok {
@@ -586,13 +587,65 @@ func (s *Server) addCamera(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"id": cam.ID, "status": cam.Status})
 }
 
+// cameraUpdate is PATCH /cameras/:id: like cameraInput, but the address and login are
+// optional (nil = unchanged; an empty password also keeps the current one).
+type cameraUpdate struct {
+	cameraInput
+	RTSPURL  *string `json:"rtsp_url"` // shadows cameraInput's (encoding/json uses the shallower field)
+	Username *string `json:"username"`
+	Password *string `json:"password"`
+}
+
 func (s *Server) updateCamera(c *gin.Context) {
-	var in cameraInput
+	var in cameraUpdate
 	if err := c.ShouldBindJSON(&in); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
 		return
 	}
 	ctx, id := c.Request.Context(), c.Param("id")
+	if in.Password != nil && *in.Password == "" {
+		in.Password = nil // blank = keep the current password
+	}
+	if in.Name != nil && strings.TrimSpace(*in.Name) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "the camera needs a name"})
+		return
+	}
+	// The address or login first: if the gateway refuses, nothing else changes either.
+	if in.RTSPURL != nil || in.Username != nil || in.Password != nil {
+		if !s.isHomeOrg(c) {
+			c.JSON(http.StatusConflict, gin.H{"error": "this organization has no gateway connected yet; contact support to connect one", "code": "no_gateway"})
+			return
+		}
+		if in.RTSPURL != nil {
+			*in.RTSPURL = strings.TrimSpace(*in.RTSPURL)
+			if !rtspURL.MatchString(*in.RTSPURL) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "rtsp_url must start with rtsp:// or rtsps://"})
+				return
+			}
+		}
+		if phones, err := s.db.PhoneCameraIDs(ctx); err == nil && phones[id] {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "a phone camera's address is set by the app: use New QR code instead"})
+			return
+		}
+		if in.Username != nil {
+			*in.Username = strings.TrimSpace(*in.Username)
+		}
+		if _, err := s.gatewayOfCamera(ctx, id).updateCamera(ctx, id, in.RTSPURL, in.Username, in.Password); err != nil {
+			fail(c, err)
+			return
+		}
+		if in.RTSPURL != nil {
+			if err := s.db.SetCameraURL(ctx, id, *in.RTSPURL); err != nil {
+				fail(c, err)
+				return
+			}
+		}
+		details := gin.H{"login_changed": in.Username != nil || in.Password != nil}
+		if in.RTSPURL != nil {
+			details["rtsp_url"] = store.SafeURL(*in.RTSPURL)
+		}
+		s.auditCamera(c, "camera.connection_changed", id, "", "Camera address or login changed", details)
+	}
 	name, location, zone := trimmed(in.Name), trimmed(in.Location), trimmed(in.Zone)
 	if name != nil || location != nil || zone != nil {
 		if err := s.db.UpdateCamera(ctx, id, name, location, zone); err != nil {
