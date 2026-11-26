@@ -27,6 +27,8 @@ type Store struct {
 
 	mu       sync.Mutex
 	tenantID string // resolved UUID
+
+	supers []string // super admins' emails, lower case (SetSuperAdmins)
 }
 
 // Open creates the pool. It doesn't fail if the database isn't up yet; queries retry it.

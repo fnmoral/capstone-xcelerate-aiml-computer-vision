@@ -58,6 +58,11 @@ func main() {
 		RelayRTSPURL:  env("RELAY_RTSP_URL", "rtsp://test-camera:8554"),
 		PhoneRTMPURL:  strings.TrimSpace(os.Getenv("PHONE_RTMP_URL")),
 	}
+	for _, e := range strings.Split(os.Getenv("SUPER_ADMIN_EMAILS"), ",") {
+		if e = strings.ToLower(strings.TrimSpace(e)); e != "" {
+			cfg.SuperAdmins = append(cfg.SuperAdmins, e)
+		}
+	}
 	for _, o := range strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",") {
 		if o = strings.TrimSpace(o); o != "" {
 			cfg.AllowedOrigins = append(cfg.AllowedOrigins, o)
@@ -75,6 +80,7 @@ func main() {
 		log.Fatalf("database: %v", err)
 	}
 	defer db.Close()
+	db.SetSuperAdmins(cfg.SuperAdmins)
 
 	gin.SetMode(env("GIN_MODE", gin.ReleaseMode))
 	r := gin.New()
@@ -87,6 +93,7 @@ func main() {
 	go server.WatchCameras(context.Background())        // camera status + "not working" log
 	go server.RunNotifier(context.Background())         // email / SMS for alerts (Notifications page)
 	go server.PurgeDeletedReports(context.Background()) // deleted reports past their retention
+	go server.RunOrgMaintenance(context.Background())   // super admins in every org; erase deleted orgs after 30 days
 	devMode := strings.ToLower(env("PROD_MODE", "true")) == "false"
 	if devMode {
 		go server.DevWebcam(context.Background())

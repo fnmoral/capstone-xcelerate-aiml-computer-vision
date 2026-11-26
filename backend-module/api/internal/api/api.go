@@ -51,6 +51,10 @@ type Config struct {
 	// DefaultTimezone is used for times in alert messages when the organization has not set its
 	// own (Settings -> Time zone): DEFAULT_TIMEZONE, default America/Toronto.
 	DefaultTimezone string
+
+	// SuperAdmins are the emails (lower case) of the platform's super admins
+	// (SUPER_ADMIN_EMAILS, comma separated): admins of every organization (super.go).
+	SuperAdmins []string
 }
 
 // Server holds the dependencies of the routes.
@@ -218,6 +222,14 @@ func (s *Server) Register(r *gin.Engine) {
 	u.GET("/stats", s.stats)
 	u.GET("/detection", s.detection)
 	u.PUT("/detection", s.can(auth.ManageDetection), s.saveDetection)
+	u.GET("/detection/rules", s.rulesView)
+	u.PUT("/detection/rules", s.superOnly, s.saveRules)
+
+	// ---- super admins: every organization ----
+	u.GET("/super/orgs", s.superOnly, s.listAllOrgs)
+	u.POST("/super/orgs", s.superOnly, s.createOrgSuper)
+	u.DELETE("/super/orgs/:id", s.superOnly, s.deleteOrgSuper)
+	u.POST("/super/orgs/:id/restore", s.superOnly, s.restoreOrgSuper)
 	u.GET("/settings", s.settings)
 	u.PUT("/settings", s.can(auth.ManageSettings), s.saveSettings)
 	u.PUT("/settings/theme", s.can(auth.ManageSettings), s.saveDefaultTheme)

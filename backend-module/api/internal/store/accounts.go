@@ -58,6 +58,9 @@ type User struct {
 	// VisitorName: the name a demo visitor gave in this browser; absent = not asked yet,
 	// "" = skipped (then they appear as "Demo visitor <link label>").
 	VisitorName *string `json:"visitor_name,omitempty"`
+
+	// SuperAdmin: listed in SUPER_ADMIN_EMAILS (set by the API, not stored).
+	SuperAdmin bool `json:"super_admin,omitempty"`
 }
 
 // DisplayName is "First Last", or the email if the name is empty.
@@ -133,9 +136,10 @@ func newSlug(name string) string {
 	return base + "-" + hex.EncodeToString(b)
 }
 
-// usableMembers counts members of a tenant who can actually sign in (real password hash).
+// usableMembers counts members of a tenant who can actually sign in (real password hash),
+// not counting super admins ($2), who belong to every organization.
 const usableMembers = `SELECT count(*) FROM memberships m JOIN users u ON u.id = m.user_id
-	WHERE m.tenant_id = $1 AND u.password_hash LIKE '$2%'`
+	WHERE m.tenant_id = $1 AND u.password_hash LIKE '$2%' AND NOT (u.email = ANY($2::citext[]))`
 
 // CreateAccount signs up a new user with a new organization, as its admin. The email is
 // not verified yet. The first sign-up on a deployment takes over the home tenant (the one
@@ -194,7 +198,7 @@ func (s *Store) claimHomeTenant(ctx context.Context, tx pgx.Tx, orgName string) 
 		return "", err
 	}
 	var n int
-	if err := tx.QueryRow(ctx, usableMembers, home).Scan(&n); err != nil {
+	if err := tx.QueryRow(ctx, usableMembers, home, s.superEmails()).Scan(&n); err != nil {
 		return "", err
 	}
 	if n > 0 {
@@ -683,14 +687,17 @@ func (s *Store) AcceptInvitation(ctx context.Context, tokenHash string, first, l
 
 // memberRole locks the organization's memberships and returns a user's role and the
 // number of admins.
-func memberRole(ctx context.Context, tx pgx.Tx, tid, userID string) (role, email string, admins int, err error) {
+// memberRole returns a member's role and email and how many admins the organization has,
+// not counting super admins (supers): an organization always keeps one admin of its own.
+func memberRole(ctx context.Context, tx pgx.Tx, tid, userID string, supers []string) (role, email string, admins int, err error) {
 	if _, err = tx.Exec(ctx, `SELECT 1 FROM memberships WHERE tenant_id = $1 FOR UPDATE`, tid); err != nil {
 		return
 	}
 	err = tx.QueryRow(ctx, `SELECT m.role, u.email::text,
-		(SELECT count(*) FROM memberships WHERE tenant_id = $1 AND role = 'admin')
+		(SELECT count(*) FROM memberships a JOIN users au ON au.id = a.user_id
+		  WHERE a.tenant_id = $1 AND a.role = 'admin' AND NOT (au.email = ANY($3::citext[])))
 		FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.tenant_id = $1 AND m.user_id::text = $2`,
-		tid, userID).Scan(&role, &email, &admins)
+		tid, userID, supers).Scan(&role, &email, &admins)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = ErrNotFound
 	}
@@ -700,7 +707,7 @@ func memberRole(ctx context.Context, tx pgx.Tx, tid, userID string) (role, email
 // SetMemberRole changes a member's role. The last admin can't be demoted.
 func (s *Store) SetMemberRole(ctx context.Context, userID, role, actor string) error {
 	return s.tx(ctx, func(tx pgx.Tx, tid string) error {
-		old, email, admins, err := memberRole(ctx, tx, tid, userID)
+		old, email, admins, err := memberRole(ctx, tx, tid, userID, s.superEmails())
 		if err != nil {
 			return err
 		}
@@ -723,7 +730,7 @@ func (s *Store) SetMemberRole(ctx context.Context, userID, role, actor string) e
 // admin can't be removed.
 func (s *Store) RemoveMember(ctx context.Context, userID, actor string) error {
 	return s.tx(ctx, func(tx pgx.Tx, tid string) error {
-		role, email, admins, err := memberRole(ctx, tx, tid, userID)
+		role, email, admins, err := memberRole(ctx, tx, tid, userID, s.superEmails())
 		if err != nil {
 			return err
 		}
