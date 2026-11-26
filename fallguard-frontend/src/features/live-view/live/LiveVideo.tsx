@@ -17,14 +17,19 @@ export function LiveVideo({
   url,
   label,
   onResult,
+  onFps,
 }: {
   url: string;
   label: string;
   onResult?: (message: ResultMessage) => void;
+  /** Frames shown per second (about once a second). */
+  onFps?: (fps: number) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const onResultRef = useRef(onResult);
   onResultRef.current = onResult;
+  const onFpsRef = useRef(onFps);
+  onFpsRef.current = onFps;
   const supported = supportsLiveStream();
   const [status, setStatus] = useState<LiveStatus>("connecting");
   const overlay = useUiStore((s) => s.liveOverlay);
@@ -43,6 +48,7 @@ export function LiveVideo({
       overlay: overlayRef.current,
       onResult: (message) => onResultRef.current?.(message),
       onStatus: setStatus,
+      onFps: (fps) => onFpsRef.current?.(fps),
     });
     streamRef.current = stream;
     stream.start();

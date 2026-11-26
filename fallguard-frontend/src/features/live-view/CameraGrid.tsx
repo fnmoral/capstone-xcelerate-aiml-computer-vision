@@ -25,7 +25,7 @@ const PLACEHOLDER: Record<string, string> = {
 export const MAX_LIVE_STREAMS = 9;
 
 /** Live camera video (stream-hub WebSocket, protocol v2) with the fall-detection boxes. */
-function Video({ cam, live }: { cam: Camera; live: boolean }) {
+function Video({ cam, live, onFps }: { cam: Camera; live: boolean; onFps: (fps: number) => void }) {
   if (!live) {
     return (
       <p className="cam-tile__placeholder">
@@ -37,6 +37,7 @@ function Video({ cam, live }: { cam: Camera; live: boolean }) {
     <LiveVideo
       url={streamHubUrl(`/ws/${cam.tenant_id}/${cam.id}?v=2`)}
       label={`Live video from ${cam.name}`}
+      onFps={onFps}
     />
   );
 }
@@ -61,6 +62,7 @@ export function CameraTile({
   onSelect?: (id: string) => void;
 }) {
   const watching = isWatching(cam);
+  const [fps, setFps] = useState<number | null>(null); // frames per second on screen
   // Only lying/falling count as down; "unclear" (too little visible) is not a fall.
   const down = cam.people.filter(
     (p) => p.label === "lying" || p.label === "falling",
@@ -102,7 +104,7 @@ export function CameraTile({
         {/* Video comes straight from stream-hub, so it is shown even when the detector is
             down; the tile is then outlined as not working, because nobody is being watched. */}
         {watching ? (
-          <Video cam={cam} live={live} />
+          <Video cam={cam} live={live} onFps={setFps} />
         ) : (
           <p className="cam-tile__placeholder">{placeholder}</p>
         )}
@@ -110,7 +112,9 @@ export function CameraTile({
           <StatusBadge
             value={cam.health}
             label={
-              cam.health === "online" ? "Live" : undefined
+              cam.health === "online"
+                ? watching && live && fps !== null ? `Live · ${fps} fps` : "Live"
+                : undefined
             }
           />
         </span>

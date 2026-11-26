@@ -20,6 +20,8 @@ export interface LiveStreamOptions {
   onResult?: (message: ResultMessage) => void;
   /** "connecting" until the first frame, "live" while frames arrive, "stalled" when they stop. */
   onStatus?: (status: LiveStatus) => void;
+  /** Frames shown per second, measured on screen, reported about once a second. */
+  onFps?: (fps: number) => void;
 }
 
 export type LiveStatus = "connecting" | "live" | "stalled";
@@ -58,6 +60,8 @@ export class LiveStream {
   private retryTimer: number | undefined;
   private retryDelay = RETRY_MIN_MS;
   private lastFrameAt = 0;
+  private framesShown = 0; // since fpsSince
+  private fpsSince = 0;
   private status: LiveStatus = "connecting";
   private readonly options: LiveStreamOptions;
   private overlay: LiveOverlay;
@@ -73,6 +77,7 @@ export class LiveStream {
 
   start(): void {
     this.lastFrameAt = performance.now();
+    this.fpsSince = this.lastFrameAt;
     this.setStatus("connecting");
     this.connect();
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -226,9 +231,15 @@ export class LiveStream {
       this.current = next;
       this.dirty = true;
       this.lastFrameAt = now;
+      this.framesShown++;
       this.setStatus("live");
     } else if (this.status === "live" && now - this.lastFrameAt > STALL_MS) {
       this.setStatus("stalled");
+    }
+    if (now - this.fpsSince >= 1000) {
+      this.options.onFps?.(Math.round((this.framesShown * 1000) / (now - this.fpsSince)));
+      this.framesShown = 0;
+      this.fpsSince = now;
     }
     if (!this.dirty || !this.current) return;
     this.dirty = false;
