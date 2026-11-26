@@ -55,7 +55,7 @@ services:
       GATEWAY_API_URL: http://host.docker.internal:${GATEWAY_TUNNEL_PORT:-18080}   # the VM's end of this tunnel
       GATEWAY_KIND: onsite
     ports:
-      - "127.0.0.1:8081:8080"   # gateway UI on this computer (8080 is the local stack's gateway)
+      - "127.0.0.1:${GATEWAY_UI_PORT:-8081}:8080"   # gateway UI on this computer (8080 is the local stack's gateway)
     volumes:
       - gateway-data:/data      # its own cameras and config, separate from the local stack
     logging: *logs
