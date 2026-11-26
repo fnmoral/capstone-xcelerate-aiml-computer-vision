@@ -11,7 +11,7 @@ from ml-service.
 | `GET /api/health` | Reachability and latency of database, gateway-back, stream-hub, ml-service; `resources`: where the server runs (`SERVER_HOSTING`, "" = on-premises), its memory and disk (bytes used / total), the database size, and stream-hub's videos and photos (size, count, retention) for Settings → System status |
 | `GET /api/cameras` | Gateway cameras (status) + database details (name, location, zone) + live ML state (video arriving, people, active incidents) + `health` (online / paused / not_working / connecting / not_connected), `health_since`, `alert_offline`. Cameras added directly in the gateway UI are registered in the database here |
 | `POST /api/cameras` | `{name, rtsp_url, username?, password?, location?, zone?}` → added on the gateway, registered in the database with the same UUID. Credentials stay on the gateway only |
-| `PATCH /api/cameras/:id` | `{name?, location?, zone?, alert_offline?}` (database only; an empty zone clears it). `alert_offline`: notify when the camera stops working (default on) |
+| `PATCH /api/cameras/:id` | `{name?, location?, zone?, alert_offline?, rtsp_url?, username?, password?}`. Name, location, zone: database only (an empty zone clears it). `alert_offline`: notify when the camera stops working (default on). `rtsp_url` / `username` / `password`: sent to the camera's gateway, which reconnects it; same camera ID, so name, zone and history stay (empty password = keep it, empty username = no login; not for phone cameras) |
 | `PUT /api/cameras/order` | `{camera_ids: [...]}`: the order cameras are shown in (Live View, incident videos); stored as `cameras.metadata.sort_order`. `GET /api/cameras` and incident cameras come back in this order |
 | `DELETE /api/cameras/:id` | Removed from the gateway and the database (its incidents are kept); a phone camera's password stops working |
 | `POST /api/cameras/phone` | `{name, location?, zone?}` → a phone camera: added on the gateway as `rtsp://test-camera:8554/phone-<id>`, with a random password. Returns (once) `publish_url` (RTMPS), `server_url` + `stream_key`, and `setup_url` (a `larix://` link for the QR code). 409 `no_phone_relay` when `PHONE_RELAY_URL` is empty |
@@ -38,6 +38,8 @@ from ml-service.
 | `GET /api/clips/:name` | Incident video clip, MP4 (from ml-service; Range requests pass through for seeking). Incidents return `clip_key` and each camera's `clip_key` |
 | `GET /api/detection` | ml-service's detection settings (what it runs with now) + `saved`: values set in the app |
 | `PUT /api/detection` | `{person_confidence}` (0.05–0.95; `{}` = back to config.yaml). Stored in the fall rule's `parsed_config.detection`; ml-service applies it within 15 s. Logged as `settings.detection` |
+| `GET /api/detection/rules` | This organization's fall and alert rules: `fields` (key, group fall/alerts/advanced, min, max, step), `defaults` (ml-service's config.yaml, from its status), `saved` (this organization's changes), `can_edit` (super admins) |
+| `PUT /api/detection/rules` | Super admins: `{rules: {key: value}}` replaces this organization's changes; `{rules: {}}` restores the defaults. Values equal to the default aren't stored; Critical must come after High, the falling angle below the lying angle. Stored in the fall rule's `parsed_config.fall_rules`; ml-service applies them within 15 s. Logged as `settings.rules` |
 | `GET` · `PUT /api/gateway/config` | The gateway in use: its own settings (stream-hub address) |
 | `GET /api/gateways` | Settings → Gateways: `{mode: automatic\|chosen, in_use, gateways[]}`; each with `name` (the place), `location`, `kind` (`cloud`: phone cameras only, `onsite`), `online`, `in_use`, `cameras`, `last_seen_at` |
 | `PUT /api/gateways/active` | `{gateway_id}` or `null` (automatic: an online on-site gateway, else cloud). A chosen gateway stays in use while offline. Switching pauses the old gateway's streaming cameras and resumes them when it's used again |
@@ -72,12 +74,19 @@ may do (`tenants.role_permissions`); managing members and roles stays admin-only
 | `PUT /api/auth/visitor-name` | Visitors only: `{name}` (optional, at most 40 characters; `""` = skipped). Their actions are logged as "<name> (visitor)". `/api/auth/me` returns it as `user.visitor_name` (absent = not asked yet) |
 | `GET` · `POST /api/org/guest-links` · `DELETE …/:id` | Admins: list / create (`{label, hours}` 1–720; the URL with its token is returned only now) / end a demo link (its visitors are signed out) |
 | `GET` · `PUT /api/org` | Organization name and profile (address, WSIB firm number…; used by incident reports) |
-| `GET /api/org/members` · `PATCH` · `DELETE /api/org/members/:id` | Members; change role / remove (signs them out). The last admin can't be demoted or removed (409) |
+| `GET /api/org/members` · `PATCH` · `DELETE /api/org/members/:id` | Members (`super_admin: true` on super admins); change role / remove (signs them out). The last admin can't be demoted or removed (409; super admins don't count). A super admin's membership can't be changed here (403 `super_admin`) |
+| `GET` · `POST /api/super/orgs` | Super admins: every organization (`members` without super admins, `cameras`, `home`, deleted ones with `erase_at`) and `current` / create `{name}` (empty; the super admins become its admins) |
+| `DELETE /api/super/orgs/:id` · `POST …/:id/restore` | Super admins: delete (switched off at once, its sessions end; not the home org or the one you're in: 409) / restore. Erased for good, with its data and accounts in no other org, 30 days after deletion (hourly job) |
+| `DELETE /api/incidents/:id?mode=bin` · `mode=forever` | Super admins: move a fall event to the bin (hidden from Fall Events, alerts, notifications, analytics, reports, export, incident reports, share links and the activity log; all kept) / delete it permanently (incident, cameras, detections, alerts and their notifications, incident reports, share links, log entries, and its clips and snapshots on stream-hub). Not while the fall is in progress (409 `incident_active`) |
+| `GET /api/super/activity` | Super admins: the platform log (`platform_log`, no organization link, kept after an organization is erased): organizations created / deleted / restored / erased, fall events deleted permanently, with who and when. A permanent deletion also leaves one unlinked line in the organization's activity log (`incident.deleted_forever`) |
+| `GET /api/super/incident-bin` · `POST …/:id/restore` · `DELETE …/:id` | Super admins: fall events in the bin in every organization / restore (everything back) / delete permanently |
 | `POST /api/org/invitations` · `…/:id/resend` · `DELETE …/:id` | Invite by email with a role (7 days); the answer also has the link (`url`) so the admin can share it directly (copy / QR code) |
 | `GET` · `PUT /api/org/permissions` | Permission catalog and what members / viewers may do |
 | `GET /api/org/emails` | `emails.view` (admins by default; grantable): account emails (invitation, verification, password reset) for the organization and its members, with status `sent` / `logged` / `failed` and the error. Kept 90 days (`account_emails`) |
 | `GET /api/org/emails/:id/preview` | `emails.view`: `{html}`, the copy of an account email kept for the preview, its personal link replaced (`account_emails.preview_html`); `""` for emails sent before copies were kept |
 | `GET /api/notification-settings/deliveries/:id/preview` | Notifications permission: one sent message, `{channel, subject, body, html}` (email: the branded HTML as sent) |
+
+Organization names are unique, ignoring capitals and extra spaces (sign-up, `POST /api/super/orgs`, `PUT /api/org`, restore): 409 `org_name_taken`. A deleted organization keeps its name until it is erased.
 
 Organizations other than the home one have no gateway yet: adding, pausing or removing
 cameras answers 409 `no_gateway` (ml-service still serves the home tenant only).
@@ -122,6 +131,7 @@ They are sent as plain text + branded HTML (logo from `/brand/email-logo.png`), 
 | `COOKIE_SECURE` | `false` | Session cookie over HTTPS only |
 | `REQUIRE_EMAIL_VERIFICATION` | `true` | `false` = no verification email, new accounts are signed in at once (demos) |
 | `EMAIL_LINKS_IN_RESPONSE` | `false` | Without an email provider, return verification / reset / invitation links in API answers (demos only) |
+| `SUPER_ADMIN_EMAILS` | | Comma-separated super admins: admins of every organization (added at start-up, sign-up, sign-in and hourly), Manage organizations, each organization's detection rules. Set on the server only |
 | `ALLOWED_ORIGINS` | | Other web origins allowed to send requests (same origin always is) |
 | `SMTP_HOST` `SMTP_PORT` `SMTP_SECURITY` `SMTP_USERNAME` `SMTP_PASSWORD` `SMTP_FROM` `SMTP_FROM_NAME` | | Mail server for account emails |
 | `GATEWAY_URL` | `http://localhost:8080` | `http://gateway-back:8080` in Docker |

@@ -1,7 +1,9 @@
 import type {
   Alert,
+  BinnedIncident,
   Camera,
   DetectionOverrides,
+  DetectionRules,
   DetectionSettings,
   Gateway,
   GatewayLimits,
@@ -130,6 +132,8 @@ export const api = {
       method: "POST",
       ...json({ replace_id: replaceId }),
     }),
+  /** Missing fields stay as they are. rtsp_url / username / password reconnect the camera
+   *  (same camera: name, zone and history kept); an empty password keeps the current one. */
   updateCamera: (
     id: string,
     c: {
@@ -137,6 +141,9 @@ export const api = {
       location?: string;
       zone?: string;
       alert_offline?: boolean;
+      rtsp_url?: string;
+      username?: string;
+      password?: string;
     },
   ) => apiRequest("/cameras/" + enc(id), { method: "PATCH", ...json(c) }),
   /** Order shown in Live View and fall-event videos; first id first. */
@@ -164,6 +171,15 @@ export const api = {
     id: string,
     body: { status?: IncidentStatus; notes?: string },
   ) => apiRequest("/incidents/" + enc(id), { method: "PATCH", ...json(body) }),
+  /** Super admins: "bin" hides it everywhere (restorable); "forever" removes it and its video. */
+  deleteIncident: (id: string, mode: "bin" | "forever") =>
+    apiRequest("/incidents/" + enc(id) + "?mode=" + mode, { method: "DELETE" }),
+  /** Super admins: fall events in the bin, every organization. */
+  incidentBin: () => apiRequest<{ incidents: BinnedIncident[] }>("/super/incident-bin"),
+  restoreIncident: (id: string) =>
+    apiRequest("/super/incident-bin/" + enc(id) + "/restore", { method: "POST" }),
+  deleteBinnedIncident: (id: string) =>
+    apiRequest("/super/incident-bin/" + enc(id), { method: "DELETE" }),
   addNote: (id: string, body: { author: string; text: string }) =>
     apiRequest<{ note: Note }>("/incidents/" + enc(id) + "/notes", {
       method: "POST",
@@ -215,6 +231,11 @@ export const api = {
     }
     return apiRequest("/detection", { method: "PUT", ...json(next) });
   },
+  /** This organization's fall and alert rules: fields, defaults, its changes, can_edit (super admins). */
+  detectionRules: () => apiRequest<DetectionRules>("/detection/rules"),
+  /** Replaces the organization's rule changes; {} restores the defaults. */
+  saveDetectionRules: (rules: Record<string, number>) =>
+    apiRequest<{ saved: Record<string, number> }>("/detection/rules", { method: "PUT", ...json({ rules }) }),
   /** Settings → Gateways: every gateway, which answer, and the one in use. */
   gateways: () => apiRequest<GatewaysState>("/gateways"),
   /** The gateway to use; null = automatic (on-site if one is online, else cloud). */

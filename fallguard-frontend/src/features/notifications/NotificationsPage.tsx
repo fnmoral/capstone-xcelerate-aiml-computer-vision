@@ -6,7 +6,7 @@ import { Icon } from '../../components/ui/Icon';
 import { UnsavedChangesGuard } from '../../components/ui/UnsavedChangesGuard';
 import {
   notifications, type Delivery, type EmailProvider, type NotificationSettings, type NotifyChannel, type NotifyConfig,
-  type NotifyEvent, type NotifySeverity, type Recipient, type SMSProvider,
+  type NotifyEvent, type NotifyKey, type NotifySeverity, type NotifyUpdate, type Recipient, type SMSProvider,
 } from '../../services/api/accounts';
 import { usePolling } from '../../services/api/usePolling';
 import { formatTime } from '../../lib/format';
@@ -26,11 +26,18 @@ const EVENTS: { key: NotifyEvent; label: string }[] = [
   { key: 'false_alarm', label: 'Follow-up: false alarm' },
   { key: 'resolved', label: 'Follow-up: resolved' },
 ];
-const FOLLOW_UPS: { key: keyof NotifyConfig['follow_ups']; label: string; hint: string }[] = [
-  { key: 'recovered', label: 'The person recovered', hint: 'The detector saw them get back up.' },
-  { key: 'false_alarm', label: 'An operator marked it a false alarm', hint: 'Includes who marked it.' },
-  { key: 'resolved', label: 'An operator resolved the alert', hint: 'Includes who resolved it.' },
+/** Updates after an alert: email / SMS only, to the recipients who ticked them. */
+const UPDATES: { key: NotifyUpdate; label: string; hint: string }[] = [
+  { key: 'recovered', label: 'Recovered', hint: 'The detector saw the person get back up' },
+  { key: 'resolved', label: 'Resolved', hint: 'An operator resolved the alert (says who)' },
+  { key: 'false_alarm', label: 'False alarm', hint: 'An operator marked it a false alarm (says who)' },
 ];
+/** Every column: the alert severities, then the updates. */
+const KEYS: { key: NotifyKey; label: string; update: boolean }[] = [
+  ...SEVERITIES.map((s) => ({ key: s as NotifyKey, label: SEV_LABEL[s], update: false })),
+  ...UPDATES.map((u) => ({ key: u.key as NotifyKey, label: u.label, update: true })),
+];
+const keyLabel = (k: NotifyKey) => KEYS.find((x) => x.key === k)?.label ?? k;
 
 function errorText(e: unknown) {
   return e instanceof Error ? e.message.charAt(0).toUpperCase() + e.message.slice(1) : String(e);
@@ -39,40 +46,55 @@ function errorText(e: unknown) {
 type Msg = { ok: boolean; text: string } | null;
 const Notice = ({ m }: { m: Msg }) => (m ? <p className={`notice${m.ok ? '' : ' notice--error'}`} role="status">{m.text}</p> : null);
 
-/** Severity × channel checkboxes. */
+/** Channel x (severity, update) checkboxes: the master switches. */
 function Matrix({ cfg, set }: { cfg: NotifyConfig; set: (c: NotifyConfig) => void }) {
   return (
-    <div className="table-wrap">
-      <table className="table notif-matrix">
-        <caption className="visually-hidden">Which channels are used at each severity</caption>
-        <thead>
-          <tr>
-            <th scope="col">Channel</th>
-            {SEVERITIES.map((s) => <th key={s} scope="col" className="notif-matrix__sev"><StatusBadge value={s} label={SEV_LABEL[s]} /></th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {CHANNELS.map((ch) => (
-            <tr key={ch.key}>
-              <th scope="row" className="notif-matrix__ch"><span>{ch.label}</span><small className="muted">{ch.hint}</small></th>
-              {SEVERITIES.map((s) => (
-                <td key={s} className="notif-matrix__cell">
-                  <input type="checkbox" checked={cfg.matrix[ch.key][s]} aria-label={`${ch.label} at ${SEV_LABEL[s]} severity`}
-                    onChange={(e) => set({ ...cfg, matrix: { ...cfg.matrix, [ch.key]: { ...cfg.matrix[ch.key], [s]: e.target.checked } } })} />
-                </td>
+    <>
+      <div className="table-wrap">
+        <table className="table notif-matrix">
+          <caption className="visually-hidden">Which channels are used for each alert severity and each update</caption>
+          <thead>
+            <tr>
+              <th scope="col" rowSpan={2}>Channel</th>
+              <th scope="colgroup" colSpan={SEVERITIES.length} className="notif-matrix__group">Fall alerts</th>
+              <th scope="colgroup" colSpan={UPDATES.length} className="notif-matrix__group notif-matrix__updates">Updates</th>
+            </tr>
+            <tr>
+              {SEVERITIES.map((s) => <th key={s} scope="col" className="notif-matrix__sev"><StatusBadge value={s} label={SEV_LABEL[s]} /></th>)}
+              {UPDATES.map((u, i) => (
+                <th key={u.key} scope="col" className={`notif-matrix__sev${i === 0 ? ' notif-matrix__updates' : ''}`} title={u.hint}>{u.label}</th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {CHANNELS.map((ch) => (
+              <tr key={ch.key}>
+                <th scope="row" className="notif-matrix__ch"><span>{ch.label}</span><small className="muted">{ch.hint}</small></th>
+                {KEYS.map((k, i) => (
+                  <td key={k.key} className={`notif-matrix__cell${i === SEVERITIES.length ? ' notif-matrix__updates' : ''}`}>
+                    {k.update && ch.key === 'app' ? <span className="muted" title="The app shows alerts only">—</span> : (
+                      <input type="checkbox" checked={!!cfg.matrix[ch.key][k.key]} aria-label={`${ch.label}: ${k.label}`}
+                        onChange={(e) => set({ ...cfg, matrix: { ...cfg.matrix, [ch.key]: { ...cfg.matrix[ch.key], [k.key]: e.target.checked } } })} />
+                    )}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="muted notif-matrix__note">
+        These are the master switches. Below, each recipient ticks what they get. Updates go to every recipient who
+        ticked them, if the alert itself reached someone.
+      </p>
+    </>
   );
 }
 
 /** Email or SMS recipients, each with the severities they get. */
 function Recipients({ kind, list, set, members, matrix }: {
   kind: 'email' | 'sms'; list: Recipient[]; set: (l: Recipient[]) => void;
-  members: NotificationSettings['members']; matrix: Record<NotifySeverity, boolean>;
+  members: NotificationSettings['members']; matrix: Partial<Record<NotifyKey, boolean>>;
 }) {
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
@@ -82,50 +104,64 @@ function Recipients({ kind, list, set, members, matrix }: {
     if (list.some((x) => x.address.toLowerCase() === r.address.toLowerCase())) return;
     set([...list, r]);
   };
-  const defaultSev = SEVERITIES.filter((s) => matrix[s]);
+  const defaultSev = KEYS.filter((k) => matrix[k.key]).map((k) => k.key); // a new recipient gets what's on
   const pickable = members.filter((m) => (isEmail ? m.email : m.phone) && !list.some((x) => x.user_id === m.user_id));
-  const uncovered = SEVERITIES.filter((s) => matrix[s] && !list.some((r) => r.enabled && r.severities.includes(s)));
+  const uncovered = KEYS.filter((k) => matrix[k.key] && !list.some((r) => r.enabled && r.severities.includes(k.key))).map((k) => k.key);
 
   return (
     <>
       {uncovered.length > 0 && (
-        <p className="notice">{isEmail ? 'Email' : 'SMS'} is on for {uncovered.map((s) => SEV_LABEL[s]).join(', ')} but nobody below receives it yet.</p>
+        <p className="notice">{isEmail ? 'Email' : 'SMS'} is on for {uncovered.map(keyLabel).join(', ')} but nobody below receives it yet.</p>
       )}
       {list.length === 0 ? <p className="muted">No {isEmail ? 'email' : 'SMS'} recipients yet.</p> : (
-        <div className="table-wrap">
-          <table className="table notif-recipients">
-            <thead>
-              <tr>
-                <th>Recipient</th>
-                {SEVERITIES.map((s) => <th key={s} className="notif-matrix__sev">{SEV_LABEL[s]}</th>)}
-                <th>On</th><th />
-              </tr>
-            </thead>
-            <tbody>
-              {list.map((r, i) => (
-                <tr key={r.address}>
-                  <td><strong>{r.name || r.address}</strong>{r.name && <div className="muted mono">{r.address}</div>}
-                    {r.user_id && <div className="muted" style={{ fontSize: 12 }}>Member</div>}</td>
-                  {SEVERITIES.map((s) => (
-                    <td key={s} className="notif-matrix__cell">
-                      {/* Off for this severity: a tip (1 s, or tap) says where to switch it on. */}
-                      <span className="tip" tabIndex={matrix[s] ? undefined : 0}
-                        data-tip={matrix[s] ? undefined : `${isEmail ? 'Email' : 'SMS'} is off for ${SEV_LABEL[s]}: turn it on in "When to notify" above`}>
-                        <input type="checkbox" checked={r.severities.includes(s)} disabled={!matrix[s]}
-                          aria-label={`${r.name || r.address}: ${SEV_LABEL[s]}${matrix[s] ? '' : ` (off: turn on ${isEmail ? 'email' : 'SMS'} for ${SEV_LABEL[s]} in When to notify)`}`}
-                          onChange={(e) => update(i, { severities: e.target.checked ? [...r.severities, s] : r.severities.filter((x) => x !== s) })} />
-                      </span>
-                    </td>
-                  ))}
-                  <td><label className="switch"><input type="checkbox" checked={r.enabled} onChange={(e) => update(i, { enabled: e.target.checked })}
-                    aria-label={`${r.name || r.address} enabled`} /></label></td>
-                  <td className="num"><button className="btn btn--sm btn--danger" onClick={() => set(list.filter((_, j) => j !== i))}
-                    aria-label={`Remove ${r.name || r.address}`}><Icon name="trash" size={14} /></button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ul className="notif-rcpts">
+          {list.map((r, i) => {
+            const who = r.name || r.address;
+            const chips = (update_: boolean) => KEYS.filter((k) => k.update === update_).map((k) => {
+              // Locked when this recipient is switched off, or the channel is off for it (the
+              // master switch); a tip (1 s, or tap) says how to turn it on.
+              const why = !r.enabled
+                ? `${who} is switched off: turn on "On" to send to them`
+                : !matrix[k.key] ? `${isEmail ? 'Email' : 'SMS'} is off for ${k.label}: turn it on in "When to notify" above` : undefined;
+              const on = r.severities.includes(k.key);
+              return (
+                <label key={k.key} className={`notif-chip tip${on ? ' is-on' : ''}${why ? ' is-locked' : ''}`} data-tip={why}
+                  tabIndex={why ? 0 : undefined}>
+                  <input type="checkbox" checked={on} disabled={!!why} aria-label={`${who}: ${k.label}${why ? ` (${why})` : ''}`}
+                    onChange={(e) => update(i, { severities: e.target.checked ? [...r.severities, k.key] : r.severities.filter((x) => x !== k.key) })} />
+                  <span className="notif-chip__mark" aria-hidden="true">{on ? '✓' : ''}</span>
+                  {k.label}
+                </label>
+              );
+            });
+            return (
+              <li key={r.address} className={`notif-rcpt${r.enabled ? '' : ' is-disabled'}`}>
+                <div className="notif-rcpt__who">
+                  <strong className="notif-recipients__line">{who}</strong>
+                  {r.name && <div className="muted mono notif-recipients__line" title={r.address}>{r.address}</div>}
+                  {r.user_id && <div className="muted notif-rcpt__member">Member</div>}
+                </div>
+                <div className="notif-rcpt__end">
+                  <label className="switch" title={r.enabled ? 'Receiving' : 'Switched off: gets nothing'}>
+                    <input type="checkbox" checked={r.enabled} onChange={(e) => update(i, { enabled: e.target.checked })}
+                      aria-label={`${who} enabled`} />
+                    <span className="notif-rcpt__state">{r.enabled ? 'On' : 'Off'}</span>
+                  </label>
+                  <button className="btn btn--sm btn--danger" onClick={() => set(list.filter((_, j) => j !== i))}
+                    aria-label={`Remove ${who}`}><Icon name="trash" size={14} /></button>
+                </div>
+                <div className="notif-rcpt__chips">
+                  <div className="notif-chips" role="group" aria-label={`${who}: fall alerts`}>
+                    <span className="notif-chips__label">Alerts</span>{chips(false)}
+                  </div>
+                  <div className="notif-chips" role="group" aria-label={`${who}: updates`}>
+                    <span className="notif-chips__label">Updates</span>{chips(true)}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       )}
       <div className="notif-add">
         {pickable.length > 0 && (
@@ -506,20 +542,6 @@ export default function NotificationsPage() {
               set={(l) => set({ ...cfg, sms_recipients: l })} />
           </section>
         </div>
-
-        <section className="card notif-section">
-          <h2 className="section-title">Follow-up updates</h2>
-          <p className="muted" style={{ marginTop: -6 }}>Sent to the people who got the alert, by the same channels.</p>
-          <div className="stack" style={{ gap: 10 }}>
-            {FOLLOW_UPS.map((f) => (
-              <label key={f.key} className="switch">
-                <input type="checkbox" checked={cfg.follow_ups[f.key]}
-                  onChange={(e) => set({ ...cfg, follow_ups: { ...cfg.follow_ups, [f.key]: e.target.checked } })} />
-                <span>{f.label} <span className="muted">· {f.hint}</span></span>
-              </label>
-            ))}
-          </div>
-        </section>
 
         <section className="card notif-section">
           <h2 className="section-title">Message templates</h2>

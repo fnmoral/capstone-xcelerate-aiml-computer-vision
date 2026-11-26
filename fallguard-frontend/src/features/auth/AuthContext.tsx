@@ -3,6 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { accounts, type Me } from '../../services/api/accounts';
 import { UNAUTHORIZED_EVENT } from '../../services/api/client';
 import { BrandLoader } from '../../components/ui/Brand';
+import { closeAllLiveStreams } from '../live-view/live/liveStreams';
 
 interface AuthState {
   me: Me | null;
@@ -53,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [me, refresh]);
 
   const signOut = useCallback(async () => {
-    try { await accounts.logout(); } finally { setMe(null); }
+    try { await accounts.logout(); } finally { closeAllLiveStreams(); setMe(null); }
   }, []);
 
   const value = useMemo<AuthState>(() => ({

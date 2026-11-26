@@ -51,6 +51,10 @@ type Config struct {
 	// DefaultTimezone is used for times in alert messages when the organization has not set its
 	// own (Settings -> Time zone): DEFAULT_TIMEZONE, default America/Toronto.
 	DefaultTimezone string
+
+	// SuperAdmins are the emails (lower case) of the platform's super admins
+	// (SUPER_ADMIN_EMAILS, comma separated): admins of every organization (super.go).
+	SuperAdmins []string
 }
 
 // Server holds the dependencies of the routes.
@@ -178,6 +182,7 @@ func (s *Server) Register(r *gin.Engine) {
 	u.GET("/incidents", events, s.listIncidents)
 	u.GET("/incidents/:id", events, s.getIncident)
 	u.PATCH("/incidents/:id", respond, s.updateIncident)
+	u.DELETE("/incidents/:id", s.superOnly, s.deleteIncident) // ?mode=bin | forever
 	u.POST("/incidents/:id/notes", respond, s.addNote)
 	u.GET("/alerts", events, s.listAlerts)
 	u.POST("/alerts/:id/acknowledge", respond, s.alertStatus("acknowledged"))
@@ -218,6 +223,18 @@ func (s *Server) Register(r *gin.Engine) {
 	u.GET("/stats", s.stats)
 	u.GET("/detection", s.detection)
 	u.PUT("/detection", s.can(auth.ManageDetection), s.saveDetection)
+	u.GET("/detection/rules", s.rulesView)
+	u.PUT("/detection/rules", s.superOnly, s.saveRules)
+
+	// ---- super admins: every organization ----
+	u.GET("/super/orgs", s.superOnly, s.listAllOrgs)
+	u.POST("/super/orgs", s.superOnly, s.createOrgSuper)
+	u.DELETE("/super/orgs/:id", s.superOnly, s.deleteOrgSuper)
+	u.POST("/super/orgs/:id/restore", s.superOnly, s.restoreOrgSuper)
+	u.GET("/super/activity", s.superOnly, s.platformActivity)
+	u.GET("/super/incident-bin", s.superOnly, s.incidentBin)
+	u.POST("/super/incident-bin/:id/restore", s.superOnly, s.restoreBinned)
+	u.DELETE("/super/incident-bin/:id", s.superOnly, s.deleteBinned)
 	u.GET("/settings", s.settings)
 	u.PUT("/settings", s.can(auth.ManageSettings), s.saveSettings)
 	u.PUT("/settings/theme", s.can(auth.ManageSettings), s.saveDefaultTheme)
@@ -244,6 +261,8 @@ func fail(c *gin.Context, err error) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 	case errors.Is(err, store.ErrNameTaken):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+	case errors.Is(err, store.ErrOrgNameTaken):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "org_name_taken"})
 	case errors.As(err, &up):
 		status := up.Status
 		if status < 400 || status >= 500 {
@@ -340,6 +359,7 @@ type CameraView struct {
 	AlertOffline    bool             `json:"alert_offline"` // notify when it stops working
 	OnGateway       bool             `json:"on_gateway"`
 	RTSPURL         string           `json:"rtsp_url"`
+	Username        string           `json:"username,omitempty"` // the camera's login name (the password stays on the gateway)
 	CreatedAt       time.Time        `json:"created_at"`
 	Live            bool             `json:"live"` // ml-service is receiving its video
 	People          []map[string]any `json:"people"`
@@ -445,7 +465,7 @@ func (s *Server) listCameras(c *gin.Context) {
 	seen := map[string]bool{}
 	for _, g := range gw {
 		v := CameraView{ID: g.ID, Name: g.Name, Status: g.Status, OnGateway: true,
-			RTSPURL: store.SafeURL(g.RTSPURL), CreatedAt: g.CreatedAt, People: []map[string]any{},
+			RTSPURL: store.SafeURL(g.RTSPURL), Username: g.Username, CreatedAt: g.CreatedAt, People: []map[string]any{},
 			TenantID: g.TenantID}
 		d, ok := byID[g.ID]
 		if ok {
@@ -586,13 +606,65 @@ func (s *Server) addCamera(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"id": cam.ID, "status": cam.Status})
 }
 
+// cameraUpdate is PATCH /cameras/:id: like cameraInput, but the address and login are
+// optional (nil = unchanged; an empty password also keeps the current one).
+type cameraUpdate struct {
+	cameraInput
+	RTSPURL  *string `json:"rtsp_url"` // shadows cameraInput's (encoding/json uses the shallower field)
+	Username *string `json:"username"`
+	Password *string `json:"password"`
+}
+
 func (s *Server) updateCamera(c *gin.Context) {
-	var in cameraInput
+	var in cameraUpdate
 	if err := c.ShouldBindJSON(&in); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
 		return
 	}
 	ctx, id := c.Request.Context(), c.Param("id")
+	if in.Password != nil && *in.Password == "" {
+		in.Password = nil // blank = keep the current password
+	}
+	if in.Name != nil && strings.TrimSpace(*in.Name) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "the camera needs a name"})
+		return
+	}
+	// The address or login first: if the gateway refuses, nothing else changes either.
+	if in.RTSPURL != nil || in.Username != nil || in.Password != nil {
+		if !s.isHomeOrg(c) {
+			c.JSON(http.StatusConflict, gin.H{"error": "this organization has no gateway connected yet; contact support to connect one", "code": "no_gateway"})
+			return
+		}
+		if in.RTSPURL != nil {
+			*in.RTSPURL = strings.TrimSpace(*in.RTSPURL)
+			if !rtspURL.MatchString(*in.RTSPURL) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "rtsp_url must start with rtsp:// or rtsps://"})
+				return
+			}
+		}
+		if phones, err := s.db.PhoneCameraIDs(ctx); err == nil && phones[id] {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "a phone camera's address is set by the app: use New QR code instead"})
+			return
+		}
+		if in.Username != nil {
+			*in.Username = strings.TrimSpace(*in.Username)
+		}
+		if _, err := s.gatewayOfCamera(ctx, id).updateCamera(ctx, id, in.RTSPURL, in.Username, in.Password); err != nil {
+			fail(c, err)
+			return
+		}
+		if in.RTSPURL != nil {
+			if err := s.db.SetCameraURL(ctx, id, *in.RTSPURL); err != nil {
+				fail(c, err)
+				return
+			}
+		}
+		details := gin.H{"login_changed": in.Username != nil || in.Password != nil}
+		if in.RTSPURL != nil {
+			details["rtsp_url"] = store.SafeURL(*in.RTSPURL)
+		}
+		s.auditCamera(c, "camera.connection_changed", id, "", "Camera address or login changed", details)
+	}
 	name, location, zone := trimmed(in.Name), trimmed(in.Location), trimmed(in.Zone)
 	if name != nil || location != nil || zone != nil {
 		if err := s.db.UpdateCamera(ctx, id, name, location, zone); err != nil {

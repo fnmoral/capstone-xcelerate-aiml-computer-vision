@@ -11,15 +11,20 @@ import {
 
 export interface LiveStreamOptions {
   url: string;
-  canvas: HTMLCanvasElement;
   /** How long frames wait for their detections. 0 shows video as soon as it is decoded. */
   delayMs: number;
   labelText: (label: string) => string;
   /** What to draw over the video; change it later with setOverlay(). */
   overlay: LiveOverlay;
+}
+
+/** What a view of the stream wants to hear about. */
+export interface LiveStreamListener {
   onResult?: (message: ResultMessage) => void;
   /** "connecting" until the first frame, "live" while frames arrive, "stalled" when they stop. */
   onStatus?: (status: LiveStatus) => void;
+  /** Frames shown per second, measured on screen, reported about once a second. */
+  onFps?: (fps: number) => void;
 }
 
 export type LiveStatus = "connecting" | "live" | "stalled";
@@ -34,17 +39,21 @@ export function supportsLiveStream(): boolean {
 }
 
 /**
- * Plays one camera from the stream-hub WebSocket on a canvas, with the ml-service
- * detections drawn on the frames they belong to.
+ * Plays one camera from the stream-hub WebSocket, with the ml-service detections drawn on
+ * the frames they belong to. The connection and decoding don't depend on a canvas: a view
+ * attaches its canvas while it is on screen, so leaving Live View (or switching between the
+ * grid and one camera) doesn't reconnect, and the picture is there at once on return.
  *
  * WebSocket -> pictures grouped by PTS -> WebCodecs decoder -> frames held for delayMs
- * -> drawn with the detection matching their PTS.
+ * -> drawn with the detection matching their PTS (when a canvas is attached).
  */
 export class LiveStream {
-  private readonly ctx: CanvasRenderingContext2D;
+  private canvas: HTMLCanvasElement | null = null;
+  private ctx: CanvasRenderingContext2D | null = null;
   private readonly assembler = new AccessUnitAssembler();
   private readonly detections = new DetectionBuffer();
   private readonly scheduler: FrameScheduler;
+  private readonly listeners = new Set<LiveStreamListener>();
   private ws: WebSocket | null = null;
   private decoder: VideoDecoder | null = null;
   private codec: string | null = null;
@@ -53,11 +62,16 @@ export class LiveStream {
   private current: DecodedFrame | null = null;
   private dirty = false;
   private raf = 0;
+  private timer: number | undefined; // keeps the stream going when no canvas is shown (no rAF needed)
   private resizeObserver: ResizeObserver | null = null;
   private disposed = false;
+  private started = false;
   private retryTimer: number | undefined;
   private retryDelay = RETRY_MIN_MS;
   private lastFrameAt = 0;
+  private dueAtFpsSince = 0; // scheduler.due when fpsSince was set
+  private fpsSince = 0;
+  private fps: number | null = null;
   private status: LiveStatus = "connecting";
   private readonly options: LiveStreamOptions;
   private overlay: LiveOverlay;
@@ -65,20 +79,53 @@ export class LiveStream {
   constructor(options: LiveStreamOptions) {
     this.overlay = options.overlay;
     this.options = options;
-    const ctx = options.canvas.getContext("2d");
-    if (!ctx) throw new Error("2D canvas not available");
-    this.ctx = ctx;
     this.scheduler = new FrameScheduler(options.delayMs);
   }
 
+  get url(): string {
+    return this.options.url;
+  }
+
   start(): void {
+    if (this.started) return;
+    this.started = true;
     this.lastFrameAt = performance.now();
+    this.fpsSince = this.lastFrameAt;
     this.setStatus("connecting");
     this.connect();
+    this.schedule();
+  }
+
+  /** Hear about results, status and frame rate; the current status and rate come at once. */
+  subscribe(listener: LiveStreamListener): () => void {
+    this.listeners.add(listener);
+    listener.onStatus?.(this.status);
+    if (this.fps !== null) listener.onFps?.(this.fps);
+    return () => this.listeners.delete(listener);
+  }
+
+  /** Draw on this canvas from now on (the newest frame right away). */
+  attach(canvas: HTMLCanvasElement): void {
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("2D canvas not available");
+    this.resizeObserver?.disconnect();
+    this.canvas = canvas;
+    this.ctx = ctx;
     this.resizeObserver = new ResizeObserver(() => this.resize());
-    this.resizeObserver.observe(this.options.canvas);
+    this.resizeObserver.observe(canvas);
     this.resize();
-    this.raf = requestAnimationFrame(this.render);
+    this.dirty = true;
+    this.schedule();
+  }
+
+  /** Stop drawing on this canvas (the stream keeps going). */
+  detach(canvas: HTMLCanvasElement): void {
+    if (this.canvas !== canvas) return; // another view took over already
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    this.canvas = null;
+    this.ctx = null;
+    this.schedule();
   }
 
   /** Opens the WebSocket. If it closes (stream-hub restart, network drop), retries with backoff. */
@@ -120,7 +167,7 @@ export class LiveStream {
   private setStatus(status: LiveStatus): void {
     if (status === this.status && status !== "connecting") return;
     this.status = status;
-    this.options.onStatus?.(status);
+    for (const l of this.listeners) l.onStatus?.(status);
   }
 
   /** Redraws the current frame with other overlays (no reconnect). */
@@ -133,12 +180,14 @@ export class LiveStream {
     this.disposed = true;
     window.clearTimeout(this.retryTimer);
     cancelAnimationFrame(this.raf);
+    window.clearInterval(this.timer);
     this.resizeObserver?.disconnect();
     this.ws?.close();
     if (this.decoder && this.decoder.state !== "closed") this.decoder.close();
     this.scheduler.clear();
     this.current?.image.close();
     this.current = null;
+    this.listeners.clear();
   }
 
   private onMessage(event: MessageEvent): void {
@@ -150,7 +199,7 @@ export class LiveStream {
         // Arrived after its frame was drawn (delay too short): redraw with it.
         if (this.current && message.pts <= this.current.pts) this.dirty = true;
       }
-      this.options.onResult?.(message);
+      for (const l of this.listeners) l.onResult?.(message);
       return;
     }
 
@@ -215,22 +264,22 @@ export class LiveStream {
       .finally(() => frame.close());
   }
 
-  private render = (): void => {
-    if (this.disposed) return;
-    this.raf = requestAnimationFrame(this.render);
+  /** With a canvas: every animation frame. Without one: a light timer that only keeps the
+   *  newest frame (rAF isn't needed, and stops in background tabs anyway). */
+  private schedule(): void {
+    if (this.disposed || !this.started) return;
+    cancelAnimationFrame(this.raf);
+    window.clearInterval(this.timer);
+    this.timer = undefined;
+    if (this.canvas) this.raf = requestAnimationFrame(this.render);
+    else this.timer = window.setInterval(() => this.tick(performance.now()), 100);
+  }
 
-    const now = performance.now();
-    const next = this.scheduler.take(now);
-    if (next) {
-      this.current?.image.close();
-      this.current = next;
-      this.dirty = true;
-      this.lastFrameAt = now;
-      this.setStatus("live");
-    } else if (this.status === "live" && now - this.lastFrameAt > STALL_MS) {
-      this.setStatus("stalled");
-    }
-    if (!this.dirty || !this.current) return;
+  private render = (): void => {
+    if (this.disposed || !this.canvas) return;
+    this.raf = requestAnimationFrame(this.render);
+    this.tick(performance.now());
+    if (!this.dirty || !this.current || !this.ctx) return;
     this.dirty = false;
     drawFrame(
       this.ctx,
@@ -242,8 +291,31 @@ export class LiveStream {
     );
   };
 
+  /** Takes the newest due frame, and keeps the status and frame rate current. */
+  private tick(now: number): void {
+    const next = this.scheduler.take(now);
+    if (next) {
+      this.current?.image.close();
+      this.current = next;
+      this.dirty = true;
+      this.lastFrameAt = now;
+      this.setStatus("live");
+    } else if (this.status === "live" && now - this.lastFrameAt > STALL_MS) {
+      this.setStatus("stalled");
+    }
+    if (now - this.fpsSince >= 1000) {
+      // Every frame that came due counts, also ones skipped between two 100 ms ticks while no
+      // canvas is shown: the stream's own rate, right as soon as a view attaches.
+      this.fps = Math.round(((this.scheduler.due - this.dueAtFpsSince) * 1000) / (now - this.fpsSince));
+      for (const l of this.listeners) l.onFps?.(this.fps);
+      this.dueAtFpsSince = this.scheduler.due;
+      this.fpsSince = now;
+    }
+  }
+
   private resize(): void {
-    const canvas = this.options.canvas;
+    const canvas = this.canvas;
+    if (!canvas) return;
     const ratio = window.devicePixelRatio || 1;
     const width = Math.round(canvas.clientWidth * ratio);
     const height = Math.round(canvas.clientHeight * ratio);

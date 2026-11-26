@@ -559,29 +559,64 @@ func (s *Server) notifyAlert(ctx context.Context, tid string, cfg notify.Config,
 		"false_alarm": a.Status == "false_positive",
 		"resolved":    a.Status == "resolved",
 	}
+	// Updates go to every recipient who ticked them, on each channel switched on for them in
+	// "When to notify" (the master switch), as long as the alert itself reached someone.
+	var reached *bool
 	for _, ev := range notify.FollowUps {
 		if !happened[ev] || a.Done[ev] {
 			continue
 		}
-		msgs := []store.Delivery{}
-		if cfg.FollowUps[ev] {
+		if reached == nil {
 			got, err := s.db.AlertRecipients(ctx, a.ID)
 			if err != nil {
 				return err
 			}
-			subject, body, sms := cfg.Message(ev, s.alertValues(a, cfg, a.Severity))
-			for _, to := range got["email"] {
-				msgs = append(msgs, store.Delivery{Event: ev, Channel: "email", Recipient: to, Subject: &subject, Body: body})
-			}
-			for _, to := range got["sms"] {
-				msgs = append(msgs, store.Delivery{Event: ev, Channel: "sms", Recipient: to, Body: sms})
-			}
+			r := len(got["email"])+len(got["sms"]) > 0
+			reached = &r
+		}
+		msgs := []store.Delivery{}
+		if *reached {
+			msgs = updateMessages(cfg, ev, func() (string, string, string) {
+				return cfg.Message(ev, s.alertValues(a, cfg, a.Severity))
+			})
 		}
 		if _, err := s.db.QueueEvent(ctx, tid, a.ID, ev, msgs); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// updateMessages: one message per recipient who ticked the update ev, on each channel where
+// ev is switched on (email, SMS). message gives the subject, email body and SMS text.
+func updateMessages(cfg notify.Config, ev string, message func() (string, string, string)) []store.Delivery {
+	msgs := []store.Delivery{}
+	subject, body, sms := "", "", ""
+	built := false
+	for _, ch := range []struct {
+		name string
+		list []notify.Recipient
+	}{{"email", cfg.EmailRecipients}, {"sms", cfg.SMSRecipients}} {
+		if !cfg.Matrix[ch.name][ev] {
+			continue
+		}
+		for _, r := range ch.list {
+			if !r.Wants(ev) {
+				continue
+			}
+			if !built {
+				subject, body, sms = message()
+				built = true
+			}
+			if ch.name == "email" {
+				subj := subject
+				msgs = append(msgs, store.Delivery{Event: ev, Channel: "email", Recipient: r.Address, Subject: &subj, Body: body})
+			} else {
+				msgs = append(msgs, store.Delivery{Event: ev, Channel: "sms", Recipient: r.Address, Body: sms})
+			}
+		}
+	}
+	return msgs
 }
 
 // sendPending sends queued messages with each organization's provider.

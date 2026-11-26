@@ -155,6 +155,7 @@ func (s *Store) AlertsToNotify(ctx context.Context, tid string) ([]AlertForNotif
 		LEFT JOIN cameras c ON c.id = a.camera_id
 		LEFT JOIN incidents i ON i.id = a.incident_id AND i.tenant_id = a.tenant_id
 		WHERE a.tenant_id = $1 AND a.triggered_at >= greatest(n.enabled_at - interval '1 minute', now() - interval '2 days')
+		  AND (i.id IS NULL OR i.deleted_at IS NULL)
 		ORDER BY a.triggered_at LIMIT 500`, tid)
 	if err != nil {
 		return nil, err

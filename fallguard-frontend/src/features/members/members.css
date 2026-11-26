@@ -4,6 +4,7 @@
 .role-card__detail { margin: 0; font-size: 13px; }
 .members-section { padding: 20px; }
 .members-sub { font-size: 12px; }
+.members-super { margin-left: 8px; font-size: 11px; color: var(--accent); }
 .members-error { color: var(--danger); font-size: 12px; margin-top: 4px; }
 
 .invite-form { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }

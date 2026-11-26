@@ -46,7 +46,8 @@ CREATE TABLE tenants (
     profile       JSONB NOT NULL DEFAULT '{}', -- address, phone, WSIB firm number... (incident report headers)
     role_permissions JSONB,                    -- what members / viewers may do; NULL = defaults (backend auth package)
     incident_overlay JSONB,                    -- default overlays on incident videos (box, status...); NULL = built-in
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at    TIMESTAMPTZ                  -- deleted by a super admin: erased 30 days later
 );
 
 CREATE TABLE users (
@@ -403,6 +404,8 @@ CREATE TABLE incidents (
     snapshot_key     TEXT,                      -- stream-hub recordings key for the key image
     clip_key         TEXT,                      -- stream-hub recordings key for the main clip
     notes            TEXT,
+    deleted_at       TIMESTAMPTZ,               -- in the fall event bin since (super admins); hidden everywhere
+    deleted_by       TEXT,                      -- who moved it to the bin
     PRIMARY KEY (id, started_at)
 ) PARTITION BY RANGE (started_at);
 CREATE INDEX idx_incidents_cam_time ON incidents (tenant_id, camera_id, started_at DESC);

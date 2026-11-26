@@ -41,6 +41,7 @@ export interface Camera {
   alert_offline: boolean; // notify when it stops working
   on_gateway: boolean;
   rtsp_url: string; // without credentials
+  username?: string; // the camera's login name (the password stays on the gateway)
   created_at: string;
   live: boolean; // ml-service is receiving its video
   people: LivePerson[];
@@ -128,6 +129,23 @@ export interface Incident {
   note_list: Note[]; // every note, oldest first
   cameras: IncidentCamera[];
   alert: Alert | null;
+}
+
+/** A fall event in the bin (super admins, Manage organizations). */
+export interface BinnedIncident {
+  id: string;
+  org_id: string;
+  org_name: string;
+  camera_name: string | null;
+  started_at: string;
+  status: IncidentStatus;
+  severity: Severity;
+  location_label: string | null;
+  snapshot_key: string | null;
+  has_video: boolean;
+  reports: number;
+  deleted_at: string;
+  deleted_by: string | null;
 }
 
 /** One note on an incident. Several people can add notes; none is overwritten. */
@@ -258,6 +276,24 @@ export interface DetectionSettings {
   rules: Record<string, number>;
   incidents: Record<string, number>;
   zones: Record<string, string[]>;
+}
+
+/** One rule an organization can change (Detection rules; super admins only). */
+export interface RuleField {
+  key: string;
+  group: "fall" | "alerts" | "advanced";
+  min: number;
+  max: number;
+  step: number;
+  integer?: boolean;
+}
+
+/** This organization's fall and alert rules: a missing key in saved = the default. */
+export interface DetectionRules {
+  fields: RuleField[];
+  defaults: Record<string, number>; // the detector's (config.yaml)
+  saved: Record<string, number>; // this organization's changes
+  can_edit: boolean; // super admins
 }
 
 /** A gateway's own connection settings (saving re-registers it with these values). */

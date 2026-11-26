@@ -30,6 +30,9 @@ func (s *Server) listMembers(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	for i := range members {
+		members[i].SuperAdmin = s.isSuper(members[i].Email) // shown as "Super admin (FallGuard)"
+	}
 	out := gin.H{"members": members, "invitations": []store.Invitation{}}
 	if se := session(c); auth.Can(se.Role, auth.ManageMembers, se.Grants) {
 		inv, err := s.db.Invitations(ctx)
@@ -119,6 +122,9 @@ func (s *Server) setMemberRole(c *gin.Context) {
 		badRequest(c, "role must be admin, member or viewer")
 		return
 	}
+	if s.superMember(c, c.Param("id")) {
+		return
+	}
 	if err := s.db.SetMemberRole(c.Request.Context(), c.Param("id"), in.Role, actor(c)); err != nil {
 		orgErr(c, err)
 		return
@@ -126,7 +132,21 @@ func (s *Server) setMemberRole(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// superMember refuses changes to a super admin's membership (they belong to every
+// organization as admins); true = refused and answered.
+func (s *Server) superMember(c *gin.Context, userID string) bool {
+	u, err := s.db.UserByID(c.Request.Context(), userID)
+	if err != nil || !s.isSuper(u.Email) {
+		return false
+	}
+	c.JSON(http.StatusForbidden, gin.H{"error": "a FallGuard super admin belongs to every organization as an admin and can't be changed or removed here", "code": "super_admin"})
+	return true
+}
+
 func (s *Server) removeMember(c *gin.Context) {
+	if s.superMember(c, c.Param("id")) {
+		return
+	}
 	if err := s.db.RemoveMember(c.Request.Context(), c.Param("id"), actor(c)); err != nil {
 		orgErr(c, err)
 		return
@@ -137,6 +157,9 @@ func (s *Server) removeMember(c *gin.Context) {
 // leaveOrg takes the signed-in user out of the current organization.
 func (s *Server) leaveOrg(c *gin.Context) {
 	se := session(c)
+	if s.superMember(c, se.User.ID) {
+		return
+	}
 	if err := s.db.RemoveMember(c.Request.Context(), se.User.ID, actor(c)); err != nil {
 		orgErr(c, err)
 		return

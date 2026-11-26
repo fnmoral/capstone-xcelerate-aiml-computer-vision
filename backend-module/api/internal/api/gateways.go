@@ -30,8 +30,23 @@ type gatewayPool struct {
 }
 
 type onlineMark struct {
-	ok bool
-	at time.Time
+	ok    bool
+	at    time.Time
+	fails int // failed checks in a row
+}
+
+// offlineAfterFails: a gateway that answered counts as offline only after this many failed
+// checks in a row (~20 s), so one slow answer doesn't switch Automatic to another gateway.
+const offlineAfterFails = 2
+
+// nextOnlineMark is a gateway's state after a check that answered (up) or not: online at
+// once when it answers; offline only after offlineAfterFails misses in a row if it was online.
+func nextOnlineMark(prev onlineMark, up bool, now time.Time) onlineMark {
+	if up {
+		return onlineMark{ok: true, at: now}
+	}
+	fails := prev.fails + 1
+	return onlineMark{ok: prev.ok && fails < offlineAfterFails, at: now, fails: fails}
 }
 
 func newGatewayPool() *gatewayPool {
@@ -69,19 +84,23 @@ func (s *Server) online(ctx context.Context, list []store.Gateway) map[string]bo
 		wg.Add(1)
 		go func(g store.Gateway) {
 			defer wg.Done()
-			cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			// Not tied to the request: a browser that leaves the page (e.g. the reload after
+			// switching organization) must not make the gateway look offline to everyone.
+			base := context.WithoutCancel(ctx)
+			cctx, cancel := context.WithTimeout(base, 2*time.Second)
 			defer cancel()
 			up := s.clientFor(g.URL).do(cctx, http.MethodGet, "/gateway/actions/health", nil, nil) == nil
 			if up {
-				if err := s.db.GatewaySeen(ctx, g.ID); err != nil {
+				if err := s.db.GatewaySeen(base, g.ID); err != nil {
 					log.Printf("gateway %s: %v", g.ID, err)
 				}
 			}
 			s.gws.mu.Lock()
-			s.gws.checked[g.ID] = onlineMark{ok: up, at: time.Now()}
+			mark := nextOnlineMark(s.gws.checked[g.ID], up, time.Now())
+			s.gws.checked[g.ID] = mark
 			s.gws.mu.Unlock()
 			mu.Lock()
-			out[g.ID] = up
+			out[g.ID] = mark.ok
 			mu.Unlock()
 		}(g)
 	}

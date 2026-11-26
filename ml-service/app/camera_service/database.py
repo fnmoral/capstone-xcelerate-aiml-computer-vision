@@ -216,9 +216,13 @@ class PostgresSink:
                 with conn.transaction():
                     conn.execute("SELECT set_config('app.tenant_id', %s, true)", (str(tid),))
                     row = conn.execute(
-                        "SELECT parsed_config->'detection' FROM rules WHERE tenant_id = %s AND is_enabled "
+                        "SELECT parsed_config->'detection', parsed_config->'fall_rules' FROM rules "
+                        "WHERE tenant_id = %s AND is_enabled "
                         "AND parsed_config->>'event_type' = 'fall' ORDER BY created_at LIMIT 1", (tid,)).fetchone()
-                settings = row[0] if row and isinstance(row[0], dict) else {}
+                settings = dict(row[0]) if row and isinstance(row[0], dict) else {}
+                # The organization's own fall and alert rules (changed by a super admin).
+                if row and isinstance(row[1], dict) and row[1]:
+                    settings["rules"] = row[1]
                 out[str(tid)] = out[slug] = settings
         return out
 

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { LABEL_TEXT } from "../../../lib/format";
 import { useUiStore } from "../../../store/uiStore";
 import { LiveStream, supportsLiveStream, type LiveStatus } from "./LiveStream";
+import { acquireLiveStream, releaseLiveStream } from "./liveStreams";
 import type { ResultMessage } from "./protocol";
 
 /**
@@ -17,14 +18,19 @@ export function LiveVideo({
   url,
   label,
   onResult,
+  onFps,
 }: {
   url: string;
   label: string;
   onResult?: (message: ResultMessage) => void;
+  /** Frames shown per second (about once a second). */
+  onFps?: (fps: number) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const onResultRef = useRef(onResult);
   onResultRef.current = onResult;
+  const onFpsRef = useRef(onFps);
+  onFpsRef.current = onFps;
   const supported = supportsLiveStream();
   const [status, setStatus] = useState<LiveStatus>("connecting");
   const overlay = useUiStore((s) => s.liveOverlay);
@@ -35,20 +41,26 @@ export function LiveVideo({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !supported) return;
-    const stream = new LiveStream({
+    // The camera's connection is shared and stays open when this view closes (liveStreams.ts).
+    const stream = acquireLiveStream(url, () => new LiveStream({
       url,
-      canvas,
       delayMs: DISPLAY_DELAY_MS,
       labelText,
       overlay: overlayRef.current,
+    }));
+    streamRef.current = stream;
+    stream.setOverlay(overlayRef.current);
+    const unsubscribe = stream.subscribe({
       onResult: (message) => onResultRef.current?.(message),
       onStatus: setStatus,
+      onFps: (fps) => onFpsRef.current?.(fps),
     });
-    streamRef.current = stream;
-    stream.start();
+    stream.attach(canvas);
     return () => {
-      stream.stop();
+      stream.detach(canvas);
+      unsubscribe();
       streamRef.current = null;
+      releaseLiveStream(url);
     };
   }, [url, supported]);
 

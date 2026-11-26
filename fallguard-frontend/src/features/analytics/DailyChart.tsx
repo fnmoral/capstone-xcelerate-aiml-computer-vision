@@ -25,7 +25,7 @@ export function DailyChart({ days }: { days: Day[] }) {
   return (
     <figure className="chart">
       <div className="chart__plot">
-        <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Fall incidents per day, last ${days.length} days`}>
+        <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Falls per day (false alarms not counted), last ${days.length} days`}>
           {ticks.map((t) => (
             <g key={t}>
               <line x1={PAD.left} x2={W - PAD.right} y1={y(t)} y2={y(t)} className="chart__grid" />
@@ -39,7 +39,7 @@ export function DailyChart({ days }: { days: Day[] }) {
             return (
               <g key={d.day} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}
                 onFocus={() => setHover(i)} onBlur={() => setHover(null)} tabIndex={0}
-                aria-label={`${label(d.day)}: ${d.count} incident${d.count === 1 ? '' : 's'}`}>
+                aria-label={`${label(d.day)}: ${d.count} fall${d.count === 1 ? "" : "s"}`}>
                 {/* Hit target taller and wider than the bar */}
                 <rect x={x - 1} y={PAD.top} width={slot} height={plotH} fill="transparent" />
                 {h > 0 && (
@@ -57,7 +57,7 @@ export function DailyChart({ days }: { days: Day[] }) {
         </svg>
         {hover !== null && (
           <div className="chart__tip" style={{ left: `${((PAD.left + hover * slot + slot / 2) / W) * 100}%` }}>
-            <strong>{days[hover].count}</strong> incident{days[hover].count === 1 ? '' : 's'}
+            <strong>{days[hover].count}</strong> fall{days[hover].count === 1 ? '' : 's'}
             <span>{label(days[hover].day)}</span>
           </div>
         )}

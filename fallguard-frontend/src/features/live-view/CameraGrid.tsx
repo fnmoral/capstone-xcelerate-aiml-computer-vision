@@ -20,32 +20,34 @@ const PLACEHOLDER: Record<string, string> = {
   connecting: "Waiting for video…",
 };
 
-/** Browsers keep only ~6 connections per site open; WebSockets use a persistent upgraded connection. */
-export const MAX_LIVE_STREAMS = 4;
+/** At most this many tiles play live video at once (each one decodes a full video stream in the
+ *  browser and uses its bandwidth). The others ask to be opened. Paused cameras don't count. */
+export const MAX_LIVE_STREAMS = 9;
 
-/**
- * Live camera video (stream-hub WebSocket, protocol v2) with the fall-detection boxes,
- * or a snapshot when live=false.
- */
-function Video({ cam, live }: { cam: Camera; live: boolean }) {
-  const [snapshotSrc] = useState<string | null>(null);
-
-  if (live) {
+/** Live camera video (stream-hub WebSocket, protocol v2) with the fall-detection boxes. */
+function Video({ cam, live, onFps }: { cam: Camera; live: boolean; onFps: (fps: number) => void }) {
+  if (!live) {
     return (
-      <LiveVideo
-        url={streamHubUrl(`/ws/${cam.tenant_id}/${cam.id}?v=2`)}
-        label={`Live video from ${cam.name}`}
-      />
+      <p className="cam-tile__placeholder">
+        Too many cameras to play at once: select it to watch.
+      </p>
     );
   }
-
-  return snapshotSrc ? (
-    <img
-      src={snapshotSrc}
-      alt={`Video from ${cam.name}`}
-      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+  return (
+    <LiveVideo
+      url={streamHubUrl(`/ws/${cam.tenant_id}/${cam.id}?v=2`)}
+      label={`Live video from ${cam.name}`}
+      onFps={onFps}
     />
-  ) : null;
+  );
+}
+
+/** Whether the camera sends video (on the gateway in use and not paused). */
+const isWatching = (cam: Camera) => cam.on_gateway && cam.status !== "paused";
+
+/** The IDs of the cameras that play live: the first MAX_LIVE_STREAMS that send video. */
+function liveIds(cameras: Camera[]): Set<string> {
+  return new Set(cameras.filter(isWatching).slice(0, MAX_LIVE_STREAMS).map((c) => c.id));
 }
 
 export function CameraTile({
@@ -59,7 +61,8 @@ export function CameraTile({
   fill?: boolean;
   onSelect?: (id: string) => void;
 }) {
-  const watching = cam.on_gateway && cam.status !== "paused";
+  const watching = isWatching(cam);
+  const [fps, setFps] = useState<number | null>(null); // frames per second on screen
   // Only lying/falling count as down; "unclear" (too little visible) is not a fall.
   const down = cam.people.filter(
     (p) => p.label === "lying" || p.label === "falling",
@@ -101,7 +104,7 @@ export function CameraTile({
         {/* Video comes straight from stream-hub, so it is shown even when the detector is
             down; the tile is then outlined as not working, because nobody is being watched. */}
         {watching ? (
-          <Video cam={cam} live={live} />
+          <Video cam={cam} live={live} onFps={setFps} />
         ) : (
           <p className="cam-tile__placeholder">{placeholder}</p>
         )}
@@ -110,9 +113,7 @@ export function CameraTile({
             value={cam.health}
             label={
               cam.health === "online"
-                ? live
-                  ? "Live"
-                  : "Live · 1 fps"
+                ? watching && live && fps !== null ? `Live · ${fps} fps` : "Live"
                 : undefined
             }
           />
@@ -223,12 +224,12 @@ export function CameraGrid({
 }) {
   const narrow = useNarrow();
   const { ref, height } = useFitHeight<HTMLUListElement>();
-  const live = cameras.length <= MAX_LIVE_STREAMS;
+  const live = liveIds(cameras);
   if (!slots) {
     return (
       <ul className="cam-grid" aria-label="Camera feeds">
         {cameras.map((c) => (
-          <CameraTile key={c.id} cam={c} live={live} onSelect={onSelect} />
+          <CameraTile key={c.id} cam={c} live={live.has(c.id)} onSelect={onSelect} />
         ))}
       </ul>
     );
@@ -247,7 +248,7 @@ export function CameraGrid({
       aria-label="Camera feeds"
     >
       {cameras.map((c) => (
-        <CameraTile key={c.id} cam={c} live={live} fill onSelect={onSelect} />
+        <CameraTile key={c.id} cam={c} live={live.has(c.id)} fill onSelect={onSelect} />
       ))}
     </ul>
   );

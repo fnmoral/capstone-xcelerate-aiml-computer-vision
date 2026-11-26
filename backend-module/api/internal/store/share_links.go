@@ -45,7 +45,7 @@ func (s *Store) CreateShareLink(ctx context.Context, incidentID, recipient, toke
 	var out ShareLink
 	err := s.tx(ctx, func(tx pgx.Tx, tid string) error {
 		var exists bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM incidents WHERE tenant_id = $1 AND id::text = $2)`,
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM incidents WHERE tenant_id = $1 AND id::text = $2 AND deleted_at IS NULL)`,
 			tid, incidentID).Scan(&exists); err != nil {
 			return err
 		}

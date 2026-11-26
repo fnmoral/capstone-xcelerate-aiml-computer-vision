@@ -50,15 +50,16 @@ func (s *Store) Stats(ctx context.Context, tz string) (*Stats, error) {
 		}
 		err := tx.QueryRow(ctx, `
 			SELECT
-			  (SELECT count(*) FROM incidents WHERE tenant_id = $1 AND status = 'active'),
-			  (SELECT count(*) FROM alerts    WHERE tenant_id = $1 AND status = 'open'),
-			  (SELECT count(*) FROM incidents WHERE tenant_id = $1 AND started_at >= date_trunc('day', now())),
-			  (SELECT count(*) FROM incidents WHERE tenant_id = $1 AND started_at >= now() - interval '7 days'
+			  (SELECT count(*) FROM incidents WHERE tenant_id = $1 AND deleted_at IS NULL AND status = 'active'),
+			  (SELECT count(*) FROM alerts    WHERE tenant_id = $1 AND status = 'open' AND `+notBinned("alerts.incident_id")+`),
+			  (SELECT count(*) FROM incidents WHERE tenant_id = $1 AND deleted_at IS NULL AND started_at >= date_trunc('day', now())
+			                                    AND status <> 'false_positive'), -- like the daily chart
+			  (SELECT count(*) FROM incidents WHERE tenant_id = $1 AND deleted_at IS NULL AND started_at >= now() - interval '7 days'
 			                                    AND status <> 'false_positive'),
 			  (SELECT avg(duration_seconds)::float8 FROM incidents WHERE tenant_id = $1
 			      AND started_at >= now() - interval '7 days' AND duration_seconds IS NOT NULL
 			      AND status <> 'false_positive'),
-			  (SELECT count(*) FROM incidents WHERE tenant_id = $1 AND started_at >= now() - interval '7 days'
+			  (SELECT count(*) FROM incidents WHERE tenant_id = $1 AND deleted_at IS NULL AND started_at >= now() - interval '7 days'
 			                                    AND status = 'false_positive')`, tid).
 			Scan(&st.ActiveIncidents, &st.OpenAlerts, &st.IncidentsToday, &st.Incidents7d,
 				&st.AvgDownSeconds7d, &st.FalsePositives7d)
@@ -69,7 +70,7 @@ func (s *Store) Stats(ctx context.Context, tz string) (*Stats, error) {
 		rows, err := tx.Query(ctx, `
 			SELECT to_char(d.day, 'YYYY-MM-DD'), count(i.id)
 			FROM generate_series(date_trunc('day', now()) - interval '13 days', date_trunc('day', now()), interval '1 day') AS d(day)
-			LEFT JOIN incidents i ON i.tenant_id = $1 AND i.status <> 'false_positive'
+			LEFT JOIN incidents i ON i.tenant_id = $1 AND i.status <> 'false_positive' AND i.deleted_at IS NULL
 			     AND i.started_at >= d.day AND i.started_at < d.day + interval '1 day'
 			GROUP BY d.day ORDER BY d.day`, tid)
 		if err != nil {
@@ -87,7 +88,7 @@ func (s *Store) Stats(ctx context.Context, tz string) (*Stats, error) {
 		rows, err = tx.Query(ctx, `
 			SELECT i.camera_id::text, c.name, count(*)
 			FROM incidents i LEFT JOIN cameras c ON c.id = i.camera_id
-			WHERE i.tenant_id = $1 AND i.started_at >= now() - interval '30 days' AND i.status <> 'false_positive'
+			WHERE i.tenant_id = $1 AND i.deleted_at IS NULL AND i.started_at >= now() - interval '30 days' AND i.status <> 'false_positive'
 			GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 20`, tid)
 		if err != nil {
 			return err
@@ -105,9 +106,9 @@ func (s *Store) Stats(ctx context.Context, tz string) (*Stats, error) {
 			sql string
 			dst map[string]int
 		}{
-			{`SELECT severity, count(*) FROM incidents WHERE tenant_id = $1 AND started_at >= now() - interval '30 days'
+			{`SELECT severity, count(*) FROM incidents WHERE tenant_id = $1 AND deleted_at IS NULL AND started_at >= now() - interval '30 days'
 			  AND status <> 'false_positive' GROUP BY 1`, st.BySeverity},
-			{`SELECT status, count(*) FROM incidents WHERE tenant_id = $1 AND started_at >= now() - interval '30 days' GROUP BY 1`, st.ByStatus},
+			{`SELECT status, count(*) FROM incidents WHERE tenant_id = $1 AND deleted_at IS NULL AND started_at >= now() - interval '30 days' GROUP BY 1`, st.ByStatus},
 			{`SELECT label, count(*) FROM model_predictions WHERE tenant_id = $1 AND predicted_at >= now() - interval '1 hour' GROUP BY 1`,
 				st.PredictionsLastHour},
 		} {

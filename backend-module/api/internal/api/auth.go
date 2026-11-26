@@ -37,6 +37,10 @@ func (s *Server) requireAuth(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "sign in to continue", "code": "unauthenticated"})
 		return
 	}
+	if !se.User.IsGuest && s.isSuper(se.User.Email) {
+		se.User.SuperAdmin = true
+		se.Role = auth.RoleAdmin // admin of every organization, whatever the membership says
+	}
 	c.Set("session", se)
 	ctx := store.WithActor(store.WithTenant(c.Request.Context(), se.TenantID), se.User.ID)
 	c.Request = c.Request.WithContext(ctx)
@@ -395,6 +399,7 @@ func (s *Server) signup(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	s.syncSupers(c.Request.Context()) // the super admins join the new organization
 	// REQUIRE_EMAIL_VERIFICATION=false (demos): no email, signed in right away. The address
 	// stays unverified, so turning verification back on asks these users to verify then.
 	if !s.cfg.RequireEmailVerification {
@@ -452,6 +457,9 @@ func (s *Server) login(c *gin.Context) {
 	if !u.EmailVerified && s.cfg.RequireEmailVerification {
 		c.JSON(http.StatusForbidden, gin.H{"error": "verify your email first: check your inbox for the link", "code": "email_not_verified"})
 		return
+	}
+	if s.isSuper(email) {
+		s.syncSupers(c.Request.Context()) // in every organization, also ones created since
 	}
 	if err := s.startSession(c, u.ID, ""); err != nil {
 		if errors.Is(err, store.ErrNoMembership) {

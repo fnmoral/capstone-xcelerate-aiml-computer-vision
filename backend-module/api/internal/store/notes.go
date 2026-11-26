@@ -21,7 +21,7 @@ func (s *Store) AddNote(ctx context.Context, incidentID, author, text string) (*
 	var note *Note
 	err := s.tx(ctx, func(tx pgx.Tx, tid string) error {
 		var id, cameraID string
-		err := tx.QueryRow(ctx, `SELECT id::text, camera_id::text FROM incidents WHERE tenant_id = $1 AND id::text = $2`,
+		err := tx.QueryRow(ctx, `SELECT id::text, camera_id::text FROM incidents WHERE tenant_id = $1 AND id::text = $2 AND deleted_at IS NULL`,
 			tid, incidentID).Scan(&id, &cameraID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound

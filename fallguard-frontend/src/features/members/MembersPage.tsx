@@ -196,11 +196,12 @@ function MemberRow({ m, self, manage, onChanged }: { m: Member; self: boolean; m
     <tr>
       <td>
         <strong>{name}</strong>{self && <span className="muted"> (you)</span>}
+        {m.super_admin && <span className="badge members-super" title="Belongs to every organization as an admin; can't be changed or removed here">Super admin (FallGuard)</span>}
         <div className="muted members-sub">{m.email}</div>
         {error && <div className="members-error" role="alert">{error}</div>}
       </td>
       <td>
-        {manage ? (
+        {manage && !m.super_admin ? (
           <select className="select select--sm" value={m.role} disabled={busy} aria-label={`Role of ${name}`}
             onChange={(e) => {
               const role = e.target.value as Role;
@@ -215,7 +216,7 @@ function MemberRow({ m, self, manage, onChanged }: { m: Member; self: boolean; m
       <td className="muted">{m.last_login_at ? formatDate(m.last_login_at) : 'Never'}</td>
       <td className="muted">{formatDate(m.joined_at)}</td>
       <td className="num">
-        {manage && !self && (
+        {manage && !self && !m.super_admin && (
           <button className="btn btn--sm btn--danger" disabled={busy}
             onClick={() => confirm(`Remove ${name} from the organization? They are signed out right away. If they aren't in another organization, their account is deleted: to come back they need a new invitation and sign up again.`) && void run(() => accounts.removeMember(m.id))}>
             Remove

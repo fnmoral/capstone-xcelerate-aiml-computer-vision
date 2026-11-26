@@ -1,22 +1,63 @@
 .notif-section { padding: 20px; min-width: 0; }
 .notif-two { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
 
-.notif-matrix { min-width: 480px; }
-.notif-matrix__sev { text-align: center !important; width: 110px; }
+.notif-matrix { min-width: 640px; }
+.notif-matrix__sev { text-align: center !important; width: 90px; }
+.notif-matrix__group { text-align: center !important; font-size: 11px; border-bottom: 0 !important; padding-bottom: 0 !important; }
+.notif-matrix__updates { border-left: 1px solid var(--border); }
+.notif-matrix__note { font-size: 13px; margin: 10px 0 0; }
 .notif-matrix th.notif-matrix__ch, .notif-recipients th.notif-matrix__ch { display: grid; gap: 2px; text-align: left; font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--text); font-size: 14px; white-space: normal; padding: 10px 12px; border-bottom: 1px solid var(--border); }
 .notif-matrix th.notif-matrix__ch small, .notif-recipients th.notif-matrix__ch small { font-weight: 400; font-size: 12px; text-transform: none; letter-spacing: 0; }
 .notif-matrix__cell { text-align: center; }
 .notif-matrix__cell input { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
 .notif-matrix__cell input:disabled { cursor: not-allowed; opacity: .4; }
-.notif-recipients { min-width: 460px; }
-/* The table fits its card, so the box around it needn't scroll: the recipients' tips can stick out above it. */
-.table-wrap:has(> .notif-recipients) { overflow: visible; }
-.notif-recipients .notif-matrix__sev { width: 70px; }
+/* Recipients: who on the left, On + delete on the right, then two rows of chips. */
+.notif-rcpts { list-style: none; margin: 0; padding: 0; }
+.notif-rcpt { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 12px; padding: 14px 0;
+  border-bottom: 1px solid var(--border); }
+.notif-rcpt:first-child { padding-top: 4px; }
+.notif-rcpt:last-child { border-bottom: 0; }
+.notif-rcpt__who { min-width: 0; }
+.notif-rcpt__member { font-size: 12px; }
+.notif-rcpt__end { display: flex; align-items: center; gap: 10px; align-self: start; }
+.notif-rcpt__state { font-size: 12px; color: var(--text-muted); min-width: 22px; }
+.notif-rcpt__chips { grid-column: 1 / -1; display: grid; gap: 8px; }
+.notif-rcpt.is-disabled .notif-rcpt__who { opacity: .6; }
+.notif-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.notif-chips__label { width: 62px; flex: 0 0 auto; font-size: 11px; font-weight: 600; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--text-muted); }
+.notif-chip { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px 0 8px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); font-size: 13px; cursor: pointer;
+  user-select: none; transition: background .12s, border-color .12s, color .12s; }
+.notif-chip:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.notif-chip input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.notif-chip:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.notif-chip__mark { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%;
+  border: 1.5px solid currentColor; font-size: 10px; font-weight: 700; line-height: 1; }
+.notif-chip.is-on { background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); color: var(--text); }
+.notif-chip.is-on .notif-chip__mark { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* Locked: faded by colour, not opacity (its tooltip must stay readable). */
+.notif-chip.is-locked { cursor: not-allowed; color: color-mix(in srgb, var(--text-muted) 55%, var(--surface));
+  border-color: color-mix(in srgb, var(--border) 70%, var(--surface)); background: var(--surface); }
+.notif-chip.is-locked:hover { border-color: color-mix(in srgb, var(--border) 70%, var(--surface)); }
+.notif-chip.is-on.is-locked { background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--border)); }
+.notif-chip.is-on.is-locked .notif-chip__mark { background: color-mix(in srgb, var(--accent) 45%, var(--surface));
+  border-color: transparent; }
+@media (prefers-reduced-motion: reduce) { .notif-chip { transition: none; } }
+.notif-recipients__line { display: block; overflow-x: auto; white-space: nowrap; scrollbar-width: thin; }
+.notif-section { container-type: inline-size; }
+@container (max-width: 380px) {
+  .notif-chips { gap: 5px; }
+  .notif-chips__label { width: 100%; }
+  .notif-chip { padding: 0 9px 0 6px; gap: 5px; font-size: 12.5px; }
+}
 @media (max-width: 640px) {
-  .notif-matrix, .notif-recipients { min-width: 0; }
-  .notif-matrix th, .notif-matrix td, .notif-recipients th, .notif-recipients td { padding-left: 6px; padding-right: 6px; }
-  .notif-matrix__sev, .notif-recipients .notif-matrix__sev { width: 62px; }
-  .notif-matrix__sev .badge, .notif-recipients .notif-matrix__sev .badge { padding: 1px 6px; font-size: 11px; }
+  .notif-matrix { min-width: 560px; } /* the master switches scroll sideways on a phone */
+  .notif-matrix th, .notif-matrix td { padding-left: 6px; padding-right: 6px; }
+  .notif-matrix__sev { width: 62px; }
+  .notif-matrix__sev .badge { padding: 1px 6px; font-size: 11px; }
   .notif-matrix th.notif-matrix__ch { padding: 8px 6px; }
 }
 
