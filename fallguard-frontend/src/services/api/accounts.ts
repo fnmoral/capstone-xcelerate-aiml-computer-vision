@@ -27,6 +27,16 @@ export interface User {
   super_admin?: boolean;
 }
 
+/** One line of the super admin activity log. */
+export interface PlatformEntry {
+  at: string;
+  actor: string;
+  action: string;
+  org_id: string | null;
+  org_name: string | null;
+  message: string;
+}
+
 /** One organization in Manage organizations (super admins). */
 export interface OrgSummary {
   id: string;
@@ -133,12 +143,16 @@ export interface OrgProfile {
 export type NotifySeverity = "medium" | "high" | "critical";
 export type NotifyChannel = "app" | "email" | "sms";
 export type NotifyEvent = "alert" | "recovered" | "false_alarm" | "resolved";
+/** Updates after an alert (email / SMS only). */
+export type NotifyUpdate = "recovered" | "false_alarm" | "resolved";
+/** What a channel or a recipient can be on for: an alert severity or an update. */
+export type NotifyKey = NotifySeverity | NotifyUpdate;
 
 export interface Recipient {
   name: string;
   address: string;
   user_id?: string | null;
-  severities: NotifySeverity[];
+  severities: NotifyKey[]; // alert severities and updates they get
   enabled: boolean;
 }
 
@@ -150,10 +164,11 @@ export interface Template {
 }
 
 export interface NotifyConfig {
-  matrix: Record<NotifyChannel, Record<NotifySeverity, boolean>>;
+  /** Master switches: channel x severity, and (email / SMS) channel x update. */
+  matrix: Record<NotifyChannel, Partial<Record<NotifyKey, boolean>>>;
   email_recipients: Recipient[];
   sms_recipients: Recipient[];
-  follow_ups: Record<"recovered" | "false_alarm" | "resolved", boolean>;
+  follow_ups: Record<NotifyUpdate, boolean>; // derived by the server from the matrix
   templates: Record<NotifyEvent, Template>;
   app_url: string;
 }
@@ -279,6 +294,8 @@ export const accounts = {
   /** Switched off at once; restorable for 30 days, then erased. */
   deleteOrg: (id: string) => apiRequest("/super/orgs/" + enc(id), { method: "DELETE" }),
   restoreOrg: (id: string) => apiRequest("/super/orgs/" + enc(id) + "/restore", post()),
+  /** Super admins: organizations created / deleted / restored / erased, fall events deleted permanently. */
+  platformActivity: () => apiRequest<{ entries: PlatformEntry[] }>("/super/activity"),
   leaveOrg: () => apiRequest("/org/leave", post()),
   /** Demo access links (view-only, no account). The url (with its token) comes back only on create. */
   guestLinks: () => apiRequest<{ links: GuestLink[] }>("/org/guest-links"),
