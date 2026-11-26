@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"os"
 
 	"stream-hub/internal/recording"
 
@@ -26,6 +27,31 @@ func (r *RecordingsHandler) RegisterRoutes(router *gin.Engine) {
 	g.GET("/clips/:name", r.Clip)
 	// Disk used by clips, for the API's system status (not under /stream-hub: nginx doesn't serve it).
 	router.GET("/recordings-usage", func(c *gin.Context) { c.JSON(http.StatusOK, r.recordings.Usage()) })
+	// The API deletes a fall event's media when the event is deleted permanently (not under
+	// /stream-hub either: browsers can't reach it).
+	router.DELETE("/recordings/:kind/:name", r.Delete)
+}
+
+// Delete removes a clip or snapshot (kind "clips" or "snapshots"). Already gone = OK.
+func (r *RecordingsHandler) Delete(c *gin.Context) {
+	var path string
+	var ok bool
+	switch c.Param("kind") {
+	case "clips":
+		path, ok = r.recordings.ClipPath(c.Param("name"))
+	case "snapshots":
+		path, ok = r.recordings.SnapshotPath(c.Param("name"))
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "kind must be clips or snapshots"})
+		return
+	}
+	if ok {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
 // Snapshot serves an incident image.
