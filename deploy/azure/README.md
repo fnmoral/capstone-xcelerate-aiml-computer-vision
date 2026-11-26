@@ -131,7 +131,7 @@ Each teammate can run a gateway next to their own cameras. The app uses one gate
 3. Reply with the port. When their gateway starts it appears in **Settings → Gateways** as
    "On-site gateway": rename it (e.g. "Yonathan – home") and choose it, or leave Automatic.
 
-Ports in use: 18080 (Neil's laptop). Remove a gateway: Settings → Gateways → Remove, and delete
+Ports in use: 18080. Remove a gateway: Settings → Gateways → Remove, and delete
 its line from `/home/tunnel/.ssh/authorized_keys` on the VM.
 
 ## Phone cameras (temporary, for demos)
