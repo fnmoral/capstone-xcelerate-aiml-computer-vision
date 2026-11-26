@@ -52,7 +52,8 @@ func (s *Store) Stats(ctx context.Context, tz string) (*Stats, error) {
 			SELECT
 			  (SELECT count(*) FROM incidents WHERE tenant_id = $1 AND deleted_at IS NULL AND status = 'active'),
 			  (SELECT count(*) FROM alerts    WHERE tenant_id = $1 AND status = 'open' AND `+notBinned("alerts.incident_id")+`),
-			  (SELECT count(*) FROM incidents WHERE tenant_id = $1 AND deleted_at IS NULL AND started_at >= date_trunc('day', now())),
+			  (SELECT count(*) FROM incidents WHERE tenant_id = $1 AND deleted_at IS NULL AND started_at >= date_trunc('day', now())
+			                                    AND status <> 'false_positive'), -- like the daily chart
 			  (SELECT count(*) FROM incidents WHERE tenant_id = $1 AND deleted_at IS NULL AND started_at >= now() - interval '7 days'
 			                                    AND status <> 'false_positive'),
 			  (SELECT avg(duration_seconds)::float8 FROM incidents WHERE tenant_id = $1
