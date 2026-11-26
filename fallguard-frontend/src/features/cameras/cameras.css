@@ -6,6 +6,8 @@
 .cams-row__title { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .cams-row__info { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
 .cams-row__edit { max-width: 560px; }
+/* What a rename / new address changes, shown while editing */
+.cams-row__warn { max-width: 560px; margin: 10px 0 0; padding-left: 30px; display: grid; gap: 4px; font-size: 13px; }
 .cams-row__actions { flex: 0 0 auto; }
 .cams-form__switch { margin-top: 14px; }
 .cams-row__since { font-size: 12px; }

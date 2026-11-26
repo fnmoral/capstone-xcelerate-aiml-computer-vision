@@ -104,7 +104,7 @@ function Recipients({ kind, list, set, members, matrix }: {
             <tbody>
               {list.map((r, i) => (
                 <tr key={r.address}>
-                  <td><strong>{r.name || r.address}</strong>{r.name && <div className="muted mono">{r.address}</div>}
+                  <td><strong className="notif-recipients__line">{r.name || r.address}</strong>{r.name && <div className="muted mono notif-recipients__line" title={r.address}>{r.address}</div>}
                     {r.user_id && <div className="muted" style={{ fontSize: 12 }}>Member</div>}</td>
                   {SEVERITIES.map((s) => (
                     <td key={s} className="notif-matrix__cell">

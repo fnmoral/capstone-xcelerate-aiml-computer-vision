@@ -130,6 +130,8 @@ export const api = {
       method: "POST",
       ...json({ replace_id: replaceId }),
     }),
+  /** Missing fields stay as they are. rtsp_url / username / password reconnect the camera
+   *  (same camera: name, zone and history kept); an empty password keeps the current one. */
   updateCamera: (
     id: string,
     c: {
@@ -137,6 +139,9 @@ export const api = {
       location?: string;
       zone?: string;
       alert_offline?: boolean;
+      rtsp_url?: string;
+      username?: string;
+      password?: string;
     },
   ) => apiRequest("/cameras/" + enc(id), { method: "PATCH", ...json(c) }),
   /** Order shown in Live View and fall-event videos; first id first. */

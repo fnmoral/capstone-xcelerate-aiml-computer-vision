@@ -41,6 +41,7 @@ export interface Camera {
   alert_offline: boolean; // notify when it stops working
   on_gateway: boolean;
   rtsp_url: string; // without credentials
+  username?: string; // the camera's login name (the password stays on the gateway)
   created_at: string;
   live: boolean; // ml-service is receiving its video
   people: LivePerson[];

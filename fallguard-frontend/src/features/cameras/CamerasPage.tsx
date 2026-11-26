@@ -100,8 +100,10 @@ function CameraRow({ cam, onChange, full, streaming, manage, zones }: {
   cam: Camera; onChange: () => void; full: boolean; streaming: Camera[]; manage: boolean; zones: string[];
 }) {
   const [editing, setEditing] = useState(false);
-  const [location, setLocation] = useState(cam.location ?? '');
-  const [zone, setZone] = useState(cam.zone ?? '');
+  const fromCam = () => ({ name: cam.name, location: cam.location ?? '', zone: cam.zone ?? '',
+    rtsp_url: cam.rtsp_url, username: cam.username ?? '', password: '' });
+  const [form, setForm] = useState(fromCam);
+  const field = (k: keyof ReturnType<typeof fromCam>) => (e: { target: { value: string } }) => setForm({ ...form, [k]: e.target.value });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [links, setLinks] = useState<PhoneLinks | null>(null);
@@ -119,6 +121,23 @@ function CameraRow({ cam, onChange, full, streaming, manage, zones }: {
     }
   };
   const paused = cam.status === 'paused';
+  // An IP camera on the gateway in use: its address and login can be changed (a phone's are set by the app).
+  const ipCamera = cam.on_gateway && !cam.phone && cam.status !== 'other_gateway';
+  const renamed = form.name.trim() !== cam.name;
+  const moved = form.location.trim() !== (cam.location ?? '');
+  const newURL = ipCamera && form.rtsp_url.trim() !== cam.rtsp_url;
+  const newLogin = ipCamera && (form.username.trim() !== (cam.username ?? '') || form.password !== '');
+
+  const save = () => {
+    if (!form.name.trim()) return setError('The camera needs a name.');
+    if (newURL && !/^rtsps?:\/\/\S+$/.test(form.rtsp_url.trim())) return setError('The RTSP URL must start with rtsp:// or rtsps://');
+    const change: Parameters<typeof api.updateCamera>[1] = { location: form.location, zone: form.zone };
+    if (renamed) change.name = form.name.trim();
+    if (newURL) change.rtsp_url = form.rtsp_url.trim();
+    if (ipCamera && form.username.trim() !== (cam.username ?? '')) change.username = form.username.trim();
+    if (ipCamera && form.password) change.password = form.password;
+    void run(async () => { await api.updateCamera(cam.id, change); setEditing(false); });
+  };
 
   return (
     <li className="card cams-row">
@@ -131,10 +150,29 @@ function CameraRow({ cam, onChange, full, streaming, manage, zones }: {
           {cam.active_incidents > 0 && <StatusBadge value="active" label={`${cam.active_incidents} active incident(s)`} />}
         </div>
         {editing ? (
-          <div className="form-grid cams-row__edit">
-            <label className="field">Location<input value={location} onChange={(e) => setLocation(e.target.value)} /></label>
-            <ZoneField value={zone} onChange={setZone} zones={zones} />
-          </div>
+          <>
+            <div className="form-grid cams-row__edit">
+              <label className="field">Name<input required value={form.name} onChange={field('name')} maxLength={100} /></label>
+              <label className="field">Location<input value={form.location} onChange={field('location')} /></label>
+              <ZoneField value={form.zone} onChange={(zone) => setForm({ ...form, zone })} zones={zones} />
+              {ipCamera && <>
+                <label className="field">RTSP URL<input value={form.rtsp_url} onChange={field('rtsp_url')} pattern="rtsps?://.+"
+                  placeholder="rtsp://192.168.1.50:554/stream1" /><small>The camera's stream address (H.264)</small></label>
+                <label className="field">Username<input value={form.username} onChange={field('username')} autoComplete="off" />
+                  <small>Clear it if the camera needs no login</small></label>
+                <label className="field">Password<input type="password" value={form.password} onChange={field('password')}
+                  autoComplete="new-password" placeholder="Unchanged" /><small>Leave blank to keep the current one</small></label>
+              </>}
+            </div>
+            {(renamed || moved || newURL || newLogin) && (
+              <ul className="notice cams-row__warn">
+                {renamed && <li>The new name shows everywhere, past fall events included. Saved reports, sent emails and exports keep the old name.</li>}
+                {moved && <li>Only new fall events use the new location; past ones keep the old one.</li>}
+                {(newURL || newLogin) && <li>Saving reconnects the camera: video and fall detection stop for a few seconds. If it then shows Not working, check the address, login and that it sends H.264.</li>}
+                {newURL && <li>It stays the same camera: its history, videos and zone carry on. For a different view, add a new camera instead.</li>}
+              </ul>
+            )}
+          </>
         ) : (
           <p className="muted cams-row__info">
             {cam.location || 'No location'} · {cam.zone ? `Zone: ${cam.zone}` : 'No zone'}
@@ -159,12 +197,11 @@ function CameraRow({ cam, onChange, full, streaming, manage, zones }: {
         </Link>
         {manage && (editing ? (
           <>
-            <button className="btn btn--primary btn--sm" disabled={busy}
-              onClick={() => run(async () => { await api.updateCamera(cam.id, { location, zone }); setEditing(false); })}>Save</button>
-            <button className="btn btn--sm" onClick={() => setEditing(false)}>Cancel</button>
+            <button className="btn btn--primary btn--sm" disabled={busy} onClick={save}>Save</button>
+            <button className="btn btn--sm" onClick={() => { setEditing(false); setError(null); }}>Cancel</button>
           </>
         ) : (
-          <button className="btn btn--sm" onClick={() => setEditing(true)}>Edit</button>
+          <button className="btn btn--sm" onClick={() => { setForm(fromCam()); setEditing(true); }}>Edit</button>
         ))}
         {manage && cam.on_gateway && (paused && full ? (
           <SwitchTo cam={cam} streaming={streaming} busy={busy} run={run} />
