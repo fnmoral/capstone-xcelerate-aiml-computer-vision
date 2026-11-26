@@ -101,7 +101,7 @@ func (s *Store) Incidents(ctx context.Context, f IncidentFilter) ([]Incident, er
 		rows, err := tx.Query(ctx, `
 			SELECT `+incidentColumns+`
 			FROM incidents i LEFT JOIN cameras c ON c.id = i.camera_id
-			WHERE i.tenant_id = $1
+			WHERE i.tenant_id = $1 AND i.deleted_at IS NULL
 			  AND ($2 = '' OR i.status = $2)
 			  AND ($3 = '' OR i.camera_id::text = $3
 			       OR EXISTS (SELECT 1 FROM incident_cameras ic WHERE ic.incident_id = i.id AND ic.camera_id::text = $3))
@@ -143,7 +143,7 @@ func (s *Store) Incident(ctx context.Context, id string) (*Incident, []Predictio
 	err := s.tx(ctx, func(tx pgx.Tx, tid string) error {
 		err := scanIncident(tx.QueryRow(ctx, `SELECT `+incidentColumns+`
 			FROM incidents i LEFT JOIN cameras c ON c.id = i.camera_id
-			WHERE i.tenant_id = $1 AND i.id::text = $2`, tid, id), &inc)
+			WHERE i.tenant_id = $1 AND i.id::text = $2 AND i.deleted_at IS NULL`, tid, id), &inc)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -186,7 +186,7 @@ func (s *Store) UpdateIncident(ctx context.Context, id string, status, notes *st
 		var incID, cameraID, from string
 		var oldNotes *string
 		err := tx.QueryRow(ctx, `SELECT id::text, camera_id::text, status, notes FROM incidents
-			WHERE tenant_id = $1 AND id::text = $2 FOR UPDATE`, tid, id).Scan(&incID, &cameraID, &from, &oldNotes)
+			WHERE tenant_id = $1 AND id::text = $2 AND deleted_at IS NULL FOR UPDATE`, tid, id).Scan(&incID, &cameraID, &from, &oldNotes)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		}

@@ -136,10 +136,11 @@ func newSlug(name string) string {
 	return base + "-" + hex.EncodeToString(b)
 }
 
-// usableMembers counts members of a tenant who can actually sign in (real password hash),
-// not counting super admins ($2), who belong to every organization.
+// usableMembers counts members of a tenant who can actually sign in (real password hash).
+// Super admins count too: one who signed up first owns the home tenant, and a later sign-up
+// must not take it over (they only join an unclaimed one through their own sign-up).
 const usableMembers = `SELECT count(*) FROM memberships m JOIN users u ON u.id = m.user_id
-	WHERE m.tenant_id = $1 AND u.password_hash LIKE '$2%' AND NOT (u.email = ANY($2::citext[]))`
+	WHERE m.tenant_id = $1 AND u.password_hash LIKE '$2%'`
 
 // CreateAccount signs up a new user with a new organization, as its admin. The email is
 // not verified yet. The first sign-up on a deployment takes over the home tenant (the one
@@ -168,6 +169,9 @@ func (s *Store) CreateAccount(ctx context.Context, orgName, first, last, email, 
 		}
 		tenantID = claimed
 		if tenantID == "" {
+			if err := checkOrgName(ctx, tx, orgName, ""); err != nil {
+				return err
+			}
 			if err := tx.QueryRow(ctx, `INSERT INTO tenants (name, slug) VALUES ($1, $2) RETURNING id::text`,
 				orgName, newSlug(orgName)).Scan(&tenantID); err != nil {
 				return err
@@ -198,7 +202,7 @@ func (s *Store) claimHomeTenant(ctx context.Context, tx pgx.Tx, orgName string) 
 		return "", err
 	}
 	var n int
-	if err := tx.QueryRow(ctx, usableMembers, home, s.superEmails()).Scan(&n); err != nil {
+	if err := tx.QueryRow(ctx, usableMembers, home).Scan(&n); err != nil {
 		return "", err
 	}
 	if n > 0 {
@@ -206,6 +210,9 @@ func (s *Store) claimHomeTenant(ctx context.Context, tx pgx.Tx, orgName string) 
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM memberships m USING users u
 		WHERE m.user_id = u.id AND m.tenant_id = $1 AND u.password_hash NOT LIKE '$2%'`, home); err != nil {
+		return "", err
+	}
+	if err := checkOrgName(ctx, tx, orgName, home); err != nil {
 		return "", err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE tenants SET name = $2 WHERE id = $1`, home, orgName); err != nil {
@@ -836,6 +843,9 @@ func (s *Store) SetOrg(ctx context.Context, p OrgProfile, actor string) error {
 			"postal_code": p.PostalCode, "country": p.Country, "phone": p.Phone, "wsib_firm_number": p.WSIBFirmNo,
 			"wsib_rate_group": p.WSIBRateGroup, "business_type": p.BusinessType, "establishment": p.Establishment,
 			"report_retention_days": p.ReportRetentionDays,
+		}
+		if err := checkOrgName(ctx, tx, p.Name, tid); err != nil {
+			return err
 		}
 		if _, err := tx.Exec(ctx, `UPDATE tenants SET name = $2, profile = $3 WHERE id = $1`, tid, p.Name, profile); err != nil {
 			return err

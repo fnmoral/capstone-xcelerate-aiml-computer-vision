@@ -27,7 +27,28 @@ const OrgRetention = 30 * 24 * time.Hour
 var (
 	ErrHomeOrg       = errors.New("the home organization (with the gateway and fall detector) can't be deleted")
 	ErrOrgNotDeleted = errors.New("this organization isn't deleted")
+	ErrOrgNameTaken  = errors.New("an organization with this name already exists: choose another name")
 )
+
+// checkOrgName refuses a name another organization already has (active, or deleted and not
+// yet erased, so it can still be restored), ignoring capitals and extra spaces. except is the
+// organization being named itself ("" = none). It locks organization names until the
+// transaction ends, so two sign-ups at once can't both take one.
+func checkOrgName(ctx context.Context, tx pgx.Tx, name, except string) error {
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('fallguard.org_names'))`); err != nil {
+		return err
+	}
+	var taken bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM tenants
+		WHERE regexp_replace(lower(btrim(name)), '\s+', ' ', 'g') = regexp_replace(lower(btrim($1)), '\s+', ' ', 'g')
+		  AND status IN ('active', 'deleted') AND ($2 = '' OR id::text <> $2))`, name, except).Scan(&taken); err != nil {
+		return err
+	}
+	if taken {
+		return ErrOrgNameTaken
+	}
+	return nil
+}
 
 // SetSuperAdmins sets the super admins' emails (lower case).
 func (s *Store) SetSuperAdmins(emails []string) {
@@ -108,8 +129,14 @@ func (s *Store) AllOrgs(ctx context.Context) ([]OrgSummary, error) {
 func (s *Store) CreateOrg(ctx context.Context, name, actorID, actorName string) (string, error) {
 	var id string
 	err := s.plain(ctx, func(tx pgx.Tx) error {
+		if err := checkOrgName(ctx, tx, name, ""); err != nil {
+			return err
+		}
 		if err := tx.QueryRow(ctx, `INSERT INTO tenants (name, slug) VALUES ($1, $2) RETURNING id::text`,
 			name, newSlug(name)).Scan(&id); err != nil {
+			return err
+		}
+		if err := platformLog(ctx, tx, actorName, "org.created", id, "Organization created"); err != nil {
 			return err
 		}
 		return auditTx(ctx, tx, id, &actorID, actorName, "org.created", "org", id,
@@ -141,6 +168,9 @@ func (s *Store) DeleteOrg(ctx context.Context, id, actorID, actorName string) er
 		if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE tenant_id::text = $1`, id); err != nil {
 			return err
 		}
+		if err := platformLog(ctx, tx, actorName, "org.deleted", id, "Organization deleted (can be restored for 30 days)"); err != nil {
+			return err
+		}
 		return auditTx(ctx, tx, id, &actorID, actorName, "org.deleted", "org", id,
 			map[string]any{"message": "Organization deleted (can be restored for 30 days)"})
 	})
@@ -149,6 +179,16 @@ func (s *Store) DeleteOrg(ctx context.Context, id, actorID, actorName string) er
 // RestoreOrg brings back a deleted organization (before it is erased).
 func (s *Store) RestoreOrg(ctx context.Context, id, actorID, actorName string) error {
 	err := s.plain(ctx, func(tx pgx.Tx) error {
+		var name string
+		if err := tx.QueryRow(ctx, `SELECT name FROM tenants WHERE id::text = $1 AND status = 'deleted'`, id).Scan(&name); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrOrgNotDeleted
+			}
+			return err
+		}
+		if err := checkOrgName(ctx, tx, name, id); err != nil {
+			return err
+		}
 		tag, err := tx.Exec(ctx, `UPDATE tenants SET status = 'active', deleted_at = NULL
 			WHERE id::text = $1 AND status = 'deleted'`, id)
 		if err != nil {
@@ -156,6 +196,9 @@ func (s *Store) RestoreOrg(ctx context.Context, id, actorID, actorName string) e
 		}
 		if tag.RowsAffected() == 0 {
 			return ErrOrgNotDeleted
+		}
+		if err := platformLog(ctx, tx, actorName, "org.restored", id, "Organization restored"); err != nil {
+			return err
 		}
 		return auditTx(ctx, tx, id, &actorID, actorName, "org.restored", "org", id,
 			map[string]any{"message": "Organization restored"})
@@ -224,6 +267,10 @@ func (s *Store) eraseOrg(ctx context.Context, id string) error {
 		if _, err := tx.Exec(ctx, `DELETE FROM `+table+` WHERE tenant_id::text = $1`, id); err != nil {
 			return fmt.Errorf("%s: %w", table, err)
 		}
+	}
+	if err := platformLog(ctx, tx, "System", "org.erased", id,
+		"Organization erased with all its data, 30 days after it was deleted"); err != nil {
+		return fmt.Errorf("platform log: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM tenants WHERE id::text = $1`, id); err != nil {
 		return fmt.Errorf("tenants: %w", err)

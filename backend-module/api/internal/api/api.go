@@ -182,6 +182,7 @@ func (s *Server) Register(r *gin.Engine) {
 	u.GET("/incidents", events, s.listIncidents)
 	u.GET("/incidents/:id", events, s.getIncident)
 	u.PATCH("/incidents/:id", respond, s.updateIncident)
+	u.DELETE("/incidents/:id", s.superOnly, s.deleteIncident) // ?mode=bin | forever
 	u.POST("/incidents/:id/notes", respond, s.addNote)
 	u.GET("/alerts", events, s.listAlerts)
 	u.POST("/alerts/:id/acknowledge", respond, s.alertStatus("acknowledged"))
@@ -230,6 +231,10 @@ func (s *Server) Register(r *gin.Engine) {
 	u.POST("/super/orgs", s.superOnly, s.createOrgSuper)
 	u.DELETE("/super/orgs/:id", s.superOnly, s.deleteOrgSuper)
 	u.POST("/super/orgs/:id/restore", s.superOnly, s.restoreOrgSuper)
+	u.GET("/super/activity", s.superOnly, s.platformActivity)
+	u.GET("/super/incident-bin", s.superOnly, s.incidentBin)
+	u.POST("/super/incident-bin/:id/restore", s.superOnly, s.restoreBinned)
+	u.DELETE("/super/incident-bin/:id", s.superOnly, s.deleteBinned)
 	u.GET("/settings", s.settings)
 	u.PUT("/settings", s.can(auth.ManageSettings), s.saveSettings)
 	u.PUT("/settings/theme", s.can(auth.ManageSettings), s.saveDefaultTheme)
@@ -256,6 +261,8 @@ func fail(c *gin.Context, err error) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 	case errors.Is(err, store.ErrNameTaken):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+	case errors.Is(err, store.ErrOrgNameTaken):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "org_name_taken"})
 	case errors.As(err, &up):
 		status := up.Status
 		if status < 400 || status >= 500 {

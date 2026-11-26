@@ -99,6 +99,12 @@ func (s *Store) Logs(ctx context.Context, f LogFilter) ([]LogEntry, error) {
 			  AND ($4 = '' OR e.kind = $4)
 			  AND ($5 = '' OR e.camera_id = $5)
 			  AND ($6 = '' OR e.incident_id = $6)
+			  -- entries about a fall event in the bin (or its alerts) are hidden until it's restored
+			  AND (e.incident_id IS NULL OR e.incident_id NOT IN
+			       (SELECT bi.id::text FROM incidents bi WHERE bi.tenant_id = $1 AND bi.deleted_at IS NOT NULL))
+			  AND NOT (e.kind = 'alert' AND e.target_id IN
+			       (SELECT ba.id::text FROM alerts ba JOIN incidents bi ON bi.id = ba.incident_id
+			        WHERE ba.tenant_id = $1 AND bi.deleted_at IS NOT NULL))
 			ORDER BY e.at DESC LIMIT $7`, tid, f.Since, f.Until, f.Kind, f.CameraID, f.IncidentID, f.Limit)
 		if err != nil {
 			return err

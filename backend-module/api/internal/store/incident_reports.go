@@ -58,6 +58,7 @@ func (s *Store) IncidentReports(ctx context.Context, incidentID string) ([]Incid
 			LEFT JOIN incidents i ON i.id = r.incident_id AND i.tenant_id = r.tenant_id
 			LEFT JOIN cameras c ON c.id = i.camera_id
 			WHERE r.tenant_id = $1 AND ($2 = '' OR r.incident_id::text = $2) AND r.deleted_at IS NULL
+			  AND (i.id IS NULL OR i.deleted_at IS NULL)
 			ORDER BY r.updated_at DESC LIMIT 500`, tid, incidentID)
 		if err != nil {
 			return err
@@ -77,7 +78,7 @@ func (s *Store) IncidentReport(ctx context.Context, id string) (*IncidentReport,
 	var out IncidentReport
 	err := s.tx(ctx, func(tx pgx.Tx, tid string) error {
 		err := scanReport(tx.QueryRow(ctx, `SELECT `+reportColumns+` `+reportJoins+`
-			WHERE r.tenant_id = $1 AND r.id::text = $2 AND r.deleted_at IS NULL`, tid, id), &out)
+			WHERE r.tenant_id = $1 AND r.id::text = $2 AND r.deleted_at IS NULL AND `+notBinned("r.incident_id"), tid, id), &out)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -91,7 +92,7 @@ func (s *Store) CreateIncidentReport(ctx context.Context, incidentID, form, titl
 	var id string
 	err := s.tx(ctx, func(tx pgx.Tx, tid string) error {
 		var exists bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM incidents WHERE tenant_id = $1 AND id::text = $2)`,
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM incidents WHERE tenant_id = $1 AND id::text = $2 AND deleted_at IS NULL)`,
 			tid, incidentID).Scan(&exists); err != nil {
 			return err
 		}
@@ -175,7 +176,7 @@ func (s *Store) DeletedIncidentReports(ctx context.Context) ([]IncidentReport, e
 			LEFT JOIN users du ON du.id = r.deleted_by
 			LEFT JOIN incidents i ON i.id = r.incident_id AND i.tenant_id = r.tenant_id
 			LEFT JOIN cameras c ON c.id = i.camera_id
-			WHERE r.tenant_id = $1 AND r.deleted_at IS NOT NULL
+			WHERE r.tenant_id = $1 AND r.deleted_at IS NOT NULL AND (i.id IS NULL OR i.deleted_at IS NULL)
 			ORDER BY r.deleted_at DESC LIMIT 500`, tid)
 		if err != nil {
 			return err

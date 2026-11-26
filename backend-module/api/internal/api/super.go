@@ -134,6 +134,17 @@ func (s *Server) restoreOrgSuper(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// platformActivity: what super admins did to organizations and fall events (kept even after
+// an organization is erased).
+func (s *Server) platformActivity(c *gin.Context) {
+	list, err := s.db.PlatformLog(c.Request.Context(), 300)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"entries": list})
+}
+
 // ---------- detection and alert rules (per organization) ----------
 
 // ruleField is one rule a super admin can change: its allowed range, and the detector's

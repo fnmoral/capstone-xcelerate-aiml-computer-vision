@@ -54,7 +54,7 @@ func queryAlerts(ctx context.Context, tx pgx.Tx, where string, args ...any) ([]A
 func (s *Store) Alerts(ctx context.Context, status string) ([]Alert, error) {
 	out := []Alert{}
 	err := s.tx(ctx, func(tx pgx.Tx, tid string) error {
-		list, err := queryAlerts(ctx, tx, `a.tenant_id = $1 AND ($2 = '' OR a.status = $2)`, tid, status)
+		list, err := queryAlerts(ctx, tx, `a.tenant_id = $1 AND ($2 = '' OR a.status = $2) AND `+notBinned("a.incident_id"), tid, status)
 		if err != nil {
 			return err
 		}
