@@ -17,6 +17,7 @@ type Repository interface {
 	CountStreaming() (int64, error) // cameras that are not paused
 	Delete(id string) error
 	UpdateStatus(id, status string) error
+	UpdateConnection(id, rtspURL, username, password string) error // the camera's address and login
 }
 
 type sqliteRepository struct {
@@ -102,6 +103,19 @@ func (r *sqliteRepository) Delete(id string) error {
 		return errors.New("No camera found to delete")
 	}
 
+	return nil
+}
+
+// UpdateConnection stores a camera's new address and login.
+func (r *sqliteRepository) UpdateConnection(id, rtspURL, username, password string) error {
+	res, err := r.db.Exec(`UPDATE cameras SET rtsp_url = $1, username = $2, password = $3, updated_at = $4 WHERE id = $5`,
+		rtspURL, username, password, time.Now(), id)
+	if err != nil {
+		return fmt.Errorf("Error updating camera address: %w", err)
+	}
+	if rowsAffected, _ := res.RowsAffected(); rowsAffected == 0 {
+		return ErrCameraNotFound
+	}
 	return nil
 }
 

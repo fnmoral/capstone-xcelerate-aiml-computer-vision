@@ -31,6 +31,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		cams.POST("", h.AddCamera)
 		cams.GET("", h.GetCameras)
 		cams.DELETE("/:id", h.RemoveCamera)
+		cams.PATCH("/:id", h.UpdateCamera)
 		cams.POST("/:id/pause", h.PauseCamera)
 		cams.POST("/:id/resume", h.ResumeCamera)
 	}
@@ -101,9 +102,24 @@ func (h *Handler) ResumeCamera(c *gin.Context) {
 	h.respondCamera(c, h.service.ResumeCamera)
 }
 
+// UpdateCamera changes a camera's address or login (body: rtsp_url, username, password;
+// each optional) and reconnects it.
+func (h *Handler) UpdateCamera(c *gin.Context) {
+	var dto UpdateCameraDTO
+	if err := c.ShouldBindJSON(&dto); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
+		return
+	}
+	h.respondCamera(c, func(id string) (*Camera, error) { return h.service.UpdateCamera(id, dto) })
+}
+
 func (h *Handler) respondCamera(c *gin.Context, action func(id string) (*Camera, error)) {
 	cam, err := action(c.Param("id"))
 	if err != nil {
+		if errors.Is(err, ErrInvalidRTSPURL) {
+			c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
+			return
+		}
 		if errors.Is(err, ErrCameraNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"Error": err.Error()})
 			return

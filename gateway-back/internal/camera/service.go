@@ -35,6 +35,9 @@ var ErrMaxStreaming = fmt.Errorf("%d cameras are already streaming on this gatew
 // ErrCameraNotFound is returned when no camera has the given ID.
 var ErrCameraNotFound = errors.New("Camera not found.")
 
+// ErrInvalidRTSPURL is returned when a camera's new address is not an rtsp:// or rtsps:// URL.
+var ErrInvalidRTSPURL = errors.New("The RTSP URL must start with rtsp:// or rtsps:// and include the camera's address.")
+
 // Camera statuses.
 const (
 	StatusOnline  = "online"
@@ -60,6 +63,9 @@ type Service interface {
 
 	// ResumeCamera restarts a paused camera's stream relay and marks it online.
 	ResumeCamera(id string) (*Camera, error)
+
+	// UpdateCamera changes a camera's address or login and reconnects it (unless paused).
+	UpdateCamera(id string, dto UpdateCameraDTO) (*Camera, error)
 
 	// InitStreams starts the stream relay for all cameras stored in the repository.
 	InitStreams() error
@@ -232,6 +238,45 @@ func (s *service) ResumeCamera(id string) (*Camera, error) {
 	}
 	cam.Status = StatusOnline
 	log.Printf("Camera [%s] (%s) resumed", cam.ID, cam.Name)
+	return cam, nil
+}
+
+// UpdateCamera stores the camera's new address or login and, unless it is paused,
+// reconnects it with them (StartRelay replaces the running stream). The camera keeps its
+// ID, so the main app keeps its name, zone and history.
+func (s *service) UpdateCamera(id string, dto UpdateCameraDTO) (*Camera, error) {
+	cam, err := s.repo.FindByID(id)
+	if err != nil {
+		return nil, err
+	}
+	if cam == nil {
+		return nil, ErrCameraNotFound
+	}
+	if dto.RTSPURL != nil {
+		u, err := url.Parse(*dto.RTSPURL)
+		if err != nil || (u.Scheme != "rtsp" && u.Scheme != "rtsps") || u.Host == "" {
+			return nil, ErrInvalidRTSPURL
+		}
+		cam.RTSPURL = *dto.RTSPURL
+	}
+	if dto.Username != nil {
+		cam.Username = *dto.Username
+	}
+	if dto.Password != nil {
+		cam.Password = *dto.Password
+	}
+	if cam.Username == "" {
+		cam.Password = "" // no login
+	}
+	if err := s.repo.UpdateConnection(cam.ID, cam.RTSPURL, cam.Username, cam.Password); err != nil {
+		return nil, err
+	}
+	log.Printf("Camera [%s] (%s) address or login changed -> %s", cam.ID, cam.Name, rtsp.Redact(cam.RTSPURL))
+	if cam.Status != StatusPaused {
+		if err := s.streamManager.StartRelay(cam.ID, cam.TenantID, buildRTSPURL(cam.RTSPURL, cam.Username, cam.Password)); err != nil {
+			log.Printf("WARNING: camera [%s] saved but reconnecting failed: %v", cam.ID, err)
+		}
+	}
 	return cam, nil
 }
 

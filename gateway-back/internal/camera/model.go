@@ -22,3 +22,12 @@ type CreateCameraDTO struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
+
+// UpdateCameraDTO changes a camera's address or login; the camera keeps its ID (so its
+// name, zone and history in the main app stay). A missing field is left as it is; an
+// empty username removes the login (and the password).
+type UpdateCameraDTO struct {
+	RTSPURL  *string `json:"rtsp_url"`
+	Username *string `json:"username"`
+	Password *string `json:"password"`
+}
