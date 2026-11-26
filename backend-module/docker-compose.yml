@@ -79,6 +79,7 @@ services:
       EMAIL_LINKS_IN_RESPONSE: ${EMAIL_LINKS_IN_RESPONSE:-false}
       REQUIRE_EMAIL_VERIFICATION: ${REQUIRE_EMAIL_VERIFICATION:-true}  # false = sign in right after sign-up (demos)
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS:-}  # comma-separated: admins of every organization
       # Phone cameras: the camera relay's public RTMPS address (empty = off; set by docker-compose.azure.yml).
       PHONE_RELAY_URL: ${PHONE_RELAY_URL:-}
       PHONE_RTMP_URL: ${PHONE_RTMP_URL:-}
