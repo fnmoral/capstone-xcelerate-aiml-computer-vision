@@ -232,7 +232,7 @@ export interface DetectionSettings {
   device: string; // as configured: auto, a GPU number, or cpu
   devices_available?: { value: string; label: string }[]; // auto, cpu, each GPU
   inference_error?: string | null; // a model/device picked here that could not be loaded
-  device_in_use: string | null; // what it resolved to, e.g. "GPU 0 (NVIDIA GeForce RTX 3060 Laptop GPU)" or "CPU"
+  device_in_use: string | null; // what it resolved to, e.g. "GPU 0 (NVIDIA ...)" or "CPU"
   target_fps: number;
   analysis: {
     // measured over the last 30 s
