@@ -106,17 +106,22 @@ function Recipients({ kind, list, set, members, matrix }: {
                 <tr key={r.address}>
                   <td><strong className="notif-recipients__line">{r.name || r.address}</strong>{r.name && <div className="muted mono notif-recipients__line" title={r.address}>{r.address}</div>}
                     {r.user_id && <div className="muted" style={{ fontSize: 12 }}>Member</div>}</td>
-                  {SEVERITIES.map((s) => (
-                    <td key={s} className="notif-matrix__cell">
-                      {/* Off for this severity: a tip (1 s, or tap) says where to switch it on. */}
-                      <span className="tip" tabIndex={matrix[s] ? undefined : 0}
-                        data-tip={matrix[s] ? undefined : `${isEmail ? 'Email' : 'SMS'} is off for ${SEV_LABEL[s]}: turn it on in "When to notify" above`}>
-                        <input type="checkbox" checked={r.severities.includes(s)} disabled={!matrix[s]}
-                          aria-label={`${r.name || r.address}: ${SEV_LABEL[s]}${matrix[s] ? '' : ` (off: turn on ${isEmail ? 'email' : 'SMS'} for ${SEV_LABEL[s]} in When to notify)`}`}
-                          onChange={(e) => update(i, { severities: e.target.checked ? [...r.severities, s] : r.severities.filter((x) => x !== s) })} />
-                      </span>
-                    </td>
-                  ))}
+                  {SEVERITIES.map((s) => {
+                    // Greyed out when this recipient is switched off, or the channel is off for
+                    // the severity; a tip (1 s, or tap) says how to turn it on.
+                    const why = !r.enabled
+                      ? `${r.name || r.address} is switched off: turn on "On" to send to them`
+                      : !matrix[s] ? `${isEmail ? 'Email' : 'SMS'} is off for ${SEV_LABEL[s]}: turn it on in "When to notify" above` : undefined;
+                    return (
+                      <td key={s} className="notif-matrix__cell">
+                        <span className="tip" tabIndex={why ? 0 : undefined} data-tip={why}>
+                          <input type="checkbox" checked={r.severities.includes(s)} disabled={!!why}
+                            aria-label={`${r.name || r.address}: ${SEV_LABEL[s]}${why ? ` (${why})` : ''}`}
+                            onChange={(e) => update(i, { severities: e.target.checked ? [...r.severities, s] : r.severities.filter((x) => x !== s) })} />
+                        </span>
+                      </td>
+                    );
+                  })}
                   <td><label className="switch"><input type="checkbox" checked={r.enabled} onChange={(e) => update(i, { enabled: e.target.checked })}
                     aria-label={`${r.name || r.address} enabled`} /></label></td>
                   <td className="num"><button className="btn btn--sm btn--danger" onClick={() => set(list.filter((_, j) => j !== i))}
