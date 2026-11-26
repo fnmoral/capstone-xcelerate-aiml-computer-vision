@@ -94,8 +94,35 @@
 .rules__group { margin-top: 14px; }
 .rules__title { font-size: 14px; margin: 0 0 6px; }
 .rules details > summary, details.rules__group > summary { cursor: pointer; font-weight: 600; font-size: 14px; margin-bottom: 6px; }
-.rules__input { display: inline-flex; align-items: center; gap: 6px; justify-content: flex-end; }
-.rules__input input { width: 88px; text-align: right; }
+/* One box per value, the unit as a shaded end inside it; every box the same width. */
+.rules .rules__value { padding-top: 6px; padding-bottom: 6px; padding-right: 24px; text-align: right; }
+.rules__input { display: inline-flex; align-items: stretch; width: 148px; height: 36px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--bg); overflow: hidden; transition: border-color .12s, box-shadow .12s; }
+.rules__input:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.rules__input:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.rules__input.is-changed { border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg)); }
+.rules__input input { flex: 1; min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; color: var(--text);
+  font: inherit; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; padding: 0 10px;
+  appearance: textfield; -moz-appearance: textfield; }
+.rules__input input::-webkit-outer-spin-button, .rules__input input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.rules__input input:disabled { opacity: .6; }
+.rules__unit { display: grid; place-items: center; flex: 0 0 64px; padding: 0 6px; border-left: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text-muted); font-size: 13px; white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .rules__input { transition: none; } }
+/* Phones: each rule is a block: its name and box on one line, what it means under them. */
+@media (max-width: 640px) {
+  .rules .table--settings { min-width: 0; }
+  .rules .table--settings, .rules .table--settings tbody { display: block; }
+  .rules .table--settings colgroup, .rules .table--settings thead { display: none; }
+  .rules .table--settings tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center;
+    padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .rules .table--settings tbody tr:last-child { border-bottom: 0; }
+  .rules .table--settings td { display: block; padding: 0; border: 0; }
+  .rules .table--settings td:nth-child(2) { padding: 0; text-align: right; }
+  .rules .table--settings td:nth-child(3) { grid-column: 1 / -1; font-size: 13px; }
+  .rules__input { width: 136px; }
+}
 .rules__changed { margin-left: 8px; font-size: 11px; color: var(--accent); }
 .rules__actions { margin-top: 14px; }
 

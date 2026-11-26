@@ -5,13 +5,14 @@ import { formatDuration } from '../../lib/format';
 import { useAuth } from '../auth/AuthContext';
 
 /** What each rule means. seconds = shown as a duration. */
-const INFO: Record<string, { label: string; unit?: string; seconds?: boolean; help: string }> = {
+/** unit: shown with read-only values; short: the unit inside an edit box (the Meaning column explains it). */
+const INFO: Record<string, { label: string; unit?: string; short?: string; seconds?: boolean; help: string }> = {
   confirm_seconds: { label: 'Confirm a fall after', seconds: true, help: 'Someone must stay down this long before it counts as a fall and alerts go out' },
   recover_seconds: { label: 'Recovered after', seconds: true, help: 'Standing this long closes the fall event as recovered' },
   lying_torso_angle_deg: { label: 'Lying: torso angle', unit: '°', help: 'Torso this far from vertical counts fully as lying' },
   falling_torso_angle_deg: { label: 'Falling: minimum tilt', unit: '°', help: 'Torso tilt needed for the "falling" label (smaller than the lying angle)' },
-  lying_aspect_ratio: { label: 'Lying: box shape', unit: '× wider than tall', help: 'A person this much wider than tall looks like lying' },
-  fall_velocity: { label: 'Falling: hip drop speed', unit: 'torso lengths/s', help: 'How fast the hips must drop, measured in body size so near and far look the same' },
+  lying_aspect_ratio: { label: 'Lying: box shape', unit: '× wider than tall', short: '× wide', help: 'A person this much wider than tall looks like lying' },
+  fall_velocity: { label: 'Falling: hip drop speed', unit: 'torso lengths/s', short: 'len/s', help: 'How fast the hips must drop, measured in body size so near and far look the same' },
   high_after_seconds: { label: 'Severity High after', seconds: true, help: 'Still down this long: the alert rises from Medium to High' },
   critical_after_seconds: { label: 'Severity Critical after', seconds: true, help: 'Still down this long: the alert rises to Critical (later than High)' },
   lost_track_seconds: { label: 'Out of view for', seconds: true, help: 'Then they are forgotten. A fall last seen at the edge of the picture becomes "unresolved" (out of view)' },
@@ -20,8 +21,8 @@ const INFO: Record<string, { label: string; unit?: string; seconds?: boolean; he
   min_visible_keypoints: { label: 'Body points needed', unit: 'of 17', help: 'Fewer visible points (or no hips/legs) gives "unclear" instead of a guess' },
   min_keypoint_conf: { label: 'Body-point confidence', help: 'Body points the model is less sure of than this are ignored' },
   handoff_seconds: { label: 'Same person if renumbered within', seconds: true, help: 'A new tracker number where someone was just lost carries on their fall' },
-  handoff_radius: { label: 'Renumbered: distance', unit: '× box size', help: 'How close the new number must appear to count as the same person' },
-  handoff_incident_radius: { label: 'Renumbered: distance (fall in progress)', unit: '× box size', help: 'The same, for someone whose fall is open (checked first)' },
+  handoff_radius: { label: 'Renumbered: distance', unit: '× box size', short: '× box', help: 'How close the new number must appear to count as the same person' },
+  handoff_incident_radius: { label: 'Renumbered: distance (fall in progress)', unit: '× box size', short: '× box', help: 'The same, for someone whose fall is open (checked first)' },
 };
 
 const GROUPS: { key: RuleField['group']; title: string }[] = [
@@ -99,12 +100,13 @@ export function DetectionRules({ mergeWindow }: { mergeWindow?: number }) {
     return (
       <tr key={f.key}>
         <td>{info?.label ?? f.key}{isChanged && <span className="badge rules__changed">changed</span>}</td>
-        <td className="num">
+        <td className={edit ? 'rules__value' : 'num'}>
           {edit ? (
-            <label className="rules__input">
-              <input type="number" min={f.min} max={f.max} step={f.step} value={draft[f.key]} disabled={saving}
+            <label className={`rules__input${Number(draft[f.key]) !== data.defaults[f.key] ? ' is-changed' : ''}`}
+              title={`${f.min} to ${f.max}${info?.seconds ? ' seconds' : ''}`}>
+              <input type="number" inputMode="decimal" min={f.min} max={f.max} step={f.step} value={draft[f.key]} disabled={saving}
                 aria-label={info?.label ?? f.key} onChange={(e) => setDraft({ ...draft, [f.key]: e.target.value })} />
-              <span className="muted">{info?.seconds ? 's' : info?.unit ?? ''}</span>
+              <span className="rules__unit">{info?.seconds ? 's' : info?.short ?? info?.unit ?? ''}</span>
             </label>
           ) : show(f.key, value(f.key))}
         </td>
