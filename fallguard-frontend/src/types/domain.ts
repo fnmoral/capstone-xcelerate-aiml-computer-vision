@@ -261,6 +261,24 @@ export interface DetectionSettings {
   zones: Record<string, string[]>;
 }
 
+/** One rule an organization can change (Detection rules; super admins only). */
+export interface RuleField {
+  key: string;
+  group: "fall" | "alerts" | "advanced";
+  min: number;
+  max: number;
+  step: number;
+  integer?: boolean;
+}
+
+/** This organization's fall and alert rules: a missing key in saved = the default. */
+export interface DetectionRules {
+  fields: RuleField[];
+  defaults: Record<string, number>; // the detector's (config.yaml)
+  saved: Record<string, number>; // this organization's changes
+  can_edit: boolean; // super admins
+}
+
 /** A gateway's own connection settings (saving re-registers it with these values). */
 export interface GatewayConfig {
   stream_hub_address: string; // where it sends video, host:port

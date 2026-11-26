@@ -1,0 +1,9 @@
+/* Manage organizations (super admins) */
+.orgs-create, .orgs-list { padding: 20px; margin-bottom: 20px; }
+.orgs-create__row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.orgs-create__row .field { flex: 1; min-width: min(100%, 240px); }
+.orgs-create__hint, .orgs-note { margin: 10px 0 0; font-size: 13px; }
+.orgs-create__done { margin: 12px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.orgs-badge { margin-left: 8px; font-size: 11px; }
+.orgs-actions { white-space: nowrap; }
+.orgs-actions .btn + .btn { margin-left: 6px; }

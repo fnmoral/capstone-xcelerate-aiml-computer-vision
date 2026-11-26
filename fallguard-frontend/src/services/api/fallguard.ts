@@ -2,6 +2,7 @@ import type {
   Alert,
   Camera,
   DetectionOverrides,
+  DetectionRules,
   DetectionSettings,
   Gateway,
   GatewayLimits,
@@ -220,6 +221,11 @@ export const api = {
     }
     return apiRequest("/detection", { method: "PUT", ...json(next) });
   },
+  /** This organization's fall and alert rules: fields, defaults, its changes, can_edit (super admins). */
+  detectionRules: () => apiRequest<DetectionRules>("/detection/rules"),
+  /** Replaces the organization's rule changes; {} restores the defaults. */
+  saveDetectionRules: (rules: Record<string, number>) =>
+    apiRequest<{ saved: Record<string, number> }>("/detection/rules", { method: "PUT", ...json({ rules }) }),
   /** Settings → Gateways: every gateway, which answer, and the one in use. */
   gateways: () => apiRequest<GatewaysState>("/gateways"),
   /** The gateway to use; null = automatic (on-site if one is online, else cloud). */

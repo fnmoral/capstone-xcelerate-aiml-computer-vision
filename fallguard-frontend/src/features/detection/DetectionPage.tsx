@@ -4,34 +4,9 @@ import { api } from '../../services/api/fallguard';
 import { usePolling } from '../../services/api/usePolling';
 import { formatDuration } from '../../lib/format';
 import { PersonConfidence } from './PersonConfidence';
+import { DetectionRules } from './DetectionRules';
 import { ModelDevice } from './ModelDevice';
 import { PERM, useAuth } from '../auth/AuthContext';
-
-const RULES: { key: string; label: string; unit: string; help: string }[] = [
-  { key: 'lying_torso_angle_deg', label: 'Lying: torso angle', unit: '°', help: 'Torso this far from vertical counts fully as lying' },
-  { key: 'lying_aspect_ratio', label: 'Lying: box shape', unit: '× wider than tall', help: 'A person this much wider than tall looks like lying' },
-  { key: 'falling_torso_angle_deg', label: 'Falling: minimum tilt', unit: '°', help: 'Torso tilt needed for the "falling" label' },
-  { key: 'fall_velocity', label: 'Falling: hip drop speed', unit: 'torso lengths/s', help: 'How fast the hips must drop, measured in body size so near and far look the same' },
-  { key: 'standing_legs', label: 'Standing: legs under hips', unit: '', help: 'Legs this straight under the hips mean standing or bending, never lying (0–1)' },
-  { key: 'min_visible_keypoints', label: 'Body points needed', unit: 'of 17', help: 'Fewer visible points (or no hips/legs) gives "unclear" instead of a guess' },
-  { key: 'confirm_ratio', label: 'Confirm: frames down', unit: '', help: 'Share of frames in the confirm time that must show the person down' },
-  { key: 'min_keypoint_conf', label: 'Body-point confidence', unit: '', help: 'Body points below this are ignored' },
-];
-
-const TIMINGS: { key: string; label: string; help: string }[] = [
-  { key: 'confirm_seconds', label: 'Confirm a fall after', help: 'Someone must stay down this long before an alert' },
-  { key: 'recover_seconds', label: 'Recovered after', help: 'Standing this long closes the incident' },
-  { key: 'high_after_seconds', label: 'Severity high after', help: 'Still down after this long' },
-  { key: 'critical_after_seconds', label: 'Severity critical after', help: 'Still down after this long' },
-  { key: 'handoff_seconds', label: 'Same person if renumbered within', help: 'A new tracker ID where someone was just lost carries on their fall' },
-  { key: 'lost_track_seconds', label: 'Out of view for', help: 'Then they are forgotten. A fall last seen at the edge of the picture becomes "unresolved" (out of view); one hidden inside the picture stays open' },
-  { key: 'merge_window_seconds', label: 'Zone merge window', help: 'Falls seen by several cameras of a zone within this time are one alert' },
-];
-
-/** Same column widths in the Labels and Incidents tables, so their columns line up. */
-function SettingsCols() {
-  return <colgroup><col className="col-setting" /><col className="col-value" /><col /></colgroup>;
-}
 
 export default function DetectionPage() {
   const canChange = useAuth().can(PERM.manageDetection);
@@ -42,7 +17,7 @@ export default function DetectionPage() {
   return (
     <>
       <PageHeader title="Detection Settings"
-        description="How the fall detector decides. The model, device and minimum person confidence can be changed here; the rest comes from ml-service's config.yaml (see ml-service/CONFIG.md)." />
+        description="How the fall detector decides. The model, device and minimum person confidence can be changed here; the rules below are this organization's (a super admin can change them)." />
       {error && <p className="notice notice--error">{error}</p>}
       {!d ? <p className="muted">Loading…</p> : (
         <div className="stack">
@@ -92,27 +67,11 @@ export default function DetectionPage() {
 
           <section className="card" style={{ padding: 16 }}>
             <h2 className="section-title">Labels</h2>
-            <p className="row"><StatusBadge value="upright" /> standing, walking or sitting
+            <p className="row" style={{ margin: 0 }}><StatusBadge value="upright" /> standing, walking or sitting
               <StatusBadge value="falling" /> going down fast <StatusBadge value="lying" /> on the floor <StatusBadge value="unclear" /> too little visible to tell</p>
-            <div className="table-wrap"><table className="table table--settings">
-              <SettingsCols />
-              <thead><tr><th>Rule</th><th className="num">Value</th><th>Meaning</th></tr></thead>
-              <tbody>{RULES.map((r) => (
-                <tr key={r.key}><td>{r.label}</td><td className="num">{d.rules[r.key]} {r.unit}</td><td className="muted">{r.help}</td></tr>
-              ))}</tbody>
-            </table></div>
           </section>
 
-          <section className="card" style={{ padding: 16 }}>
-            <h2 className="section-title">Incidents and alerts</h2>
-            <div className="table-wrap"><table className="table table--settings">
-              <SettingsCols />
-              <thead><tr><th>Setting</th><th className="num">Value</th><th>Meaning</th></tr></thead>
-              <tbody>{TIMINGS.map((t) => (
-                <tr key={t.key}><td>{t.label}</td><td className="num">{formatDuration(d.incidents[t.key])}</td><td className="muted">{t.help}</td></tr>
-              ))}</tbody>
-            </table></div>
-          </section>
+          <DetectionRules mergeWindow={d.incidents?.merge_window_seconds} />
 
           <section className="card" style={{ padding: 16 }}>
             <h2 className="section-title">Zones in use</h2>

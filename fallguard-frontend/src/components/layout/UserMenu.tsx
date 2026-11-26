@@ -60,7 +60,7 @@ export function UserMenu() {
             {!me.user.is_guest && <span className="muted">{me.user.email}</span>}
             <span className="muted">{me.org.name} · {me.user.is_guest
               ? (me.permissions.includes('alerts.manage') ? 'Temporary access' : 'Temporary access, view-only')
-              : ROLE_LABEL[me.role] ?? me.role}</span>
+              : me.user.super_admin ? 'Super admin' : ROLE_LABEL[me.role] ?? me.role}</span>
             {me.user.is_guest && me.user.access_until && (
               <span className="muted">Until {new Date(me.user.access_until).toLocaleString()}</span>
             )}
@@ -79,6 +79,7 @@ export function UserMenu() {
           {!me.user.is_guest && <Link to="/account" className="user-panel__item" onClick={() => setOpen(false)}><Icon name="user" size={16} /> My account</Link>}
           {me.user.is_guest && <Link to="/account" className="user-panel__item" onClick={() => setOpen(false)}><Icon name="user" size={16} /> {me.user.visitor_name ? 'Change my name' : 'Add my name'}</Link>}
           {me.permissions.includes('members.view') && <Link to="/members" className="user-panel__item" onClick={() => setOpen(false)}><Icon name="users" size={16} /> Members &amp; roles</Link>}
+          {me.user.super_admin && <Link to="/organizations" className="user-panel__item" onClick={() => setOpen(false)}><Icon name="shield" size={16} /> Manage organizations</Link>}
           <button className="user-panel__item" onClick={async () => { await signOut(); navigate('/login', { replace: true }); }}>
             <Icon name="logout" size={16} /> Sign out
           </button>

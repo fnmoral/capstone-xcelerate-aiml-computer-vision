@@ -23,6 +23,21 @@ export interface User {
   access_until?: string | null;
   /** Demo visitor's optional name in this browser: absent = not asked yet, "" = skipped. */
   visitor_name?: string;
+  /** FallGuard super admin (set on the server): admin of every organization. */
+  super_admin?: boolean;
+}
+
+/** One organization in Manage organizations (super admins). */
+export interface OrgSummary {
+  id: string;
+  name: string;
+  status: "active" | "deleted";
+  created_at: string;
+  deleted_at: string | null;
+  erase_at: string | null; // deleted: erased for good at this time
+  members: number; // not counting super admins
+  cameras: number;
+  home: boolean; // has the gateway and fall detector; can't be deleted
 }
 
 export interface GuestLink {
@@ -258,6 +273,12 @@ export const accounts = {
   changePassword: (current_password: string, new_password: string) =>
     apiRequest("/auth/change-password", post({ current_password, new_password })),
   switchOrg: (org_id: string) => apiRequest("/auth/switch-org", post({ org_id })),
+  /** Super admins: every organization, and the one this session is in. */
+  allOrgs: () => apiRequest<{ orgs: OrgSummary[]; current: string }>("/super/orgs"),
+  createOrg: (name: string) => apiRequest<{ id: string }>("/super/orgs", post({ name })),
+  /** Switched off at once; restorable for 30 days, then erased. */
+  deleteOrg: (id: string) => apiRequest("/super/orgs/" + enc(id), { method: "DELETE" }),
+  restoreOrg: (id: string) => apiRequest("/super/orgs/" + enc(id) + "/restore", post()),
   leaveOrg: () => apiRequest("/org/leave", post()),
   /** Demo access links (view-only, no account). The url (with its token) comes back only on create. */
   guestLinks: () => apiRequest<{ links: GuestLink[] }>("/org/guest-links"),

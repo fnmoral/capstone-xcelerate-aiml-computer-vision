@@ -87,6 +87,15 @@
 .table--settings .col-value { width: 22%; }
 .table--settings td, .table--settings th { overflow-wrap: anywhere; }
 .table--settings .num { padding-right: 24px; }
+/* Detection rules (Detection Settings): this organization's values, editable by super admins */
+.rules__head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; }
+.rules__group { margin-top: 14px; }
+.rules__title { font-size: 14px; margin: 0 0 6px; }
+.rules details > summary, details.rules__group > summary { cursor: pointer; font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+.rules__input { display: inline-flex; align-items: center; gap: 6px; justify-content: flex-end; }
+.rules__input input { width: 88px; text-align: right; }
+.rules__changed { margin-left: 8px; font-size: 11px; color: var(--accent); }
+.rules__actions { margin-top: 14px; }
 
 /* Select boxes: one modern look everywhere (form fields and stand-alone, e.g. in tables).
    Native arrow replaced by a chevron that follows the theme. */

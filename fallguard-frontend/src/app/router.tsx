@@ -60,6 +60,7 @@ export const router = createRouter([{
         ...page(() => import('../features/incident-reports/ReportEditorPage'), ['reports.view', 'incident_reports.manage']),
       },
       { path: 'account', ...page(() => import('../features/account/AccountPage')) },
+      { path: 'organizations', ...page(() => import('../features/organizations/OrganizationsPage')) }, // super admins
       { path: '*', element: <NotFoundPage /> },
       ],
     }],
