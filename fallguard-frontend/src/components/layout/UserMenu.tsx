@@ -67,14 +67,16 @@ export function UserMenu() {
           </div>
           {error && <p className="notice notice--error">{error}</p>}
           {me.orgs.length > 1 && (
-            <div className="user-panel__orgs">
-              <p className="nav__heading" style={{ margin: '0 0 4px' }}>Switch organization</p>
-              {me.orgs.filter((o) => o.id !== me.org.id).map((o) => (
-                <button key={o.id} className="user-panel__item" onClick={() => void switchTo(o.id)}>
-                  {o.name} <span className="muted">· {ROLE_LABEL[o.role] ?? o.role}</span>
-                </button>
-              ))}
-            </div>
+            <label className="user-panel__orgs">
+              <span className="nav__heading">Switch organization</span>
+              <select className="select" value={me.org.id} onChange={(e) => void switchTo(e.target.value)}>
+                {me.orgs.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}{me.user.super_admin ? '' : ` · ${ROLE_LABEL[o.role] ?? o.role}`}
+                  </option>
+                ))}
+              </select>
+            </label>
           )}
           {!me.user.is_guest && <Link to="/account" className="user-panel__item" onClick={() => setOpen(false)}><Icon name="user" size={16} /> My account</Link>}
           {me.user.is_guest && <Link to="/account" className="user-panel__item" onClick={() => setOpen(false)}><Icon name="user" size={16} /> {me.user.visitor_name ? 'Change my name' : 'Add my name'}</Link>}

@@ -19,6 +19,8 @@ export class FrameScheduler {
   private readonly delayMs: number;
   private readonly windowMs: number;
   private readonly maxQueued: number;
+  /** Frames that became due so far (shown, or skipped for a newer one): the stream's frame rate. */
+  due = 0;
 
   constructor(delayMs: number, windowMs = 3000, maxQueued = 30) {
     this.delayMs = delayMs;
@@ -49,6 +51,7 @@ export class FrameScheduler {
     ) {
       due?.image.close();
       due = this.queue.shift()!;
+      this.due++;
     }
     return due;
   }
