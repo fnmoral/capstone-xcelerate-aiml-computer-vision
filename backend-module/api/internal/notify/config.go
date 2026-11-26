@@ -24,7 +24,9 @@ var Events = []string{"alert", "recovered", "false_alarm", "resolved"}
 // FollowUps are the events after the alert.
 var FollowUps = []string{"recovered", "false_alarm", "resolved"}
 
-// Recipient gets email or SMS for the severities ticked.
+// Recipient gets email or SMS for what is ticked: alert severities (medium, high,
+// critical) and updates (recovered, false_alarm, resolved). The JSON name stays
+// "severities" for settings saved before updates could be ticked.
 type Recipient struct {
 	Name       string   `json:"name"`
 	Address    string   `json:"address"`           // email address or +E.164 phone number
@@ -32,6 +34,9 @@ type Recipient struct {
 	Severities []string `json:"severities"`
 	Enabled    bool     `json:"enabled"`
 }
+
+// updateChannels: the channels that can send updates (the app shows alerts only).
+var updateChannels = []string{"email", "sms"}
 
 // Template is the message for one event. Custom false = the default text is used.
 type Template struct {
@@ -43,11 +48,13 @@ type Template struct {
 
 // Config is an organization's notification settings.
 type Config struct {
-	// Matrix[channel][severity]: whether that channel is used at that severity.
+	// Matrix[channel][key]: whether that channel is used at that severity, and (email and
+	// SMS) for that update: the master switches; recipients then tick what they get.
 	Matrix          map[string]map[string]bool `json:"matrix"`
 	EmailRecipients []Recipient                `json:"email_recipients"`
 	SMSRecipients   []Recipient                `json:"sms_recipients"`
-	// FollowUps[event]: also tell the people who got the alert when this happens.
+	// FollowUps[event]: an update is on for email or SMS. Kept for older settings and
+	// readers; Normalize derives it from the matrix, which decides.
 	FollowUps map[string]bool     `json:"follow_ups"`
 	Templates map[string]Template `json:"templates"`
 	// AppURL is the address of the web app, for links in messages.
@@ -59,12 +66,12 @@ func DefaultConfig() Config {
 	return Config{
 		Matrix: map[string]map[string]bool{
 			"app":   {"medium": true, "high": true, "critical": true},
-			"email": {"medium": false, "high": true, "critical": true},
-			"sms":   {"medium": false, "high": false, "critical": true},
+			"email": {"medium": false, "high": true, "critical": true, "recovered": true, "false_alarm": true, "resolved": true},
+			"sms":   {"medium": false, "high": false, "critical": true, "recovered": true, "false_alarm": false, "resolved": false},
 		},
 		EmailRecipients: []Recipient{},
 		SMSRecipients:   []Recipient{},
-		FollowUps:       map[string]bool{"recovered": true, "false_alarm": true, "resolved": false},
+		FollowUps:       map[string]bool{"recovered": true, "false_alarm": true, "resolved": true},
 		Templates:       DefaultTemplates(),
 	}
 }
@@ -188,6 +195,11 @@ func (c Config) Normalize() Config {
 	if c.FollowUps == nil {
 		c.FollowUps = d.FollowUps
 	}
+	c.migrateUpdates()
+	c.FollowUps = map[string]bool{}
+	for _, ev := range FollowUps {
+		c.FollowUps[ev] = c.Matrix["email"][ev] || c.Matrix["sms"][ev]
+	}
 	if c.Templates == nil {
 		c.Templates = map[string]Template{}
 	}
@@ -206,9 +218,9 @@ func (c *Config) Validate() error {
 		if !slices.Contains(Channels, ch) {
 			return fmt.Errorf("unknown channel %q", ch)
 		}
-		for sev := range c.Matrix[ch] {
-			if !slices.Contains(Severities, sev) {
-				return fmt.Errorf("unknown severity %q", sev)
+		for key := range c.Matrix[ch] {
+			if !slices.Contains(Severities, key) && !(slices.Contains(FollowUps, key) && slices.Contains(updateChannels, ch)) {
+				return fmt.Errorf("unknown severity or update %q for %s", key, ch)
 			}
 		}
 	}
@@ -241,8 +253,8 @@ func (c *Config) Validate() error {
 			}
 			clean := []string{}
 			for _, s := range r.Severities {
-				if !slices.Contains(Severities, s) {
-					return fmt.Errorf("unknown severity %q", s)
+				if !slices.Contains(Severities, s) && !slices.Contains(FollowUps, s) {
+					return fmt.Errorf("unknown severity or update %q", s)
 				}
 				if !slices.Contains(clean, s) {
 					clean = append(clean, s)
@@ -278,7 +290,45 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// Wants reports whether a recipient gets messages at a severity.
+// migrateUpdates: settings saved before updates were matrix rows and recipient choices
+// keep working as they did: each update on for email and SMS when its switch was on, and
+// ticked for every recipient (they used to go to whoever got the alert).
+func (c *Config) migrateUpdates() {
+	for _, ch := range updateChannels {
+		for _, ev := range FollowUps {
+			if _, ok := c.Matrix[ch][ev]; ok {
+				return // already in the new form
+			}
+		}
+	}
+	for _, ch := range updateChannels {
+		m := map[string]bool{}
+		for k, v := range c.Matrix[ch] {
+			m[k] = v
+		}
+		for _, ev := range FollowUps {
+			m[ev] = c.FollowUps[ev]
+		}
+		c.Matrix[ch] = m
+	}
+	tick := func(list []Recipient) []Recipient {
+		out := make([]Recipient, len(list))
+		for i, r := range list {
+			r.Severities = slices.Clone(r.Severities)
+			for _, ev := range FollowUps {
+				if c.FollowUps[ev] && !slices.Contains(r.Severities, ev) {
+					r.Severities = append(r.Severities, ev)
+				}
+			}
+			out[i] = r
+		}
+		return out
+	}
+	c.EmailRecipients = tick(c.EmailRecipients)
+	c.SMSRecipients = tick(c.SMSRecipients)
+}
+
+// Wants reports whether a recipient gets messages at a severity, or for an update.
 func (r Recipient) Wants(severity string) bool {
 	return r.Enabled && slices.Contains(r.Severities, severity)
 }

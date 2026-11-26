@@ -56,7 +56,10 @@ func TestValidate(t *testing.T) {
 		func(c *Config) { c.EmailRecipients = []Recipient{{Address: "not-an-email"}} },
 		func(c *Config) { c.Matrix["email"]["low"] = true },
 		func(c *Config) { c.Matrix["pager"] = map[string]bool{} },
-		func(c *Config) { c.FollowUps["exploded"] = true },
+		func(c *Config) { c.Matrix["app"]["resolved"] = true }, // the app shows alerts only
+		func(c *Config) {
+			c.EmailRecipients = []Recipient{{Address: "a@b.co", Severities: []string{"exploded"}}}
+		},
 		func(c *Config) { c.AppURL = "javascript:alert(1)" },
 		func(c *Config) {
 			c.EmailRecipients = []Recipient{{Address: "a@b.co"}, {Address: "A@b.co"}}
@@ -177,5 +180,41 @@ func TestTwilioTrialSendsTheTemplate(t *testing.T) {
 	}
 	if len(bodies) != 2 || bodies[1] != TrialTemplate {
 		t.Errorf("requests: %q", bodies)
+	}
+}
+
+// Settings saved before updates were matrix rows and recipient choices keep behaving as before.
+func TestMigrateUpdates(t *testing.T) {
+	old := Config{
+		Matrix: map[string]map[string]bool{
+			"app": {"medium": true}, "email": {"high": true}, "sms": {"critical": true},
+		},
+		EmailRecipients: []Recipient{{Address: "a@b.co", Severities: []string{"high"}, Enabled: true}},
+		SMSRecipients:   []Recipient{{Address: "+14165550123", Severities: []string{"critical"}, Enabled: true}},
+		FollowUps:       map[string]bool{"recovered": true, "false_alarm": true, "resolved": false},
+	}
+	c := old.Normalize()
+	for _, ch := range []string{"email", "sms"} {
+		if !c.Matrix[ch]["recovered"] || !c.Matrix[ch]["false_alarm"] || c.Matrix[ch]["resolved"] {
+			t.Errorf("%s update switches not carried over: %v", ch, c.Matrix[ch])
+		}
+	}
+	if _, ok := c.Matrix["app"]["recovered"]; ok {
+		t.Error("the app channel must not get update rows")
+	}
+	r := c.EmailRecipients[0]
+	if !r.Wants("recovered") || !r.Wants("false_alarm") || r.Wants("resolved") || !r.Wants("high") {
+		t.Errorf("recipient not ticked for the updates that were on: %v", r.Severities)
+	}
+	if old.EmailRecipients[0].Severities[0] != "high" || len(old.EmailRecipients[0].Severities) != 1 {
+		t.Error("the original settings were changed")
+	}
+	// Already in the new form: left alone (an unticked update stays unticked).
+	c.EmailRecipients[0].Severities = []string{"high"}
+	if again := c.Normalize(); again.EmailRecipients[0].Wants("recovered") {
+		t.Error("new-form settings were migrated again")
+	}
+	if !c.Normalize().FollowUps["recovered"] || c.Normalize().FollowUps["resolved"] {
+		t.Error("follow_ups not derived from the matrix")
 	}
 }
