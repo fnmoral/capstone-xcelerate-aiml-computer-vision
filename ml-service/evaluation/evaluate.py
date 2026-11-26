@@ -391,7 +391,11 @@ def git_commit() -> str:
 
 
 def settings(cfg: config.Config) -> dict:
-    return {"rules": asdict(cfg.rules), "monitor": asdict(cfg.monitor), "detector": asdict(cfg.detector),
+    detector = asdict(cfg.detector)
+    model = Path(detector["learned_model"])
+    if model.is_relative_to(ROOT):  # save it relative: the local folder can contain a user name
+        detector["learned_model"] = model.relative_to(ROOT).as_posix()
+    return {"rules": asdict(cfg.rules), "monitor": asdict(cfg.monitor), "detector": detector,
             "inference": {k: v for k, v in asdict(cfg.inference).items() if k != "weights"}
                          | {"weights": Path(cfg.inference.weights).name}}
 

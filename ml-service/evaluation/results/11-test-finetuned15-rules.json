@@ -23,7 +23,7 @@
       "min_keypoint_conf": 0.3,
       "handoff_seconds": 2,
       "classifier": "rules",
-      "learned_model": "C:\\Users\\Francis Neil Moral\\OneDrive\\12) Fanshawe College\\5) Level 3\\Capstone Project\\Project Code\\capstone-xcelerate-aiml-computer-vision\\ml-service\\models\\stage_b.npz",
+      "learned_model": "models/stage_b.npz",
       "learned_min_keypoints": 3
     },
     "inference": {

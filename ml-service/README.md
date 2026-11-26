@@ -783,7 +783,7 @@ stream-hub accepts several gateways.) The cameras share a fixed number of analys
 per second: each camera gets up to `inference.target_fps` (10), always on its newest frame,
 and the share shrinks evenly when the machine is saturated.
 
-Measured on the development laptop (RTX 3060 Laptop, i7-11800H), with simulated stream-hub
+Measured on a local server (NVIDIA GPU), with simulated stream-hub
 cameras sending 720p H.264 at 25 fps, `yolo26n-pose.pt`:
 
 | Cameras | Analysed per camera | Total analysed | GPU busy | ml-service CPU |
@@ -795,7 +795,7 @@ cameras sending 720p H.264 at 25 fps, `yolo26n-pose.pt`:
 
 What this shows:
 
-- **About 4 cameras at full rate** on that laptop, and it keeps running beyond that with
+- **About 4 cameras at full rate** on that server, and it keeps running beyond that with
   fewer frames per camera. Incidents still open at low rates, because a fall is confirmed
   by 3 s of `lying`; the `falling` label (hip speed) gets less reliable below ~5 fps.
 - **The GPU is not the bottleneck** (about 30% busy). The limit is Python-side work: image
@@ -814,7 +814,7 @@ On the server:
    second to draw on 25–30 video frames.
 3. **Bigger model** (`yolo26s-pose.pt`, `yolo26m-pose.pt`) if the GPU has headroom; it
    detects people more reliably.
-4. **`inference.half: true` (FP16)**: compare first; it was slower on the laptop (58 vs 40 ms).
+4. **`inference.half: true` (FP16)**: compare first; it was slower on the local server (58 vs 40 ms).
 5. **Next code steps for many cameras** (not built yet): batch all cameras' frames into one
    model call, and move H.264 decoding into separate processes so it doesn't compete with
    the model loop.
