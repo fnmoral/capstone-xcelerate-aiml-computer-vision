@@ -1,5 +1,6 @@
 import type {
   Alert,
+  BinnedIncident,
   Camera,
   DetectionOverrides,
   DetectionRules,
@@ -170,6 +171,15 @@ export const api = {
     id: string,
     body: { status?: IncidentStatus; notes?: string },
   ) => apiRequest("/incidents/" + enc(id), { method: "PATCH", ...json(body) }),
+  /** Super admins: "bin" hides it everywhere (restorable); "forever" removes it and its video. */
+  deleteIncident: (id: string, mode: "bin" | "forever") =>
+    apiRequest("/incidents/" + enc(id) + "?mode=" + mode, { method: "DELETE" }),
+  /** Super admins: fall events in the bin, every organization. */
+  incidentBin: () => apiRequest<{ incidents: BinnedIncident[] }>("/super/incident-bin"),
+  restoreIncident: (id: string) =>
+    apiRequest("/super/incident-bin/" + enc(id) + "/restore", { method: "POST" }),
+  deleteBinnedIncident: (id: string) =>
+    apiRequest("/super/incident-bin/" + enc(id), { method: "DELETE" }),
   addNote: (id: string, body: { author: string; text: string }) =>
     apiRequest<{ note: Note }>("/incidents/" + enc(id) + "/notes", {
       method: "POST",

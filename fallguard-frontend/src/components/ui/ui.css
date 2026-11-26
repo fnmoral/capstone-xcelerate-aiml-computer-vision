@@ -8,6 +8,8 @@
 .btn--primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn--primary:hover { filter: brightness(1.05); background: var(--accent); }
 .btn--danger { color: var(--danger); }
+.btn--danger-solid { background: var(--danger); border-color: var(--danger); color: #fff; }
+.btn--danger-solid:disabled { opacity: .5; }
 .btn--sm { height: 30px; padding: 0 10px; font-size: 13px; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
 .empty { display: grid; justify-items: center; text-align: center; gap: 8px; padding: 48px 20px; background: var(--surface); border: 1px dashed var(--border); border-radius: var(--radius); }

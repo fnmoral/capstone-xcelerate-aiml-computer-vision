@@ -73,3 +73,13 @@
 .ev-video-head .section-title { margin: 0; }
 .ev-video__stage { position: relative; }
 .ev-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; border-radius: 8px; }
+
+/* Delete a fall event (super admins): bin or permanently */
+.ev-delete { width: min(520px, calc(100vw - 32px)); }
+.ev-delete__choices { display: grid; gap: 10px; margin-bottom: 16px; }
+.ev-delete__choice { display: flex; gap: 10px; align-items: flex-start; padding: 12px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
+.ev-delete__choice.is-on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--surface)); }
+.ev-delete__choice input { margin-top: 3px; }
+.ev-delete__choice > span { display: grid; gap: 4px; font-size: 14px; }
+.ev-delete__choice .muted { font-size: 13px; line-height: 1.45; }
+.ev-delete__sure { font-size: 14px; }

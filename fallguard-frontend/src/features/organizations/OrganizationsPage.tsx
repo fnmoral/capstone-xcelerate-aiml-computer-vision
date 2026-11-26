@@ -7,6 +7,8 @@ import { usePolling } from '../../services/api/usePolling';
 import { formatDate } from '../../lib/format';
 import { useAuth } from '../auth/AuthContext';
 import './organizations.css';
+import { IncidentBin } from './IncidentBin';
+import { PlatformActivity } from './PlatformActivity';
 
 /** Super admins: every organization; create, open (switch to), delete and restore. */
 export default function OrganizationsPage() {
@@ -148,6 +150,9 @@ export default function OrganizationsPage() {
           </div>
         </section>
       )}
+
+      <IncidentBin />
+      <PlatformActivity />
     </>
   );
 }

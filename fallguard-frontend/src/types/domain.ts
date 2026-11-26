@@ -131,6 +131,23 @@ export interface Incident {
   alert: Alert | null;
 }
 
+/** A fall event in the bin (super admins, Manage organizations). */
+export interface BinnedIncident {
+  id: string;
+  org_id: string;
+  org_name: string;
+  camera_name: string | null;
+  started_at: string;
+  status: IncidentStatus;
+  severity: Severity;
+  location_label: string | null;
+  snapshot_key: string | null;
+  has_video: boolean;
+  reports: number;
+  deleted_at: string;
+  deleted_by: string | null;
+}
+
 /** One note on an incident. Several people can add notes; none is overwritten. */
 export interface Note {
   at: string;
