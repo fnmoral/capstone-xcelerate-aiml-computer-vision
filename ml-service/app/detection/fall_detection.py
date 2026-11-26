@@ -12,7 +12,7 @@ body points in each frame; everything after that happens here, in five steps:
 
 import math
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 from typing import Protocol
 
@@ -502,6 +502,38 @@ class _PoseTrack:
     window: deque = field(default_factory=lambda: deque(maxlen=WINDOW))  # learned classifier input
 
 
+# Rules an organization can change (the frontend's Detection rules, super admins only), by
+# the field they set. Each key is a field name of one of the three settings classes.
+TUNABLE_RULES = {
+    RuleThresholds: ("lying_torso_angle_deg", "falling_torso_angle_deg", "lying_aspect_ratio",
+                     "fall_velocity", "standing_legs", "min_visible_keypoints"),
+    MonitorConfig: ("confirm_seconds", "confirm_ratio", "recover_seconds", "lost_track_seconds",
+                    "high_after_seconds", "critical_after_seconds"),
+    DetectorConfig: ("min_keypoint_conf", "handoff_seconds", "handoff_radius", "handoff_incident_radius"),
+}
+
+
+def with_rules(rules: RuleThresholds, monitor: MonitorConfig, cfg: DetectorConfig,
+               changed: dict | None) -> tuple[RuleThresholds, MonitorConfig, DetectorConfig]:
+    """config.yaml's settings with an organization's changed rules on top (unknown keys and
+    values that aren't numbers are ignored)."""
+    out = []
+    for base in (rules, monitor, cfg):
+        allowed = TUNABLE_RULES[type(base)]
+        kinds = {f.name: f.type for f in fields(base)}
+        values = {}
+        for key, value in (changed or {}).items():
+            if key in allowed and isinstance(value, (int, float)) and not isinstance(value, bool):
+                values[key] = int(value) if kinds[key] in (int, "int") else float(value)
+        out.append(replace(base, **values) if values else base)
+    return out[0], out[1], out[2]
+
+
+def rule_defaults(rules: RuleThresholds, monitor: MonitorConfig, cfg: DetectorConfig) -> dict:
+    """The tunable rules' values in config.yaml (what an organization's changes start from)."""
+    return {key: getattr(base, key) for base in (rules, monitor, cfg) for key in TUNABLE_RULES[type(base)]}
+
+
 class FallDetector:
     """Keeps per-person state between frames, so create one instance per camera."""
 
@@ -518,6 +550,13 @@ class FallDetector:
             raise ValueError(f"fall.classifier must be rules or learned, got {self.cfg.classifier!r}")
         self.monitor = FallMonitor(monitor)
         self._tracks: dict[int, _PoseTrack] = {}
+
+    def configure(self, rules: RuleThresholds, monitor: MonitorConfig, cfg: DetectorConfig) -> None:
+        """Use other thresholds from now on (an organization's own rules), keeping everyone's
+        state: people being tracked and open incidents carry on. The classifier stays."""
+        self.rules.t = rules
+        self.monitor.cfg = monitor
+        self.cfg = replace(cfg, classifier=self.cfg.classifier, learned_model=self.cfg.learned_model)
 
     def process(self, t: float, people: list[TrackedPose],
                 frame_shape: tuple[int, ...]) -> tuple[list[PersonResult], list[IncidentEvent]]:

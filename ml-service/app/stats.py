@@ -7,6 +7,7 @@ import threading
 import time
 from pathlib import Path
 
+from app.detection.fall_detection import rule_defaults
 from app.detection.pose_model import available_devices, available_models
 from app.runtime import Runtime
 
@@ -103,5 +104,7 @@ def detection_settings(runtime: Runtime) -> dict:
             "critical_after_seconds": m.critical_after_seconds,
             "merge_window_seconds": cfg.merge_window_s,
         },
+        # config.yaml's value of each rule an organization can change (Detection rules page).
+        "rule_defaults": rule_defaults(cfg.rules, cfg.monitor, cfg.detector),
         "zones": {name: cams for name, cams in runtime.aggregator.zones().items()},
     }

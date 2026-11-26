@@ -19,7 +19,8 @@ from app.camera_service.incident_reporter import IncidentReporter
 from app.camera_service.results import Sink, SnapshotStore
 from app.camera_service.video_input import FrameSampler, VideoDecoder
 from app.config import Config
-from app.detection.fall_detection import FallDetector, Incident, IncidentEvent, RECOVERED, STARTED, UNRESOLVED, UPDATED
+from app.detection.fall_detection import (FallDetector, Incident, IncidentEvent, RECOVERED, STARTED, UNRESOLVED,
+                                         UPDATED, with_rules)
 from app.detection.overlay import annotate
 from app.detection.pose_model import PoseTracker, available_models, describe_device
 
@@ -68,6 +69,7 @@ class CameraPipeline:
         self.device_in_use = ""                           # e.g. "GPU 0 (NVIDIA ...)", once loaded
         self.model_file = Path(cfg.inference.weights).name  # the pose model file running
         self.detector = FallDetector(cfg.rules, cfg.monitor, cfg.detector)
+        self._rules_applied: dict = {}  # the organization's rule changes the detector runs with
         self.classifier = self.detector.classifier
         self.model_name = f"{Path(cfg.inference.weights).name}+{self.classifier.name}"  # e.g. yolo26n-pose.pt+rules
         self._last_prediction: dict[int, float] = {}
@@ -124,7 +126,14 @@ class CameraPipeline:
         elif want == self._pose_key and self._failed_key is not None:  # switched back to what runs
             self._failed_key = self.inference_error = None
         # Minimum person confidence can be changed in the frontend (Detection Settings).
-        self.pose.conf = self.overrides(self.tenant_id).get("person_confidence", self.cfg.inference.conf)
+        settings = self.overrides(self.tenant_id)
+        self.pose.conf = settings.get("person_confidence", self.cfg.inference.conf)
+        # So can the organization's fall and alert rules (super admins): applied when they change.
+        rules = settings.get("rules") or {}
+        if rules != self._rules_applied:
+            self.detector.configure(*with_rules(self.cfg.rules, self.cfg.monitor, self.cfg.detector, rules))
+            self._rules_applied = dict(rules)
+            log.info("[%s] detection rules: %s", self.camera_id, rules or "defaults")
         with self._monitor_lock:
             self._process(frame, time.time(), pts)
         return True
